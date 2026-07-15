@@ -5,6 +5,9 @@ import { TelegramModule } from './telegram/telegram.module';
 import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/user.module';
 import { WalletModule } from './wallet/wallet.module';
+import { OrdersModule } from './orders/orders.module';
+import { BalanceModule } from './balance/balance.module';
+import { TokensModule } from './tokens/tokens.module';
 
 @Module({
   imports: [
@@ -17,6 +20,9 @@ import { WalletModule } from './wallet/wallet.module';
     AuthModule,
     UserModule,
     WalletModule,
+    OrdersModule,
+    BalanceModule,
+    TokensModule,
   ],
 })
 export class AppModule {}
