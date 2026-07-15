@@ -13,7 +13,7 @@ import {
   saveAuthToken,
 } from '@/lib/storage';
 import type { StoredWallet } from '@/lib/storage';
-import { MAX_WALLETS } from '@solwallet/config';
+import { MAX_WALLETS, AUTO_LOCK_TIMEOUT } from '@solwallet/config';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
@@ -47,6 +47,25 @@ interface WalletState {
   unlockWallet: (walletId: string, pin: string) => Promise<void>;
 }
 
+// ─── 자동 잠금 타이머 관리 ───
+
+let autoLockTimer: ReturnType<typeof setTimeout> | null = null;
+
+function resetAutoLockTimer(lockFn: () => void) {
+  if (autoLockTimer) clearTimeout(autoLockTimer);
+  autoLockTimer = setTimeout(() => {
+    lockFn();
+    autoLockTimer = null;
+  }, AUTO_LOCK_TIMEOUT);
+}
+
+function clearAutoLockTimer() {
+  if (autoLockTimer) {
+    clearTimeout(autoLockTimer);
+    autoLockTimer = null;
+  }
+}
+
 function apiFetch(path: string, options?: RequestInit) {
   const token = loadAuthToken();
   return fetch(`${API_BASE}${path}`, {
@@ -57,6 +76,15 @@ function apiFetch(path: string, options?: RequestInit) {
       ...options?.headers,
     },
   });
+}
+
+/**
+ * Uint8Array를 안전하게 제로화 (ArrayBuffer까지)
+ */
+function zeroizeKey(key: Uint8Array | undefined) {
+  if (key && key.buffer) {
+    new Uint8Array(key.buffer).fill(0);
+  }
 }
 
 export const useWalletStore = create<WalletState>((set, get) => ({
@@ -86,6 +114,15 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       isLocked: true,
       isInitialized: true,
     });
+
+    // 페이지 가시성 변경 시 자동 잠금 (보안)
+    if (typeof window !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+          get().lockWallets();
+        }
+      });
+    }
   },
 
   /**
@@ -93,6 +130,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
    * 1. Keypair 생성
    * 2. PIN으로 암호화 → localStorage 저장
    * 3. 서버에 public key 등록
+   * 4. 메모리에서 키 즉시 제거
    */
   createWallet: async (label, pin) => {
     const { wallets } = get();
@@ -113,6 +151,8 @@ export const useWalletStore = create<WalletState>((set, get) => ({
     });
 
     if (!res.ok) {
+      // 서버 등록 실패 시 메모리 키 제로화
+      zeroizeKey(secretKey);
       const error = await res.json().catch(() => ({}));
       throw new Error(error.message || '지갑 등록에 실패했습니다.');
     }
@@ -131,7 +171,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       createdAt: serverWallet.data.created_at,
     };
 
-    const updatedStored = addWalletToStorage(storedWallet);
+    addWalletToStorage(storedWallet);
     const newWallet: WalletInfo = {
       id: walletId,
       publicKey,
@@ -139,17 +179,16 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       walletIndex: storedWallet.walletIndex,
       isActive: storedWallet.isActive,
       createdAt: storedWallet.createdAt,
-      secretKey, // 메모리에 임시 보관 (unlock 상태)
     };
 
     set((state) => ({
       wallets: [...state.wallets, newWallet],
       activeWalletId: newWallet.isActive ? newWallet.id : state.activeWalletId,
-      isLocked: false,
+      isLocked: true, // 생성 후 기본 잠금 상태
     }));
 
-    // 메모리에서 키 제거 (기본적으로 lock 상태 유지)
-    get().lockWallets();
+    // 메모리에서 임시 키 제거 (mnemonic은 반환하므로 유지)
+    zeroizeKey(secretKey);
 
     return { ...newWallet, mnemonic };
   },
@@ -168,6 +207,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
     // 중복 지갑 체크
     if (wallets.some((w) => w.publicKey === publicKey)) {
+      zeroizeKey(secretKey);
       throw new Error('이미 추가된 지갑입니다.');
     }
 
@@ -181,6 +221,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
     });
 
     if (!res.ok) {
+      zeroizeKey(secretKey);
       const error = await res.json().catch(() => ({}));
       throw new Error(error.message || '지갑 등록에 실패했습니다.');
     }
@@ -214,6 +255,9 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       activeWalletId: newWallet.isActive ? newWallet.id : state.activeWalletId,
     }));
 
+    // 메모리에서 키 제거
+    zeroizeKey(secretKey);
+
     return newWallet;
   },
 
@@ -228,45 +272,27 @@ export const useWalletStore = create<WalletState>((set, get) => ({
     if (!res.ok) return;
 
     const { data } = await res.json();
-    const serverWallets: WalletInfo[] = (data || []).map((w: Record<string, unknown>) => ({
-      id: w.id as string,
-      publicKey: w.public_key as string,
-      label: w.label as string,
-      walletIndex: w.wallet_index as number,
-      isActive: w.is_active as boolean,
-      createdAt: w.created_at as string,
-    }));
+    const stored = loadWallets();
+
+    const serverWallets: WalletInfo[] = (data || []).map((w: Record<string, unknown>) => {
+      const local = stored.find((s) => s.id === w.id);
+      return {
+        id: w.id as string,
+        publicKey: w.public_key as string,
+        label: w.label as string,
+        walletIndex: w.wallet_index as number,
+        isActive: w.is_active as boolean,
+        createdAt: w.created_at as string,
+        secretKey: local ? undefined : undefined, // 동기화 후에는 잠금 상태
+      };
+    });
 
     const activeWallet = serverWallets.find((w) => w.isActive);
 
-    // localStorage와 병합 (암호화 데이터는 localStorage 것이 우선)
-    const stored = loadWallets();
-    const merged = serverWallets.map((sw) => {
-      const local = stored.find((s) => s.id === sw.id);
-      if (local) {
-        return sw;
-      }
-      return sw;
-    });
-
-    saveWallets(
-      merged.map((w) => {
-        const local = stored.find((s) => s.id === w.id);
-        return {
-          id: w.id,
-          publicKey: w.publicKey,
-          encrypted: local?.encrypted || { ciphertext: '', iv: '', salt: '', version: 1 },
-          label: w.label,
-          walletIndex: w.walletIndex,
-          isActive: w.isActive,
-          createdAt: w.createdAt || new Date().toISOString(),
-        };
-      }),
-    );
-
     set({
-      wallets: merged,
+      wallets: serverWallets,
       activeWalletId: activeWallet?.id || null,
+      isLocked: true,
     });
   },
 
@@ -283,7 +309,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       throw new Error(error.message || '지갑 전환에 실패했습니다.');
     }
 
-    // 로컬 상태 업데이트
+    // 로컬 상태 + localStorage 업데이트
     const wallets = get().wallets.map((w) => ({
       ...w,
       isActive: w.id === walletId,
@@ -314,27 +340,50 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
     const { wallets, activeWalletId } = get();
     const remaining = wallets.filter((w) => w.id !== walletId);
-    const newActiveId =
-      activeWalletId === walletId
-        ? remaining.find((w) => w.isActive)?.id || remaining[0]?.id || null
-        : activeWalletId;
+    let newActiveId = activeWalletId;
 
-    set({ wallets: remaining, activeWalletId: newActiveId });
+    // 활성 지갑이 삭제된 경우 다른 지갑으로 자동 전환
+    if (activeWalletId === walletId) {
+      const fallback = remaining[0];
+      newActiveId = fallback?.id || null;
+      // 서버에도 활성 지갑 변경 알림
+      if (fallback) {
+        try {
+          await apiFetch(`/wallets/${fallback.id}/activate`, { method: 'PATCH' });
+          updateWalletInStorage(fallback.id, { isActive: true });
+        } catch {
+          // 실패해도 로컬에서는 전환
+        }
+      }
+    }
+
+    set({
+      wallets: remaining.map((w) => ({
+        ...w,
+        isActive: w.id === newActiveId,
+      })),
+      activeWalletId: newActiveId,
+    });
   },
 
   /**
-   * 모든 지갑 잠금 — 메모리에서 키 해제
+   * 모든 지갑 잠금 — 메모리에서 키 제로화 후 제거
    */
   lockWallets: () => {
-    const wallets = get().wallets.map((w) => ({
-      ...w,
-      secretKey: undefined,
-    }));
-    set({ wallets, isLocked: true });
+    const wallets = get().wallets;
+    // 모든 secretKey를 제로화
+    wallets.forEach((w) => zeroizeKey(w.secretKey));
+
+    set({
+      wallets: wallets.map((w) => ({ ...w, secretKey: undefined })),
+      isLocked: true,
+    });
+    clearAutoLockTimer();
   },
 
   /**
    * 특정 지갑 잠금 해제 — PIN으로 복호화하여 메모리에 로드
+   * 자동 잠금 타이머 시작
    */
   unlockWallet: async (walletId, pin) => {
     const stored = loadWallets();
@@ -353,6 +402,9 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         ),
         isLocked: false,
       }));
+
+      // 자동 잠금 타이머 시작
+      resetAutoLockTimer(() => get().lockWallets());
     } catch {
       throw new Error('PIN이 올바르지 않습니다.');
     }

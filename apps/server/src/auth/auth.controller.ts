@@ -1,4 +1,5 @@
 import { Controller, Post, Body, UnauthorizedException } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { UserService } from '../user/user.service';
 
@@ -12,8 +13,10 @@ export class AuthController {
   /**
    * POST /api/auth/telegram
    * Telegram initData 검증 → 사용자 upsert → JWT 발급
+   * Rate limit: 10회/분 (무차별 대입 방지)
    */
   @Post('telegram')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   async telegramAuth(@Body() body: { initData: string }) {
     if (!body.initData) {
       throw new UnauthorizedException('initData is required.');
@@ -53,8 +56,10 @@ export class AuthController {
   /**
    * POST /api/auth/admin
    * Admin secret 검증 → Admin JWT 발급
+   * Rate limit: 5회/분 (타이밍 공격 + 브루트포스 방지)
    */
   @Post('admin')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   async adminAuth(@Body() body: { secret: string }) {
     if (!body.secret) {
       throw new UnauthorizedException('Admin secret is required.');
@@ -65,7 +70,7 @@ export class AuthController {
       throw new UnauthorizedException('유효하지 않은 관리자 비밀키입니다.');
     }
 
-    const token = this.authService.generateAdminToken(body.secret);
+    const token = this.authService.generateAdminToken();
 
     return {
       success: true,

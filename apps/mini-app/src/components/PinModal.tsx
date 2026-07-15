@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
+import { PIN_MIN_LENGTH } from '@solwallet/config';
 
 interface PinModalProps {
   isOpen: boolean;
@@ -35,8 +36,8 @@ export default function PinModal({
   }, [step]);
 
   const handleNext = async () => {
-    if (pin.length < 4) {
-      setLocalError('PIN은 최소 4자리입니다.');
+    if (pin.length < PIN_MIN_LENGTH) {
+      setLocalError(`PIN은 최소 ${PIN_MIN_LENGTH}자리입니다.`);
       return;
     }
 
@@ -103,7 +104,7 @@ export default function PinModal({
         )}
 
         <p className="text-sm text-gray-400 text-center mb-2">
-          {step === 'input' ? 'PIN을 설정하세요 (4~6자리)' : 'PIN을 다시 입력하세요'}
+          {step === 'input' ? `PIN을 설정하세요 (${PIN_MIN_LENGTH}~6자리)` : 'PIN을 다시 입력하세요'}
         </p>
 
         <input
@@ -160,7 +161,7 @@ export default function PinModal({
           </button>
           <button
             onClick={handleNext}
-            disabled={loading || (step === 'input' ? pin.length < 4 : confirmPin.length < 4)}
+            disabled={loading || (step === 'input' ? pin.length < PIN_MIN_LENGTH : confirmPin.length < PIN_MIN_LENGTH)}
             className="flex-1 py-3 rounded-xl bg-primary-600 text-white font-medium disabled:opacity-50"
           >
             {loading ? '처리중...' : step === 'input' ? '다음' : '확인'}

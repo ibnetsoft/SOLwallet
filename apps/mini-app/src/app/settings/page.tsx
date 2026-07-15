@@ -3,10 +3,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useWalletStore } from '@/stores/useWalletStore';
+import { useToast } from '@/components/Toast';
 import PinModal from '@/components/PinModal';
 import SeedInput from '@/components/SeedInput';
 import MnemonicDisplay from '@/components/MnemonicDisplay';
 import { MAX_WALLETS } from '@solwallet/config';
+import { getUserProfile } from '@/lib/api/user';
+import type { UserProfile } from '@/lib/api/user';
 
 export default function SettingsPage() {
   const {
@@ -20,6 +23,8 @@ export default function SettingsPage() {
     deleteWallet,
   } = useWalletStore();
 
+  const { showToast } = useToast();
+
   // 모달 상태
   const [showCreatePin, setShowCreatePin] = useState(false);
   const [showImportSeed, setShowImportSeed] = useState(false);
@@ -29,20 +34,16 @@ export default function SettingsPage() {
   const [createdMnemonic, setCreatedMnemonic] = useState('');
   const [pinError, setPinError] = useState('');
   const [actionLoading, setActionLoading] = useState<string | false>(false);
-  const [toast, setToast] = useState('');
+  const [profile, setProfile] = useState<UserProfile | null>(null);
 
   // 초기화
   useEffect(() => {
     if (!isInitialized) {
       initialize();
     }
+    // 프로필 조회
+    getUserProfile().then(setProfile).catch(() => {});
   }, [isInitialized, initialize]);
-
-  // 토스트 메시지
-  const showToast = useCallback((message: string) => {
-    setToast(message);
-    setTimeout(() => setToast(''), 3000);
-  }, []);
 
   // 새 지갑 생성 → PIN 설정
   const handleCreateWallet = async (pin: string) => {
@@ -226,6 +227,41 @@ export default function SettingsPage() {
         </div>
       </section>
 
+      {/* Referral Section */}
+      {profile && (
+        <section className="mb-6">
+          <h2 className="text-sm text-gray-400 mb-2">🎁 추천인</h2>
+          <div className="bg-gray-800/50 rounded-xl p-4 space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-400">내 추천 코드</span>
+              <button
+                onClick={() => {
+                  if (profile.referralCode) {
+                    navigator.clipboard.writeText(profile.referralCode).then(
+                      () => showToast('📋 추천 코드가 복사되었습니다.'),
+                      () => {},
+                    );
+                  }
+                }}
+                className="text-xs bg-primary-600/20 text-primary-400 px-3 py-1 rounded-lg hover:bg-primary-600/30 transition"
+              >
+                {profile.referralCode.slice(0, 8)}... 복사
+              </button>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-400">초대한 친구</span>
+              <span className="font-medium">{profile.referralCount}명</span>
+            </div>
+            {profile.referrer && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-400">내 추천인</span>
+                <span>{profile.referrer.username || profile.referrer.first_name}</span>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* App Info */}
       <section className="mb-6">
         <h2 className="text-sm text-gray-400 mb-2">앱 정보</h2>
@@ -312,15 +348,6 @@ export default function SettingsPage() {
           setCreatedMnemonic('');
         }}
       />
-
-      {/* 토스트 */}
-      {toast && (
-        <div className="fixed top-4 left-4 right-4 z-50 flex justify-center">
-          <div className="bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-sm shadow-lg animate-in fade-in slide-in-from-top-2">
-            {toast}
-          </div>
-        </div>
-      )}
     </main>
   );
 }

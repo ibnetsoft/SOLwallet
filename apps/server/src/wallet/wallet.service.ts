@@ -101,11 +101,16 @@ export class WalletService {
    * 활성 지갑 전환
    */
   async setActiveWallet(userId: string, walletId: string) {
-    // 모든 지갑을 비활성으로
-    await this.client
+    // 모든 지갑을 비활성으로 (에러 체크 추가)
+    const { error: deactivateError } = await this.client
       .from('wallets')
       .update({ is_active: false })
       .eq('user_id', userId);
+
+    if (deactivateError) {
+      this.logger.error(`Failed to deactivate wallets: ${deactivateError.message}`);
+      throw deactivateError;
+    }
 
     // 대상 지갑만 활성으로
     const { data, error } = await this.client

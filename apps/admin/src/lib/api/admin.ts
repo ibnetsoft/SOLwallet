@@ -17,6 +17,23 @@ export function getUserWallets(userId: string): Promise<Array<Record<string, unk
   return apiFetch(`/admin/users/${userId}/wallets`);
 }
 
+// ─── 추천(방장) 통계 ───
+
+export interface ReferralStat {
+  referrerId: string;
+  referrerName: string;
+  weeklyCount: number;
+  totalCount: number;
+}
+
+/**
+ * 방장 7일 실적 리더보드
+ * GET /admin/referrals/stats
+ */
+export function getReferralStats(): Promise<ReferralStat[]> {
+  return apiFetch('/admin/referrals/stats');
+}
+
 // ─── 토큰 관리 ───
 
 export function getTokens(): Promise<AdminTokenDetail[]> {
@@ -33,6 +50,12 @@ export function createToken(dto: { mintAddress: string; symbol: string; decimals
 export function toggleToken(tokenId: string): Promise<Record<string, unknown>> {
   return apiFetch(`/admin/tokens/${tokenId}`, {
     method: 'PATCH',
+  });
+}
+
+export function deleteToken(tokenId: string): Promise<Record<string, unknown>> {
+  return apiFetch(`/admin/tokens/${tokenId}`, {
+    method: 'DELETE',
   });
 }
 

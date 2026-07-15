@@ -177,13 +177,13 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     set({ isSubmitting: true });
 
     try {
-      // 1. 주문 생성 → unsigned tx
+      // 1. 주문 생성 → unsigned tx (서버 DTO는 number 타입 요구)
       const result = await ordersApi.createOrder({
         tokenId: selectedToken.id,
         walletId: activeWallet.id,
         side,
-        price,
-        quantity,
+        price: Number(price),
+        quantity: Number(quantity),
       });
 
       if (!result.unsignedTx) {

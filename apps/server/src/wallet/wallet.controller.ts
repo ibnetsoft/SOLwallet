@@ -6,11 +6,25 @@ import {
   Body,
   Param,
   UseGuards,
-  Req,
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { WalletService } from './wallet.service';
 import { JwtAuthGuard } from '../auth/auth.guard';
+import { CurrentUser } from '../common/interfaces/authenticated-request';
+import { IsString, IsOptional, Matches, Length } from 'class-validator';
+
+class RegisterWalletDto {
+  @IsString()
+  @Matches(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/, {
+    message: '올바른 Solana 공개키 형식이 아닙니다.',
+  })
+  publicKey!: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 30)
+  label?: string;
+}
 
 @Controller('wallets')
 @UseGuards(JwtAuthGuard)
@@ -22,21 +36,16 @@ export class WalletController {
    */
   @Post('register')
   async registerWallet(
-    @Req() req: Request,
-    @Body() body: { publicKey: string; label?: string },
+    @CurrentUser() userId: string,
+    @Body() dto: RegisterWalletDto,
   ) {
-    const userId = (req as unknown as { user: { sub: string } }).user.sub;
-
     const wallet = await this.walletService.registerWallet({
       userId,
-      publicKey: body.publicKey,
-      label: body.label,
+      publicKey: dto.publicKey,
+      label: dto.label,
     });
 
-    return {
-      success: true,
-      data: wallet,
-    };
+    return { success: true, data: wallet };
   }
 
   /**
@@ -44,17 +53,11 @@ export class WalletController {
    */
   @Patch(':id/activate')
   async activateWallet(
-    @Req() req: Request,
+    @CurrentUser() userId: string,
     @Param('id', ParseUUIDPipe) walletId: string,
   ) {
-    const userId = (req as unknown as { user: { sub: string } }).user.sub;
-
     const wallet = await this.walletService.setActiveWallet(userId, walletId);
-
-    return {
-      success: true,
-      data: wallet,
-    };
+    return { success: true, data: wallet };
   }
 
   /**
@@ -62,15 +65,10 @@ export class WalletController {
    */
   @Delete(':id')
   async deleteWallet(
-    @Req() req: Request,
+    @CurrentUser() userId: string,
     @Param('id', ParseUUIDPipe) walletId: string,
   ) {
-    const userId = (req as unknown as { user: { sub: string } }).user.sub;
-
     await this.walletService.deleteWallet(userId, walletId);
-
-    return {
-      success: true,
-    };
+    return { success: true };
   }
 }

@@ -22,6 +22,10 @@ export default function MnemonicDisplay({
       await navigator.clipboard.writeText(mnemonic);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      // 30초 후 클립보드에서 시드 구문 제거 (보안)
+      setTimeout(() => {
+        navigator.clipboard.writeText('').catch(() => {});
+      }, 30_000);
     } catch {
       // fallback
     }

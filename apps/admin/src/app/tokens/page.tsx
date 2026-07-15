@@ -1,8 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getTokens, createToken, toggleToken } from '@/lib/api/admin';
+import { getTokens, createToken, toggleToken, deleteToken } from '@/lib/api/admin';
 import type { AdminTokenDetail } from '@solwallet/shared-types';
+
+// Solana base58 mint address (32~44자)
+const MINT_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 export default function TokensPage() {
   const [tokens, setTokens] = useState<AdminTokenDetail[]>([]);
@@ -15,6 +18,37 @@ export default function TokensPage() {
   const [decimals, setDecimals] = useState('9');
   const [isCreating, setIsCreating] = useState(false);
   const [formError, setFormError] = useState('');
+
+  // 실시간 검증 에러
+  const [mintError, setMintError] = useState('');
+  const [decimalsError, setDecimalsError] = useState('');
+
+  const validateMint = (value: string): boolean => {
+    if (!value) {
+      setMintError('');
+      return false;
+    }
+    if (!MINT_REGEX.test(value)) {
+      setMintError('올바른 Solana mint address(base58, 32~44자)가 아닙니다.');
+      return false;
+    }
+    setMintError('');
+    return true;
+  };
+
+  const validateDecimals = (value: string): boolean => {
+    if (value === '') {
+      setDecimalsError('');
+      return false;
+    }
+    const n = Number(value);
+    if (!Number.isInteger(n) || n < 0 || n > 9) {
+      setDecimalsError('소수점 자리는 0~9 사이여야 합니다.');
+      return false;
+    }
+    setDecimalsError('');
+    return true;
+  };
 
   const fetchTokens = async () => {
     try {
@@ -35,6 +69,11 @@ export default function TokensPage() {
     e.preventDefault();
     if (!mintAddress.trim() || !symbol.trim()) return;
 
+    // 제출 전 최종 검증
+    const mintOk = validateMint(mintAddress.trim());
+    const decimalsOk = validateDecimals(decimals.trim());
+    if (!mintOk || !decimalsOk) return;
+
     setIsCreating(true);
     setFormError('');
 
@@ -47,6 +86,8 @@ export default function TokensPage() {
       setMintAddress('');
       setSymbol('');
       setDecimals('9');
+      setMintError('');
+      setDecimalsError('');
       fetchTokens();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : '토큰 등록 실패');
@@ -64,6 +105,20 @@ export default function TokensPage() {
     }
   };
 
+  const handleDelete = async (tokenId: string, symbol: string) => {
+    if (typeof window !== 'undefined') {
+      if (!window.confirm(`'${symbol}' 토큰을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`)) {
+        return;
+      }
+    }
+    try {
+      await deleteToken(tokenId);
+      fetchTokens();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '토큰 삭제 실패');
+    }
+  };
+
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">🪙 토큰 관리</h1>
@@ -78,10 +133,21 @@ export default function TokensPage() {
               <input
                 type="text"
                 value={mintAddress}
-                onChange={(e) => setMintAddress(e.target.value)}
+                onChange={(e) => {
+                  setMintAddress(e.target.value);
+                  validateMint(e.target.value.trim());
+                }}
+                onBlur={() => validateMint(mintAddress.trim())}
                 placeholder="Mint Address"
-                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary-500 transition"
+                className={`w-full bg-gray-900 border rounded-lg px-3 py-2 text-sm text-white outline-none transition ${
+                  mintError
+                    ? 'border-danger focus:border-danger'
+                    : 'border-gray-700 focus:border-primary-500'
+                }`}
               />
+              {mintError && (
+                <p className="text-danger text-xs mt-1">{mintError}</p>
+              )}
             </div>
             <div>
               <label className="block text-sm text-gray-400 mb-1">심볼</label>
@@ -94,14 +160,27 @@ export default function TokensPage() {
               />
             </div>
             <div>
-              <label className="block text-sm text-gray-400 mb-1">소수점 (Decimals)</label>
+              <label className="block text-sm text-gray-400 mb-1">소수점 (Decimals, 0~9)</label>
               <input
                 type="number"
+                min={0}
+                max={9}
+                step={1}
                 value={decimals}
-                onChange={(e) => setDecimals(e.target.value)}
+                onChange={(e) => {
+                  setDecimals(e.target.value);
+                  validateDecimals(e.target.value);
+                }}
                 placeholder="9"
-                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary-500 transition"
+                className={`w-full bg-gray-900 border rounded-lg px-3 py-2 text-sm text-white outline-none transition ${
+                  decimalsError
+                    ? 'border-danger focus:border-danger'
+                    : 'border-gray-700 focus:border-primary-500'
+                }`}
               />
+              {decimalsError && (
+                <p className="text-danger text-xs mt-1">{decimalsError}</p>
+              )}
             </div>
           </div>
           {formError && (
@@ -109,7 +188,13 @@ export default function TokensPage() {
           )}
           <button
             type="submit"
-            disabled={isCreating || !mintAddress.trim() || !symbol.trim()}
+            disabled={
+              isCreating ||
+              !mintAddress.trim() ||
+              !symbol.trim() ||
+              Boolean(mintError) ||
+              Boolean(decimalsError)
+            }
             className="mt-4 bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-lg text-sm font-medium transition disabled:opacity-50"
           >
             {isCreating ? '등록 중...' : '토큰 등록'}
@@ -165,16 +250,25 @@ export default function TokensPage() {
                       </span>
                     </td>
                     <td className="py-3 px-6 text-right">
-                      <button
-                        onClick={() => handleToggle(token.id)}
-                        className={`text-xs px-3 py-1.5 rounded-lg transition ${
-                          token.isActive
-                            ? 'bg-danger/20 text-danger hover:bg-danger/30'
-                            : 'bg-success/20 text-success hover:bg-success/30'
-                        }`}
-                      >
-                        {token.isActive ? '비활성화' : '활성화'}
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleToggle(token.id)}
+                          className={`text-xs px-3 py-1.5 rounded-lg transition ${
+                            token.isActive
+                              ? 'bg-danger/20 text-danger hover:bg-danger/30'
+                              : 'bg-success/20 text-success hover:bg-success/30'
+                          }`}
+                        >
+                          {token.isActive ? '비활성화' : '활성화'}
+                        </button>
+                        <button
+                          onClick={() => handleDelete(token.id, token.symbol)}
+                          className="text-xs px-3 py-1.5 rounded-lg bg-gray-700/50 text-gray-300 hover:bg-danger/30 hover:text-danger transition"
+                          title="토큰 삭제"
+                        >
+                          삭제
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))

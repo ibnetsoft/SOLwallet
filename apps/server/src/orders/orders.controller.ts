@@ -2,16 +2,15 @@ import {
   Controller,
   Post,
   Get,
-  Patch,
   Param,
   Body,
-  Query,
   UseGuards,
-  Req,
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { JwtAuthGuard } from '../auth/auth.guard';
+import { CurrentUser } from '../common/interfaces/authenticated-request';
+import { CreateOrderDto, SubmitOrderDto } from '../common/dto/order.dto';
 
 @Controller('orders')
 @UseGuards(JwtAuthGuard)
@@ -23,18 +22,10 @@ export class OrdersController {
    */
   @Post()
   async createOrder(
-    @Req() req: Request,
-    @Body() body: { tokenId: string; walletId: string; side: string; price: string; quantity: string },
+    @CurrentUser() userId: string,
+    @Body() dto: CreateOrderDto,
   ) {
-    const userId = (req as unknown as { user: { sub: string } }).user.sub;
-
-    const result = await this.ordersService.createOrder(userId, body.walletId, {
-      tokenId: body.tokenId,
-      side: body.side as 'buy' | 'sell',
-      price: Number(body.price),
-      quantity: Number(body.quantity),
-    });
-
+    const result = await this.ordersService.createOrder(userId, dto);
     return { success: true, data: result };
   }
 
@@ -43,14 +34,11 @@ export class OrdersController {
    */
   @Post(':id/submit')
   async submitOrder(
-    @Req() req: Request,
+    @CurrentUser() userId: string,
     @Param('id', ParseUUIDPipe) orderId: string,
-    @Body() body: { signedTx: string },
+    @Body() dto: SubmitOrderDto,
   ) {
-    const userId = (req as unknown as { user: { sub: string } }).user.sub;
-
-    const result = await this.ordersService.submitOrder(orderId, body.signedTx, userId);
-
+    const result = await this.ordersService.submitOrder(orderId, dto.signedTx, userId);
     return { success: true, data: result };
   }
 
@@ -59,13 +47,10 @@ export class OrdersController {
    */
   @Post(':id/cancel')
   async cancelOrder(
-    @Req() req: Request,
+    @CurrentUser() userId: string,
     @Param('id', ParseUUIDPipe) orderId: string,
   ) {
-    const userId = (req as unknown as { user: { sub: string } }).user.sub;
-
     const result = await this.ordersService.cancelOrder(orderId, userId);
-
     return { success: true, data: result };
   }
 
@@ -73,11 +58,8 @@ export class OrdersController {
    * GET /api/orders/active — 활성 주문 목록
    */
   @Get('active')
-  async getActiveOrders(@Req() req: Request) {
-    const userId = (req as unknown as { user: { sub: string } }).user.sub;
-
+  async getActiveOrders(@CurrentUser() userId: string) {
     const orders = await this.ordersService.getActiveOrders(userId);
-
     return { success: true, data: orders };
   }
 
@@ -85,21 +67,17 @@ export class OrdersController {
    * GET /api/orders/history — 과거 주문 내역
    */
   @Get('history')
-  async getOrderHistory(@Req() req: Request) {
-    const userId = (req as unknown as { user: { sub: string } }).user.sub;
-
+  async getOrderHistory(@CurrentUser() userId: string) {
     const orders = await this.ordersService.getOrderHistory(userId);
-
     return { success: true, data: orders };
   }
 
   /**
-   * GET /api/orderbook/:tokenMint — 오더북 조회
+   * GET /api/orders/orderbook/:tokenMint — 오더북 조회
    */
   @Get('orderbook/:tokenMint')
   async getOrderbook(@Param('tokenMint') tokenMint: string) {
     const orderbook = await this.ordersService.getOrderbook(tokenMint);
-
     return { success: true, data: orderbook };
   }
 }

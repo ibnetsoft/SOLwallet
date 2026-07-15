@@ -1,8 +1,8 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { ConfigService } from '@nestjs/config';
 import { FEE_RATE, MANIFEST } from '@solwallet/config';
-import type { CreateOrderDto, Order } from '@solwallet/shared-types';
+import type { CreateOrderDto } from '../common/dto/order.dto';
 
 @Injectable()
 export class OrdersService {
@@ -23,13 +23,32 @@ export class OrdersService {
   }
 
   /**
+   * walletId 소유권 검증 — 해당 지갑이 userId 소유인지 확인
+   */
+  private async verifyWalletOwnership(walletId: string, userId: string): Promise<string> {
+    const { data: wallet, error } = await this.client
+      .from('wallets')
+      .select('public_key')
+      .eq('id', walletId)
+      .eq('user_id', userId)
+      .single();
+
+    if (error || !wallet) {
+      throw new BadRequestException('유효하지 않거나 소유하지 않은 지갑입니다.');
+    }
+    return wallet.public_key;
+  }
+
+  /**
    * 주문 생성 — DB 저장 + Manifest API에서 unsigned tx 반환
    */
   async createOrder(
     userId: string,
-    walletId: string,
     dto: CreateOrderDto,
   ): Promise<{ order: Record<string, unknown>; unsignedTx: string }> {
+    // 지갑 소유권 검증 + public key 획득
+    const walletPublicKey = await this.verifyWalletOwnership(dto.walletId, userId);
+
     // 토큰 정보 조회
     const { data: token } = await this.client
       .from('tokens')
@@ -43,15 +62,15 @@ export class OrdersService {
     }
 
     // 수수료 계산
-    const total = Number(dto.price) * Number(dto.quantity);
+    const total = dto.price * dto.quantity;
     const fee = total * FEE_RATE;
 
-    // DB에 주문 저장
+    // DB에 주문 저장 (초기 상태: pending — unsigned tx 획득 후 active로 변경)
     const { data: order, error } = await this.client
       .from('orders')
       .insert({
         user_id: userId,
-        wallet_id: walletId,
+        wallet_id: dto.walletId,
         token_id: dto.tokenId,
         side: dto.side,
         order_type: 'limit',
@@ -59,7 +78,7 @@ export class OrdersService {
         quantity: dto.quantity,
         fee: fee.toFixed(6),
         fee_rate: FEE_RATE,
-        status: 'active',
+        status: 'pending',
       })
       .select()
       .single();
@@ -76,14 +95,14 @@ export class OrdersService {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          owner: order.wallet_id, // TODO: 실제 public key로 교체 필요
+          owner: walletPublicKey, // public key 사용 (UUID 아님)
           baseTokenMint: dto.side === 'buy'
-            ? 'So11111111111111111111111111111111111111112' // SOL
+            ? 'So11111111111111111111111111111111111111112'
             : token.mint_address,
           quoteTokenMint: dto.side === 'buy'
             ? token.mint_address
-            : 'So11111111111111111111111111111111111111112', // SOL
-          side: dto.side === 'buy' ? 'buy' : 'sell',
+            : 'So11111111111111111111111111111111111111112',
+          side: dto.side,
           price: dto.price,
           amount: dto.quantity,
         }),
@@ -99,6 +118,21 @@ export class OrdersService {
       this.logger.error(`Manifest API error: ${err instanceof Error ? err.message : String(err)}`);
     }
 
+    // Manifest 실패 시 주문을 'failed' 상태로 업데이트
+    if (!unsignedTx) {
+      await this.client
+        .from('orders')
+        .update({ status: 'failed', updated_at: new Date().toISOString() })
+        .eq('id', order.id);
+      throw new BadRequestException('트랜잭션 생성에 실패했습니다. 잠시 후 다시 시도해주세요.');
+    }
+
+    // 성공 시 'active' 상태로 변경
+    await this.client
+      .from('orders')
+      .update({ status: 'active', updated_at: new Date().toISOString() })
+      .eq('id', order.id);
+
     return { order: order as Record<string, unknown>, unsignedTx };
   }
 
@@ -110,7 +144,7 @@ export class OrdersService {
     signedTx: string,
     userId: string,
   ): Promise<{ txSignature: string }> {
-    // 주문 소유자 확인
+    // 주문 소유자 + 상태 확인
     const { data: order, error: fetchError } = await this.client
       .from('orders')
       .select('*')
@@ -119,11 +153,11 @@ export class OrdersService {
       .single();
 
     if (fetchError || !order) {
-      throw new BadRequestException('주문을 찾을 수 없습니다.');
+      throw new NotFoundException('주문을 찾을 수 없습니다.');
     }
 
     if (order.status !== 'active') {
-      throw new BadRequestException('이미 처리된 주문입니다.');
+      throw new BadRequestException('이미 처리되었거나 유효하지 않은 주문입니다.');
     }
 
     // Solana RPC로 트랜잭션 전송
@@ -151,12 +185,12 @@ export class OrdersService {
       throw new BadRequestException('트랜잭션 제출에 실패했습니다.');
     }
 
-    // DB 업데이트
+    // DB 업데이트 — 'submitted' 상태로 (active와 구분)
     const { error: updateError } = await this.client
       .from('orders')
       .update({
         tx_signature: txSignature,
-        status: 'active', // 아직 체결 대기
+        status: 'submitted', // 제출됨 (체결 대기와 구분)
         updated_at: new Date().toISOString(),
       })
       .eq('id', orderId);
@@ -169,14 +203,14 @@ export class OrdersService {
   }
 
   /**
-   * 활성 주문 목록
+   * 활성 주문 목록 (active + submitted 포함)
    */
-  async getActiveOrders(userId: string): Promise<Order[]> {
+  async getActiveOrders(userId: string) {
     const { data, error } = await this.client
       .from('orders')
       .select('*')
       .eq('user_id', userId)
-      .eq('status', 'active')
+      .in('status', ['active', 'submitted'])
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -184,18 +218,18 @@ export class OrdersService {
       throw error;
     }
 
-    return (data || []) as unknown as Order[];
+    return (data || []) as Record<string, unknown>[];
   }
 
   /**
-   * 과거 주문 내역
+   * 과거 주문 내역 (filled, cancelled, expired, failed)
    */
-  async getOrderHistory(userId: string): Promise<Order[]> {
+  async getOrderHistory(userId: string) {
     const { data, error } = await this.client
       .from('orders')
       .select('*')
       .eq('user_id', userId)
-      .neq('status', 'active')
+      .in('status', ['filled', 'cancelled', 'expired', 'failed'])
       .order('created_at', { ascending: false })
       .limit(50);
 
@@ -204,7 +238,7 @@ export class OrdersService {
       throw error;
     }
 
-    return (data || []) as unknown as Order[];
+    return (data || []) as Record<string, unknown>[];
   }
 
   /**
@@ -219,19 +253,22 @@ export class OrdersService {
       .single();
 
     if (fetchError || !order) {
-      throw new BadRequestException('주문을 찾을 수 없습니다.');
+      throw new NotFoundException('주문을 찾을 수 없습니다.');
     }
 
-    if (order.status !== 'active') {
+    if (!['active', 'submitted'].includes(order.status)) {
       throw new BadRequestException('취소할 수 없는 주문입니다.');
     }
 
     // Manifest에서 취소 시도 (실패해도 DB 업데이트)
     if (order.manifest_order_id) {
       try {
-        await fetch(`${this.manifestBaseUrl}/orders/${order.manifest_order_id}`, {
+        const res = await fetch(`${this.manifestBaseUrl}/orders/${order.manifest_order_id}`, {
           method: 'DELETE',
         });
+        if (!res.ok) {
+          this.logger.warn(`Manifest cancel failed: ${res.status}`);
+        }
       } catch {
         this.logger.warn('Manifest cancel failed, proceeding with DB update.');
       }

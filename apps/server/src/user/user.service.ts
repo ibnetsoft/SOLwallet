@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
-import { Wallet } from '@solwallet/shared-types';
 
 @Injectable()
 export class UserService {
@@ -31,7 +30,7 @@ export class UserService {
   }
 
   /**
-   * 사용자 생성 (upsert 기반)
+   * 사용자 생성 (upsert 기반) — username, first_name, last_name 모두 동기화
    */
   async upsertUser(params: {
     telegramUid: number;
@@ -44,11 +43,27 @@ export class UserService {
     const existing = await this.findByTelegramUid(params.telegramUid);
 
     if (existing) {
-      // username이 변경되었으면 업데이트
-      if (params.username && params.username !== existing.username) {
+      // username, first_name, last_name 중 변경된 것이 있으면 업데이트
+      const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      let needsUpdate = false;
+
+      if (params.username !== undefined && params.username !== existing.username) {
+        updates.username = params.username;
+        needsUpdate = true;
+      }
+      if (params.firstName && params.firstName !== existing.first_name) {
+        updates.first_name = params.firstName;
+        needsUpdate = true;
+      }
+      if (params.lastName !== existing.last_name) {
+        updates.last_name = params.lastName;
+        needsUpdate = true;
+      }
+
+      if (needsUpdate) {
         const { data, error } = await this.client
           .from('users')
-          .update({ username: params.username, updated_at: new Date().toISOString() })
+          .update(updates)
           .eq('id', existing.id)
           .select()
           .single();
@@ -86,12 +101,15 @@ export class UserService {
       throw error;
     }
 
-    // 추천인 관계가 있으면 referrals 테이블에도 기록
+    // 추천인 관계가 있으면 referrals 테이블에도 기록 (에러 시 로그만)
     if (params.referredBy && data) {
-      await this.client.from('referrals').insert({
+      const { error: refError } = await this.client.from('referrals').insert({
         referrer_id: params.referredBy,
         referee_id: data.id,
       });
+      if (refError) {
+        this.logger.warn(`Failed to record referral: ${refError.message}`);
+      }
     }
 
     return data;
@@ -116,9 +134,49 @@ export class UserService {
   }
 
   /**
+   * 사용자 프로필 + 추천인 정보 조회
+   */
+  async getUserProfile(userId: string) {
+    const { data: user, error } = await this.client
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (error) {
+      this.logger.error(`Failed to get user profile: ${error.message}`);
+      throw error;
+    }
+
+    // 추천인 정보 조회
+    let referrer = null;
+    if (user.referred_by) {
+      const { data: ref } = await this.client
+        .from('users')
+        .select('username, first_name')
+        .eq('id', user.referred_by)
+        .maybeSingle();
+      referrer = ref;
+    }
+
+    // 내가 추천한 유저 수
+    const { count: refCount } = await this.client
+      .from('referrals')
+      .select('*', { count: 'exact', head: true })
+      .eq('referrer_id', userId);
+
+    return {
+      ...user,
+      referrer,
+      referralCount: refCount || 0,
+      referralCode: user.id, // 본인 ID가 추천 코드
+    };
+  }
+
+  /**
    * 사용자의 지갑 목록 조회
    */
-  async getUserWallets(userId: string): Promise<Wallet[]> {
+  async getUserWallets(userId: string) {
     const { data, error } = await this.client
       .from('wallets')
       .select('*')
@@ -130,6 +188,6 @@ export class UserService {
       throw error;
     }
 
-    return (data || []) as unknown as Wallet[];
+    return data || [];
   }
 }

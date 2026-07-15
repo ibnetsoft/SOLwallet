@@ -4,8 +4,8 @@ export interface CreateOrderParams {
   tokenId: string;
   walletId: string;
   side: 'buy' | 'sell';
-  price: string;
-  quantity: string;
+  price: number;
+  quantity: number;
 }
 
 export interface CreateOrderResult {

@@ -36,9 +36,15 @@ export const JWT_EXPIRES_IN = '7d';
 export const WALLET_ENCRYPTION = {
   algorithm: 'AES-256-GCM' as const,
   keyDerivation: 'PBKDF2' as const,
-  iterations: 100000,
+  iterations: 600000, // OWASP 2023 권장 최소값 (PBKDF2-SHA-256)
   keyLength: 256,
 } as const;
+
+/** PIN 설정 — 최소 자릿수 */
+export const PIN_MIN_LENGTH = 6;
+
+/** 자동 잠금 타임아웃 (ms) — 5분 */
+export const AUTO_LOCK_TIMEOUT = 5 * 60 * 1000;
 
 /** Manifest.trade API 설정 (공개 API — API Key 불필요) */
 export const MANIFEST = {

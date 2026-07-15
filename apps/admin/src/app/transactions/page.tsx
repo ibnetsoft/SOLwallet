@@ -58,6 +58,22 @@ export default function TransactionsPage() {
     return `${hash.slice(0, 8)}...${hash.slice(-4)}`;
   };
 
+  /**
+   * Solscan 트랜잭션 URL 생성.
+   *
+   * TODO(cluster detection): 현재는 mainnet 기준으로 링크 생성.
+   * devnet 여부는 어드민 환경 설정(NEXT_PUBLIC_SOLANA_CLUSTER 등)이나
+   * 토큰/주문 메타데이터를 통해 판별할 수 있도록 확장해야 한다.
+   * 예: devnet인 경우 `?cluster=devnet` 쿼리 파라미터 추가.
+   */
+  const SOLSCAN_TX_BASE = 'https://solscan.io/tx';
+  const buildSolscanTxUrl = (signature: string): string => {
+    // const cluster = process.env.NEXT_PUBLIC_SOLANA_CLUSTER;
+    // const suffix = cluster && cluster !== 'mainnet-beta' ? `?cluster=${cluster}` : '';
+    // return `${SOLSCAN_TX_BASE}/${signature}${suffix}`;
+    return `${SOLSCAN_TX_BASE}/${signature}`;
+  };
+
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">📋 트랜잭션 모니터링</h1>
@@ -153,7 +169,7 @@ export default function TransactionsPage() {
                       <td className="py-3 px-4 font-mono text-xs text-gray-400">
                         {order.txSignature ? (
                           <a
-                            href={`https://solscan.io/tx/${order.txSignature}`}
+                            href={buildSolscanTxUrl(order.txSignature)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-primary-400 hover:text-primary-300 transition"

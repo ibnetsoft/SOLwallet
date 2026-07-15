@@ -1,7 +1,7 @@
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { createHmac } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 
 @Injectable()
 export class AuthService {
@@ -50,7 +50,11 @@ export class AuthService {
       .update(dataCheckString)
       .digest('hex');
 
-    if (computedHash !== hash) {
+    // timing-safe comparison (타이밍 공격 방지)
+    if (
+      computedHash.length !== hash.length ||
+      !timingSafeEqual(Buffer.from(computedHash), Buffer.from(hash))
+    ) {
       throw new UnauthorizedException('Invalid Telegram auth data.');
     }
 
@@ -67,7 +71,7 @@ export class AuthService {
   }
 
   /**
-   * JWT 토큰 생성
+   * JWT 토큰 생성 (일반 유저)
    */
   generateToken(userId: string, telegramUid: number): string {
     return this.jwtService.sign({
@@ -77,10 +81,9 @@ export class AuthService {
   }
 
   /**
-   * Admin JWT 토큰 생성
-   * ADMIN_SECRET이 일치하면 role: 'admin' JWT 발급
+   * Admin JWT 토큰 생성 — role: 'admin' 포함
    */
-  generateAdminToken(secret: string): string {
+  generateAdminToken(): string {
     return this.jwtService.sign({
       sub: 'admin',
       role: 'admin',
@@ -88,10 +91,20 @@ export class AuthService {
   }
 
   /**
-   * Admin secret 검증
+   * Admin secret 검증 — timing-safe comparison 사용
    */
   validateAdminSecret(secret: string): boolean {
     const adminSecret = this.configService.get<string>('ADMIN_SECRET');
-    return !!adminSecret && secret === adminSecret;
+    if (!adminSecret) return false;
+
+    // timing-safe comparison으로 타이밍 공격 방지
+    try {
+      const a = Buffer.from(secret);
+      const b = Buffer.from(adminSecret);
+      if (a.length !== b.length) return false;
+      return timingSafeEqual(a, b);
+    } catch {
+      return false;
+    }
   }
 }

@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
   Body,
   Query,
@@ -12,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { AdminService } from './admin.service';
 import { AdminGuard } from './admin.guard';
+import { CreateTokenDto } from '../common/dto/token.dto';
 
 @Controller('admin')
 @UseGuards(AdminGuard)
@@ -20,9 +22,6 @@ export class AdminController {
 
   // ─── 대시보드 ───
 
-  /**
-   * GET /api/admin/stats — 대시보드 통계
-   */
   @Get('stats')
   async getStats() {
     const stats = await this.adminService.getStats();
@@ -31,9 +30,6 @@ export class AdminController {
 
   // ─── 유저 관리 ───
 
-  /**
-   * GET /api/admin/users — 유저 목록
-   */
   @Get('users')
   async getUsers(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
@@ -43,51 +39,48 @@ export class AdminController {
     return { success: true, data: result };
   }
 
-  /**
-   * GET /api/admin/users/:id/wallets — 특정 유저 지갑
-   */
   @Get('users/:id/wallets')
   async getUserWallets(@Param('id') userId: string) {
     const wallets = await this.adminService.getUserWallets(userId);
     return { success: true, data: wallets };
   }
 
+  // ─── 추천인 통계 ───
+
+  @Get('referrals/stats')
+  async getReferralStats() {
+    const stats = await this.adminService.getReferralStats();
+    return { success: true, data: stats };
+  }
+
   // ─── 토큰 관리 ───
 
-  /**
-   * GET /api/admin/tokens — 토큰 목록
-   */
   @Get('tokens')
   async getTokens() {
     const tokens = await this.adminService.getTokens();
     return { success: true, data: tokens };
   }
 
-  /**
-   * POST /api/admin/tokens — 토큰 등록
-   */
   @Post('tokens')
-  async createToken(
-    @Body() body: { mintAddress: string; symbol: string; decimals: number },
-  ) {
-    const token = await this.adminService.createToken(body);
+  async createToken(@Body() dto: CreateTokenDto) {
+    const token = await this.adminService.createToken(dto);
     return { success: true, data: token };
   }
 
-  /**
-   * PATCH /api/admin/tokens/:id — 토큰 활성화/비활성화
-   */
   @Patch('tokens/:id')
   async toggleToken(@Param('id') tokenId: string) {
     const token = await this.adminService.toggleToken(tokenId);
     return { success: true, data: token };
   }
 
+  @Delete('tokens/:id')
+  async deleteToken(@Param('id') tokenId: string) {
+    const result = await this.adminService.deleteToken(tokenId);
+    return { success: true, data: result };
+  }
+
   // ─── 주문 관리 ───
 
-  /**
-   * GET /api/admin/orders — 전체 주문 내역
-   */
   @Get('orders')
   async getOrders(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
@@ -96,6 +89,17 @@ export class AdminController {
     @Query('tokenId') tokenId?: string,
   ) {
     const result = await this.adminService.getOrders({ status, tokenId, page, pageSize });
+    return { success: true, data: result };
+  }
+
+  // ─── 수수료 대장 ───
+
+  @Get('revenue')
+  async getRevenue(
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('pageSize', new DefaultValuePipe(50), ParseIntPipe) pageSize: number,
+  ) {
+    const result = await this.adminService.getRevenueLedger(page, pageSize);
     return { success: true, data: result };
   }
 }

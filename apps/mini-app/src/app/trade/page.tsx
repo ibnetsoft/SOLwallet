@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useTradeStore } from '@/stores/useTradeStore';
 import { useWalletStore } from '@/stores/useWalletStore';
 import { useToast } from '@/components/Toast';
@@ -17,6 +18,7 @@ function TradeContent() {
     price, setPrice,
     quantity, setQuantity,
     currentPrice,
+    orderbook,
     tokens,
     activeOrders,
     isSubmitting,
@@ -30,8 +32,9 @@ function TradeContent() {
     cancelOrder,
   } = useTradeStore();
 
-  const { wallets, isLocked } = useWalletStore();
+  const { wallets } = useWalletStore();
   const { showToast } = useToast();
+  const searchParams = useSearchParams();
 
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinError, setPinError] = useState('');
@@ -41,11 +44,17 @@ function TradeContent() {
   const [maxBalance, setMaxBalance] = useState(0);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
 
-  // 초기화
+  // 초기화 + URL ?type= 파라미터 처리
   useEffect(() => {
     fetchTokens();
     fetchActiveOrders();
-  }, []);
+
+    // /trade?type=sell → side를 sell로 설정
+    const type = searchParams.get('type');
+    if (type === 'sell' || type === 'buy') {
+      setSide(type);
+    }
+  }, [searchParams]);
 
   // 토큰 선택 시 오더북 + 현재가 + 잔액 조회
   useEffect(() => {
@@ -114,20 +123,30 @@ function TradeContent() {
     }
   };
 
-  // 유효성 검사
+  // 유효성 검사 (isLocked 체크 제거 — unlock은 createAndSubmitOrder 내부에서 PIN으로 처리)
   const validateOrder = (): string | null => {
     if (!activeWallet) return '⚠️ 먼저 지갑을 생성해주세요.';
-    if (isLocked) return '⚠️ 지갑이 잠겨있습니다. 설정에서 잠금 해제하세요.';
     if (!selectedToken) return '⚠️ 토큰을 선택해주세요.';
-    if (!price || Number(price) <= 0) return '⚠️ 올바른 가격을 입력해주세요.';
-    if (!quantity || Number(quantity) <= 0) return '⚠️ 올바른 수량을 입력해주세요.';
-    // 최대 소수점 검사
+    const priceNum = Number(price);
+    if (!price || !isFinite(priceNum) || priceNum <= 0) return '⚠️ 올바른 가격을 입력해주세요.';
+    const qtyNum = Number(quantity);
+    if (!quantity || !isFinite(qtyNum) || qtyNum <= 0) return '⚠️ 올바른 수량을 입력해주세요.';
+    // 최대 소수점 검사 — 가격과 수량 모두
     const decimals = selectedToken.decimals || 9;
-    const qtyStr = String(quantity);
-    const dotIdx = qtyStr.indexOf('.');
-    if (dotIdx !== -1 && qtyStr.length - dotIdx - 1 > decimals) {
-      return `⚠️ ${selectedToken.symbol}은 소수점 ${decimals}자리까지 가능합니다.`;
-    }
+    const checkDecimals = (val: string, label: string) => {
+      const dotIdx = val.indexOf('.');
+      if (dotIdx !== -1 && val.length - dotIdx - 1 > decimals) {
+        return `⚠️ ${label}은 소수점 ${decimals}자리까지 가능합니다.`;
+      }
+      return null;
+    };
+    const priceErr = checkDecimals(String(price), '가격');
+    if (priceErr) return priceErr;
+    const qtyErr = checkDecimals(String(quantity), selectedToken.symbol);
+    if (qtyErr) return qtyErr;
+    // 최대값 검사 (오버플로우 방지)
+    if (priceNum > 1e12) return '⚠️ 가격이 너무 큽니다.';
+    if (qtyNum > 1e12) return '⚠️ 수량이 너무 큽니다.';
     return null;
   };
 
@@ -343,7 +362,11 @@ function TradeContent() {
                   </p>
                 </div>
                 <button
-                  onClick={() => cancelOrder(order.id).then(() => showToast('🗑️ 주문이 취소되었습니다.'))}
+                  onClick={() => {
+                    cancelOrder(order.id)
+                      .then(() => showToast('🗑️ 주문이 취소되었습니다.'))
+                      .catch((err) => showToast(err instanceof Error ? err.message : '취소 실패'));
+                  }}
                   className="text-xs px-3 py-1 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition"
                 >
                   취소
@@ -353,6 +376,41 @@ function TradeContent() {
           </div>
         )}
       </section>
+
+      {/* Orderbook Display */}
+      {orderbook && (orderbook.bids.length > 0 || orderbook.asks.length > 0) && (
+        <section className="mt-6">
+          <h2 className="text-lg font-bold mb-3">📊 오더북</h2>
+          <div className="bg-gray-800/50 rounded-xl p-4">
+            <div className="grid grid-cols-2 gap-4">
+              {/* Bids */}
+              <div>
+                <p className="text-xs text-green-400 mb-2 font-medium">매수 (Bids)</p>
+                <div className="space-y-1">
+                  {orderbook.bids.slice(0, 5).map((bid, i) => (
+                    <div key={i} className="flex justify-between text-xs">
+                      <span className="text-green-400">{bid.price.toFixed(4)}</span>
+                      <span className="text-gray-400">{bid.quantity.toFixed(4)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {/* Asks */}
+              <div>
+                <p className="text-xs text-red-400 mb-2 font-medium">매도 (Asks)</p>
+                <div className="space-y-1">
+                  {orderbook.asks.slice(0, 5).map((ask, i) => (
+                    <div key={i} className="flex justify-between text-xs">
+                      <span className="text-red-400">{ask.price.toFixed(4)}</span>
+                      <span className="text-gray-400">{ask.quantity.toFixed(4)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Bottom Nav */}
       <nav className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur border-t border-gray-800">

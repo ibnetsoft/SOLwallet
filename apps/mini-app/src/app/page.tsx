@@ -6,6 +6,7 @@ import { useWalletStore } from '@/stores/useWalletStore';
 import { getPortfolio } from '@/lib/api/balance';
 import { useToast } from '@/components/Toast';
 import { SkeletonStatCard, SkeletonCard } from '@/components/Skeleton';
+import DepositModal from '@/components/DepositModal';
 import type { Portfolio } from '@/lib/api/balance';
 
 function HomePage() {
@@ -16,11 +17,12 @@ function HomePage() {
     initialize,
   } = useWalletStore();
 
-  const { toast, showToast } = useToast();
+  const { showToast } = useToast();
 
   // 포트폴리오 데이터
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [isLoadingPortfolio, setIsLoadingPortfolio] = useState(false);
+  const [showDeposit, setShowDeposit] = useState(false);
 
   // 초기화
   useEffect(() => {
@@ -37,7 +39,7 @@ function HomePage() {
       const data = await getPortfolio();
       setPortfolio(data);
     } catch {
-      // 토큰 없거나 서버 미연동 시 무시
+      // 무시
     } finally {
       setIsLoadingPortfolio(false);
     }
@@ -60,7 +62,7 @@ function HomePage() {
     if (!activeWallet?.publicKey) return;
     navigator.clipboard.writeText(activeWallet.publicKey).then(
       () => showToast('📋 주소가 복사되었습니다.'),
-      () => {},
+      () => showToast('❌ 복사에 실패했습니다.'),
     );
   }, [activeWallet?.publicKey, showToast]);
 
@@ -115,9 +117,7 @@ function HomePage() {
       <section className="bg-gray-800/50 rounded-xl p-4 mb-6">
         <p className="text-xs text-gray-400 mb-1">전체 자산 (USDT)</p>
         {isLoadingPortfolio ? (
-          <div className="space-y-2">
-            <SkeletonStatCard />
-          </div>
+          <SkeletonStatCard />
         ) : (
           <>
             <p className="text-3xl font-bold">
@@ -131,13 +131,26 @@ function HomePage() {
 
             {/* Quick Action Buttons */}
             <div className="flex gap-2 mt-4">
-              <button className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition">
+              <button
+                onClick={() => {
+                  if (activeWallet) {
+                    setShowDeposit(true);
+                  } else {
+                    showToast('⚠️ 먼저 지갑을 생성해주세요.');
+                  }
+                }}
+                className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition"
+              >
                 입금
               </button>
               <button
                 className="flex-1 bg-gray-700 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-600 transition"
                 onClick={() => {
-                  if (!activeWallet) showToast('⚠️ 먼저 지갑을 생성해주세요.');
+                  if (!activeWallet) {
+                    showToast('⚠️ 먼저 지갑을 생성해주세요.');
+                  } else {
+                    showToast('출금 기능은 준비 중입니다.');
+                  }
                 }}
               >
                 출금
@@ -182,7 +195,7 @@ function HomePage() {
             <SkeletonCard />
             <SkeletonCard />
           </div>
-        ) : tokenBalances.length > 0 ? (
+        ) : tokenBalances.length > 0 || solBalance > 0 ? (
           <div className="space-y-2">
             {/* SOL */}
             <div className="bg-gray-800/50 rounded-xl p-4 flex items-center justify-between">
@@ -215,19 +228,8 @@ function HomePage() {
             ))}
           </div>
         ) : (
-          <div className="space-y-2">
-            <div className="bg-gray-800/50 rounded-xl p-4 flex items-center justify-between">
-              <div>
-                <p className="font-medium">SOL</p>
-                <p className="text-sm text-gray-400">{solBalance.toFixed(4)} SOL</p>
-              </div>
-              <p className="text-right">
-                <p className="font-medium">${solBalance > 0 ? solBalance.toFixed(2) : '0.00'}</p>
-              </p>
-            </div>
-            <div className="text-center py-4 text-gray-500 text-sm">
-              아직 보유 토큰이 없습니다
-            </div>
+          <div className="text-center py-4 text-gray-500 text-sm">
+            보유 자산이 없습니다. 입금하여 시작하세요.
           </div>
         )}
       </section>
@@ -249,6 +251,15 @@ function HomePage() {
           </Link>
         </div>
       </nav>
+
+      {/* Deposit QR Modal */}
+      {activeWallet && (
+        <DepositModal
+          isOpen={showDeposit}
+          walletAddress={activeWallet.publicKey}
+          onClose={() => setShowDeposit(false)}
+        />
+      )}
     </main>
   );
 }

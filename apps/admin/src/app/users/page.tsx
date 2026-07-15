@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getUsers, getUserWallets } from '@/lib/api/admin';
+import { getUsers, getUserWallets, getReferralStats } from '@/lib/api/admin';
+import type { ReferralStat } from '@/lib/api/admin';
 import type { AdminUserDetail } from '@solwallet/shared-types';
 
 export default function UsersPage() {
@@ -10,6 +11,11 @@ export default function UsersPage() {
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // 추천(방장) 통계
+  const [referralStats, setReferralStats] = useState<ReferralStat[]>([]);
+  const [referralLoading, setReferralLoading] = useState(true);
+  const [referralError, setReferralError] = useState('');
 
   // 유저 잔액 상세보기
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -33,8 +39,22 @@ export default function UsersPage() {
     }
   };
 
+  const fetchReferralStats = async () => {
+    setReferralLoading(true);
+    setReferralError('');
+    try {
+      const data = await getReferralStats();
+      setReferralStats(data);
+    } catch (err) {
+      setReferralError(err instanceof Error ? err.message : '방장 실적 조회 실패');
+    } finally {
+      setReferralLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchUsers(page);
+    fetchReferralStats();
   }, [page]);
 
   const handleViewWallets = async (userId: string) => {
@@ -63,6 +83,64 @@ export default function UsersPage() {
           {error}
         </div>
       )}
+
+      {/* 방장 7일 실적 리더보드 */}
+      <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 mb-6">
+        <div className="p-6 pb-0 flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold">🏆 방장 7일 실적</h2>
+          <span className="text-sm text-gray-400">추천 리더보드</span>
+        </div>
+        {referralError ? (
+          <div className="px-6 pb-6 text-danger text-sm">{referralError}</div>
+        ) : referralLoading ? (
+          <div className="px-6 pb-6 text-center py-4 text-gray-400">로딩 중...</div>
+        ) : referralStats.length === 0 ? (
+          <div className="px-6 pb-6 text-center py-4 text-gray-400">데이터가 없습니다</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-700">
+                  <th className="text-center py-3 px-6 text-gray-400 font-medium w-16">순위</th>
+                  <th className="text-left py-3 px-6 text-gray-400 font-medium">방장 이름</th>
+                  <th className="text-center py-3 px-6 text-gray-400 font-medium">7일 신규</th>
+                  <th className="text-center py-3 px-6 text-gray-400 font-medium">총 하위 유저</th>
+                </tr>
+              </thead>
+              <tbody>
+                {referralStats.map((stat, idx) => (
+                  <tr key={stat.referrerId} className="border-b border-gray-700/50 hover:bg-gray-700/30 transition">
+                    <td className="py-3 px-6 text-center">
+                      <span className={`text-xs px-2 py-1 rounded-full font-bold ${
+                        idx === 0
+                          ? 'bg-yellow-500/20 text-yellow-400'
+                          : idx === 1
+                            ? 'bg-gray-400/20 text-gray-300'
+                            : idx === 2
+                              ? 'bg-orange-700/30 text-orange-400'
+                              : 'bg-gray-700 text-gray-400'
+                      }`}>
+                        {idx + 1}
+                      </span>
+                    </td>
+                    <td className="py-3 px-6 font-medium">
+                      {stat.referrerName || '—'}
+                    </td>
+                    <td className="py-3 px-6 text-center">
+                      <span className="text-success font-bold">{stat.weeklyCount}</span>
+                      <span className="text-gray-400 text-xs">명</span>
+                    </td>
+                    <td className="py-3 px-6 text-center">
+                      <span className="text-primary-400 font-bold">{stat.totalCount}</span>
+                      <span className="text-gray-400 text-xs">명</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {/* User Balance List */}
       <div className="bg-gray-800/50 rounded-xl border border-gray-700/50">

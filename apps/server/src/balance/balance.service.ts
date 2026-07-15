@@ -34,7 +34,12 @@ export class BalanceService {
         }),
       });
 
-      const data = await res.json() as { result?: { value?: number } };
+      const data = await res.json() as { result?: { value?: number }; error?: { message?: string } };
+
+      if (data.error) {
+        this.logger.error(`SOL balance RPC error: ${data.error.message}`);
+        return 0;
+      }
       // lamports → SOL
       return (data.result?.value || 0) / 1e9;
     } catch (err) {
@@ -75,7 +80,9 @@ export class BalanceService {
           }),
         });
 
-        const data = await res.json() as { result?: { value: Array<{ account?: { data?: { parsed?: { info?: { tokenAmount?: { amount?: number } } } } } }> } };
+        const data = await res.json() as {
+          result?: { value: Array<{ account?: { data?: { parsed?: { info?: { tokenAmount?: { amount?: string } } } } } }> }
+        };
         const accounts = data.result?.value || [];
 
         if (accounts.length > 0) {
@@ -88,8 +95,10 @@ export class BalanceService {
             balance: amount / Math.pow(10, decimals),
           });
         }
-      } catch {
-        // 해당 토큰 잔액 조회 실패 시 스킵
+      } catch (err) {
+        this.logger.warn(
+          `Token balance fetch failed for ${token.symbol}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
 
@@ -100,8 +109,10 @@ export class BalanceService {
    * 전체 잔액 조회 (SOL + SPL 토큰)
    */
   async getFullBalance(walletAddress: string) {
-    const solBalance = await this.getSolBalance(walletAddress);
-    const tokenBalances = await this.getTokenBalances(walletAddress);
+    const [solBalance, tokenBalances] = await Promise.all([
+      this.getSolBalance(walletAddress),
+      this.getTokenBalances(walletAddress),
+    ]);
 
     return {
       walletAddress,
@@ -112,7 +123,7 @@ export class BalanceService {
   }
 
   /**
-   * 유저의 전체 포트폴리오 조회
+   * 유저의 전체 포트폴리오 조회 — 모든 활성 지갑 포함
    */
   async getPortfolio(userId: string) {
     const { data: wallets } = await this.client
@@ -125,12 +136,19 @@ export class BalanceService {
       return { wallets: [], totalUsdt: 0 };
     }
 
-    const activeWallet = wallets[0];
-    const balance = await this.getFullBalance(activeWallet.public_key);
+    // 활성 지갑의 잔액 조회
+    const walletBalances = await Promise.all(
+      wallets.map(async (w) => {
+        const balance = await this.getFullBalance(w.public_key);
+        return { publicKey: w.public_key, ...balance };
+      }),
+    );
+
+    const totalUsdt = walletBalances.reduce((sum, wb) => sum + wb.totalUsdtValue, 0);
 
     return {
-      wallets: [{ publicKey: activeWallet.public_key, ...balance }],
-      totalUsdt: balance.totalUsdtValue,
+      wallets: walletBalances,
+      totalUsdt,
     };
   }
 }
