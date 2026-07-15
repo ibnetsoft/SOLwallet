@@ -4,8 +4,11 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useTradeStore } from '@/stores/useTradeStore';
 import { useWalletStore } from '@/stores/useWalletStore';
+import { useToast } from '@/components/Toast';
 import PinModal from '@/components/PinModal';
+import { SkeletonCard } from '@/components/Skeleton';
 import { FEE_RATE, QUICK_AMOUNT_RATIOS } from '@solwallet/config';
+import { getWalletBalance } from '@/lib/api/balance';
 
 function TradeContent() {
   const {
@@ -28,10 +31,15 @@ function TradeContent() {
   } = useTradeStore();
 
   const { wallets, isLocked } = useWalletStore();
+  const { showToast } = useToast();
+
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinError, setPinError] = useState('');
-  const [toast, setToast] = useState('');
   const [showTokenDropdown, setShowTokenDropdown] = useState(false);
+
+  // 잔액 기반 최대 수량
+  const [maxBalance, setMaxBalance] = useState(0);
+  const [isLoadingBalance, setIsLoadingBalance] = useState(false);
 
   // 초기화
   useEffect(() => {
@@ -39,7 +47,7 @@ function TradeContent() {
     fetchActiveOrders();
   }, []);
 
-  // 토큰 선택 시 오더북 + 현재가 조회
+  // 토큰 선택 시 오더북 + 현재가 + 잔액 조회
   useEffect(() => {
     if (selectedToken) {
       fetchOrderbook();
@@ -47,10 +55,47 @@ function TradeContent() {
     }
   }, [selectedToken?.mint_address]);
 
-  const showToast = useCallback((msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(''), 3000);
-  }, []);
+  // 실시간 가격 자동 갱신 — 15초마다 오더북 + 현재가 폴링
+  useEffect(() => {
+    if (!selectedToken) return;
+    const interval = setInterval(() => {
+      fetchOrderbook();
+      fetchCurrentPrice();
+    }, 15_000);
+    return () => clearInterval(interval);
+  }, [selectedToken?.mint_address]);
+
+  // 활성 지갑 잔액 조회 (최대 수량 계산용)
+  const activeWallet = wallets.find((w) => w.isActive) || wallets[0];
+
+  useEffect(() => {
+    if (!activeWallet) return;
+
+    const fetchMaxBalance = async () => {
+      setIsLoadingBalance(true);
+      try {
+        const bal = await getWalletBalance(activeWallet.publicKey);
+        if (side === 'buy') {
+          // 매수 시: 보유 USDT 잔액 (TODO: USDT 전용 조회)
+          setMaxBalance(bal.sol > 0 ? bal.sol / (Number(price) || 1) : 0);
+        } else {
+          // 매도 시: 보유 토큰 수량
+          if (selectedToken) {
+            const tokenBal = bal.tokens.find((t) => t.mint === selectedToken.mint_address);
+            setMaxBalance(tokenBal?.balance ?? 0);
+          } else {
+            setMaxBalance(0);
+          }
+        }
+      } catch {
+        setMaxBalance(0);
+      } finally {
+        setIsLoadingBalance(false);
+      }
+    };
+
+    fetchMaxBalance();
+  }, [activeWallet, side, selectedToken, price]);
 
   // 주문 실행 → PIN 입력 → 서명 + 제출
   const handleExecute = async (pin: string) => {
@@ -69,15 +114,31 @@ function TradeContent() {
     }
   };
 
+  // 유효성 검사
+  const validateOrder = (): string | null => {
+    if (!activeWallet) return '⚠️ 먼저 지갑을 생성해주세요.';
+    if (isLocked) return '⚠️ 지갑이 잠겨있습니다. 설정에서 잠금 해제하세요.';
+    if (!selectedToken) return '⚠️ 토큰을 선택해주세요.';
+    if (!price || Number(price) <= 0) return '⚠️ 올바른 가격을 입력해주세요.';
+    if (!quantity || Number(quantity) <= 0) return '⚠️ 올바른 수량을 입력해주세요.';
+    // 최대 소수점 검사
+    const decimals = selectedToken.decimals || 9;
+    const qtyStr = String(quantity);
+    const dotIdx = qtyStr.indexOf('.');
+    if (dotIdx !== -1 && qtyStr.length - dotIdx - 1 > decimals) {
+      return `⚠️ ${selectedToken.symbol}은 소수점 ${decimals}자리까지 가능합니다.`;
+    }
+    return null;
+  };
+
+  const validationError = validateOrder();
+
   // 주문 금액 계산
-  const totalAmount = price && quantity ? Number(price) * Number(quantity) : 0;
+  const priceNum = Number(price) || 0;
+  const qtyNum = Number(quantity) || 0;
+  const totalAmount = priceNum * qtyNum;
   const feeAmount = totalAmount * FEE_RATE;
   const totalWithFee = totalAmount + feeAmount;
-
-  // 최대 수량 (보유 잔액 기준 — TODO: 실제 잔액 API 연동)
-  const maxQuantity = 0;
-
-  const activeWallet = wallets.find((w) => w.isActive) || wallets[0];
 
   return (
     <main className="min-h-screen p-4 pb-24">
@@ -92,7 +153,7 @@ function TradeContent() {
       {/* Buy/Sell Toggle */}
       <div className="flex bg-gray-800 rounded-xl p-1 mb-6">
         <button
-          onClick={() => setSide('buy')}
+          onClick={() => { setSide('buy'); setQuantity(''); }}
           className={`flex-1 py-2 rounded-lg text-center text-sm font-medium transition ${
             side === 'buy' ? 'bg-green-600 text-white' : 'text-gray-400'
           }`}
@@ -100,7 +161,7 @@ function TradeContent() {
           매수 (BUY)
         </button>
         <button
-          onClick={() => setSide('sell')}
+          onClick={() => { setSide('sell'); setQuantity(''); }}
           className={`flex-1 py-2 rounded-lg text-center text-sm font-medium transition ${
             side === 'sell' ? 'bg-red-600 text-white' : 'text-gray-400'
           }`}
@@ -157,12 +218,14 @@ function TradeContent() {
             value={price}
             onChange={(e) => setPrice(e.target.value)}
             placeholder="가격을 입력하세요"
+            min="0"
+            step="any"
             className="bg-transparent flex-1 outline-none text-white placeholder-gray-500"
           />
           <button
             onClick={applyCurrentPrice}
             disabled={currentPrice === 0}
-            className="bg-gray-700 text-xs px-2 py-1 rounded disabled:opacity-50"
+            className="bg-gray-700 text-xs px-2 py-1 rounded disabled:opacity-50 hover:bg-gray-600 transition"
           >
             최근가
           </button>
@@ -174,21 +237,31 @@ function TradeContent() {
 
       {/* Amount Input */}
       <section className="mb-4">
-        <label className="text-sm text-gray-400 mb-1 block">수량</label>
+        <label className="text-sm text-gray-400 mb-1 block">
+          수량
+          {maxBalance > 0 && (
+            <span className="text-primary-400 ml-2">
+              (보유: {maxBalance.toFixed(4)})
+            </span>
+          )}
+        </label>
         <div className="bg-gray-800/50 rounded-xl p-4">
           <input
             type="number"
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
             placeholder="수량을 입력하세요"
+            min="0"
+            step="any"
             className="bg-transparent w-full outline-none text-white placeholder-gray-500 mb-3"
           />
           <div className="flex gap-2">
             {QUICK_AMOUNT_RATIOS.map((ratio) => (
               <button
                 key={ratio}
-                onClick={() => applyQuickRatio(ratio, maxQuantity)}
-                className="flex-1 bg-gray-700 text-xs py-1.5 rounded-lg text-gray-300 hover:bg-gray-600 transition"
+                onClick={() => applyQuickRatio(ratio, maxBalance)}
+                disabled={maxBalance <= 0}
+                className="flex-1 bg-gray-700 text-xs py-1.5 rounded-lg text-gray-300 hover:bg-gray-600 transition disabled:opacity-30"
               >
                 {Math.round(ratio * 100)}%
               </button>
@@ -198,40 +271,34 @@ function TradeContent() {
       </section>
 
       {/* Order Summary */}
-      <section className="bg-gray-800/50 rounded-xl p-4 mb-6 space-y-2">
-        <div className="flex justify-between text-sm">
-          <span className="text-gray-400">주문 금액</span>
-          <span>${totalAmount.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-gray-400">수수료 ({FEE_RATE * 100}%)</span>
-          <span>${feeAmount.toFixed(2)}</span>
-        </div>
-        <hr className="border-gray-700" />
-        <div className="flex justify-between font-medium">
-          <span>총 {side === 'buy' ? '지불' : '수령'} 금액</span>
-          <span>${totalWithFee.toFixed(2)}</span>
-        </div>
-      </section>
+      {priceNum > 0 && qtyNum > 0 && (
+        <section className="bg-gray-800/50 rounded-xl p-4 mb-6 space-y-2">
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-400">주문 금액</span>
+            <span>${totalAmount.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-400">수수료 ({FEE_RATE * 100}%)</span>
+            <span>${feeAmount.toFixed(2)}</span>
+          </div>
+          <hr className="border-gray-700" />
+          <div className="flex justify-between font-medium">
+            <span>총 {side === 'buy' ? '지불' : '수령'} 금액</span>
+            <span>${totalWithFee.toFixed(2)}</span>
+          </div>
+        </section>
+      )}
 
       {/* Execute Button */}
       <button
         onClick={() => {
-          if (!activeWallet) {
-            showToast('⚠️ 먼저 지갑을 생성해주세요.');
-            return;
-          }
-          if (isLocked) {
-            showToast('⚠️ 지갑이 잠겨있습니다. 설정에서 잠금 해제하세요.');
-            return;
-          }
-          if (!selectedToken || !price || !quantity) {
-            showToast('⚠️ 토큰, 가격, 수량을 모두 입력해주세요.');
+          if (validationError) {
+            showToast(validationError);
             return;
           }
           setShowPinModal(true);
         }}
-        disabled={isSubmitting || !activeWallet}
+        disabled={isSubmitting || !activeWallet || !!validationError}
         className={`w-full py-4 rounded-xl font-bold text-lg transition disabled:opacity-50 ${
           side === 'buy'
             ? 'bg-green-600 hover:bg-green-700 text-white'
@@ -247,7 +314,15 @@ function TradeContent() {
 
       {/* Active Orders */}
       <section className="mt-6">
-        <h2 className="text-lg font-bold mb-3">미체결 주문</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-bold">미체결 주문</h2>
+          <button
+            onClick={() => fetchActiveOrders()}
+            className="text-xs text-gray-400 hover:text-white transition"
+          >
+            새로고침
+          </button>
+        </div>
         {activeOrders.length === 0 ? (
           <p className="text-sm text-gray-400">미체결 주문이 없습니다</p>
         ) : (
@@ -269,7 +344,7 @@ function TradeContent() {
                 </div>
                 <button
                   onClick={() => cancelOrder(order.id).then(() => showToast('🗑️ 주문이 취소되었습니다.'))}
-                  className="text-xs px-3 py-1 rounded-lg bg-red-600/20 text-red-400"
+                  className="text-xs px-3 py-1 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition"
                 >
                   취소
                 </button>
@@ -309,15 +384,6 @@ function TradeContent() {
         }}
         error={pinError}
       />
-
-      {/* Toast */}
-      {toast && (
-        <div className="fixed top-4 left-4 right-4 z-50 flex justify-center">
-          <div className="bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-sm shadow-lg">
-            {toast}
-          </div>
-        </div>
-      )}
     </main>
   );
 }
