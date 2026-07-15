@@ -1,13 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Telegraf, Context } from 'telegraf';
+import { UserService } from '../user/user.service';
 
 @Injectable()
 export class TelegramService {
   private readonly logger = new Logger(TelegramService.name);
   private bot: Telegraf<Context> | null = null;
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly userService: UserService,
+  ) {}
 
   async launchBot(token: string) {
     try {
@@ -15,19 +19,33 @@ export class TelegramService {
 
       // /start command handler
       this.bot.start(async (ctx) => {
-        const telegramUid = ctx.from?.id?.toString();
-        const username = ctx.from?.username || ctx.from?.first_name || 'Unknown';
+        const telegramUid = ctx.from?.id;
+        const username = ctx.from?.username || '';
+        const firstName = ctx.from?.first_name || '';
+        const lastName = ctx.from?.last_name || '';
         const startPayload = ctx.startPayload || ''; // referral code if present
 
-        this.logger.log(`/start received from user: ${username} (${telegramUid}), payload: ${startPayload}`);
+        this.logger.log(
+          `/start received from user: ${username} (${telegramUid}), payload: ${startPayload}`,
+        );
 
-        // TODO: Register user in Supabase
-        // If startPayload exists, it's a referral code from another user
+        // 사용자 등록 (upsert — 기존 유저면 업데이트만)
+        try {
+          await this.userService.upsertUser({
+            telegramUid: Number(telegramUid),
+            username: username || undefined,
+            firstName,
+            lastName,
+            referredBy: startPayload || undefined,
+          });
+        } catch (error) {
+          this.logger.error(`Failed to register user: ${error instanceof Error ? error.message : String(error)}`);
+        }
 
         const miniAppUrl = this.configService.get<string>('MINI_APP_URL') || 'http://localhost:3001';
 
         const welcomeMessage = [
-          `👋 환영합니다, ${username}!`,
+          `👋 환영합니다, ${firstName || username}!`,
           '',
           '🔥 **DEX MINER BOT**에 오신 것을 환영합니다.',
           '지정가 매수/매도로 솔라나 토큰을 거래하세요.',

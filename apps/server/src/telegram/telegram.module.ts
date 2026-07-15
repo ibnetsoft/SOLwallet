@@ -1,8 +1,10 @@
 import { Module, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TelegramService } from './telegram.service';
+import { UserModule } from '../user/user.module';
 
 @Module({
+  imports: [UserModule],
   providers: [TelegramService],
   exports: [TelegramService],
 })

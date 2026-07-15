@@ -4,11 +4,18 @@
     "module": "commonjs",
     "moduleResolution": "node",
     "outDir": "./dist",
-    "rootDir": "./src",
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
-    "target": "ES2022"
+    "target": "ES2022",
+    "declaration": true,
+    "declarationMap": true,
+    "paths": {
+      "@solwallet/shared-types": ["../../packages/shared-types/src"],
+      "@solwallet/shared-types/*": ["../../packages/shared-types/src/*"],
+      "@solwallet/config": ["../../packages/config/src"],
+      "@solwallet/config/*": ["../../packages/config/src/*"]
+    }
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "../../packages/shared-types/src/**/*", "../../packages/config/src/**/*"],
   "exclude": ["node_modules", "dist", "test"]
 }

@@ -4,10 +4,6 @@
 
 -- Initial tokens for the mini-app
 INSERT INTO tokens (mint_address, symbol, decimals, is_active) VALUES
-  ('11111111111111111111111111111111', 'SOL', 9, TRUE),
+  ('So11111111111111111111111111111111111111112', 'SOL', 9, TRUE),
   ('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', 'USDT', 6, TRUE)
 ON CONFLICT (mint_address) DO NOTHING;
-
--- NOTE: Replace with actual mint addresses when deploying to mainnet
--- SOL mainnet: So11111111111111111111111111111111111111112
--- USDT mainnet: EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v

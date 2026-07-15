@@ -1,8 +1,121 @@
 'use client';
 
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useWalletStore } from '@/stores/useWalletStore';
+import PinModal from '@/components/PinModal';
+import SeedInput from '@/components/SeedInput';
+import MnemonicDisplay from '@/components/MnemonicDisplay';
+import { MAX_WALLETS } from '@solwallet/config';
 
 export default function SettingsPage() {
+  const {
+    wallets,
+    activeWalletId,
+    isInitialized,
+    initialize,
+    createWallet,
+    importWallet,
+    activateWallet,
+    deleteWallet,
+  } = useWalletStore();
+
+  // 모달 상태
+  const [showCreatePin, setShowCreatePin] = useState(false);
+  const [showImportSeed, setShowImportSeed] = useState(false);
+  const [showImportPin, setShowImportPin] = useState(false);
+  const [pendingMnemonic, setPendingMnemonic] = useState('');
+  const [showMnemonic, setShowMnemonic] = useState(false);
+  const [createdMnemonic, setCreatedMnemonic] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [actionLoading, setActionLoading] = useState<string | false>(false);
+  const [toast, setToast] = useState('');
+
+  // 초기화
+  useEffect(() => {
+    if (!isInitialized) {
+      initialize();
+    }
+  }, [isInitialized, initialize]);
+
+  // 토스트 메시지
+  const showToast = useCallback((message: string) => {
+    setToast(message);
+    setTimeout(() => setToast(''), 3000);
+  }, []);
+
+  // 새 지갑 생성 → PIN 설정
+  const handleCreateWallet = async (pin: string) => {
+    setPinError('');
+    setActionLoading('create');
+    try {
+      const nextIndex = wallets.length;
+      const result = await createWallet(`Wallet ${nextIndex + 1}`, pin);
+      setCreatedMnemonic(result.mnemonic);
+      setShowCreatePin(false);
+      setShowMnemonic(true);
+    } catch (err) {
+      setPinError(err instanceof Error ? err.message : '오류가 발생했습니다.');
+    } finally {
+      setActionLoading('');
+    }
+  };
+
+  // 시드 임포트 → 시드 입력 완료 → PIN 설정
+  const handleSeedConfirm = (mnemonic: string) => {
+    setPendingMnemonic(mnemonic);
+    setShowImportSeed(false);
+    setShowImportPin(true);
+  };
+
+  const handleImportWallet = async (pin: string) => {
+    setPinError('');
+    setActionLoading('import');
+    try {
+      const nextIndex = wallets.length;
+      await importWallet(pendingMnemonic, `Wallet ${nextIndex + 1}`, pin);
+      setShowImportPin(false);
+      setPendingMnemonic('');
+      showToast('✅ 지갑을 성공적으로 가져왔습니다!');
+    } catch (err) {
+      setPinError(err instanceof Error ? err.message : '오류가 발생했습니다.');
+    } finally {
+      setActionLoading('');
+    }
+  };
+
+  // 지갑 활성 전환
+  const handleActivate = async (walletId: string) => {
+    if (walletId === activeWalletId) return;
+    setActionLoading(`activate-${walletId}`);
+    try {
+      await activateWallet(walletId);
+      showToast('✅ 활성 지갑이 변경되었습니다.');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '지갑 전환 실패');
+    } finally {
+      setActionLoading('');
+    }
+  };
+
+  // 지갑 삭제
+  const handleDelete = async (walletId: string) => {
+    if (!confirm('이 지갑을 삭제하시겠습니까?\n암호화된 데이터가 로컬에서 제거됩니다.')) return;
+    setActionLoading(`delete-${walletId}`);
+    try {
+      await deleteWallet(walletId);
+      showToast('🗑️ 지갑이 삭제되었습니다.');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '지갑 삭제 실패');
+    } finally {
+      setActionLoading('');
+    }
+  };
+
+  // 공개키 축약 표시
+  const truncateKey = (key: string) =>
+    `${key.slice(0, 4)}...${key.slice(-4)}`;
+
   return (
     <main className="min-h-screen p-4 pb-24">
       {/* Header */}
@@ -15,14 +128,34 @@ export default function SettingsPage() {
       <section className="mb-6">
         <h2 className="text-sm text-gray-400 mb-2">지갑 관리</h2>
         <div className="space-y-2">
-          <button className="w-full bg-gray-800/50 rounded-xl p-4 text-left flex items-center justify-between">
+          <button
+            onClick={() => {
+              if (wallets.length >= MAX_WALLETS) {
+                showToast(`⚠️ 최대 ${MAX_WALLETS}개까지 가능합니다.`);
+                return;
+              }
+              setShowCreatePin(true);
+            }}
+            disabled={!!actionLoading}
+            className="w-full bg-gray-800/50 rounded-xl p-4 text-left flex items-center justify-between active:bg-gray-700/50 transition-colors"
+          >
             <div>
               <p className="font-medium">🆕 새 지갑 생성</p>
               <p className="text-xs text-gray-400">새 솔라나 지갑을 만듭니다</p>
             </div>
             <span className="text-gray-500">→</span>
           </button>
-          <button className="w-full bg-gray-800/50 rounded-xl p-4 text-left flex items-center justify-between">
+          <button
+            onClick={() => {
+              if (wallets.length >= MAX_WALLETS) {
+                showToast(`⚠️ 최대 ${MAX_WALLETS}개까지 가능합니다.`);
+                return;
+              }
+              setShowImportSeed(true);
+            }}
+            disabled={!!actionLoading}
+            className="w-full bg-gray-800/50 rounded-xl p-4 text-left flex items-center justify-between active:bg-gray-700/50 transition-colors"
+          >
             <div>
               <p className="font-medium">📥 시드구문 Import</p>
               <p className="text-xs text-gray-400">기존 지갑을 가져옵니다</p>
@@ -34,18 +167,62 @@ export default function SettingsPage() {
 
       {/* Wallet List */}
       <section className="mb-6">
-        <h2 className="text-sm text-gray-400 mb-2">내 지갑 목록</h2>
+        <h2 className="text-sm text-gray-400 mb-2">
+          내 지갑 목록 ({wallets.length}/{MAX_WALLETS})
+        </h2>
         <div className="space-y-2">
-          <div className="bg-gray-800/50 rounded-xl p-4 flex items-center justify-between">
-            <div>
-              <p className="font-medium">지갑 1</p>
-              <p className="text-xs text-gray-400 font-mono">—</p>
+          {wallets.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <p className="text-3xl mb-2">👛</p>
+              <p className="text-sm">생성된 지갑이 없습니다</p>
+              <p className="text-xs">새 지갑을 생성하거나 시드구문을 가져오세요</p>
             </div>
-            <span className="text-xs bg-primary-600 px-2 py-0.5 rounded">활성</span>
-          </div>
-          <p className="text-xs text-gray-500 text-center py-2">
-            최대 3개의 지갑을 관리할 수 있습니다
-          </p>
+          ) : (
+            wallets.map((wallet) => (
+              <div
+                key={wallet.id}
+                className={`bg-gray-800/50 rounded-xl p-4 ${
+                  wallet.id === activeWalletId ? 'border border-primary-500/30' : ''
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium">{wallet.label}</p>
+                      {wallet.id === activeWalletId && (
+                        <span className="text-xs bg-primary-600 px-2 py-0.5 rounded">
+                          활성
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-400 font-mono truncate">
+                      {wallet.publicKey ? truncateKey(wallet.publicKey) : '—'}
+                    </p>
+                  </div>
+                </div>
+                {wallets.length > 1 && (
+                  <div className="flex gap-2 mt-3">
+                    {wallet.id !== activeWalletId && (
+                      <button
+                        onClick={() => handleActivate(wallet.id)}
+                        disabled={!!actionLoading}
+                        className="text-xs px-3 py-1.5 rounded-lg bg-primary-600/20 text-primary-400 disabled:opacity-50"
+                      >
+                        활성으로 전환
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDelete(wallet.id)}
+                      disabled={!!actionLoading}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-red-600/20 text-red-400 disabled:opacity-50"
+                    >
+                      삭제
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
         </div>
       </section>
 
@@ -55,15 +232,23 @@ export default function SettingsPage() {
         <div className="bg-gray-800/50 rounded-xl p-4 space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-gray-400">버전</span>
-            <span>v0.1.0</span>
+            <span>v0.2.0</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-gray-400">네트워크</span>
-            <span>Devnet</span>
+            <span>Mainnet</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-gray-400">DEX</span>
             <span>Manifest.trade</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-400">최대 지갑</span>
+            <span>{MAX_WALLETS}개</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-400">수수료</span>
+            <span>1%</span>
           </div>
         </div>
       </section>
@@ -85,6 +270,57 @@ export default function SettingsPage() {
           </Link>
         </div>
       </nav>
+
+      {/* ─── Modals ─── */}
+
+      {/* 새 지갑 PIN 설정 */}
+      <PinModal
+        isOpen={showCreatePin}
+        title="🔒 PIN 설정"
+        subtitle="새 지갑의 암호 PIN을 설정합니다"
+        onConfirm={handleCreateWallet}
+        onCancel={() => setShowCreatePin(false)}
+        error={pinError}
+      />
+
+      {/* 시드 임포트 — 시드 입력 */}
+      <SeedInput
+        isOpen={showImportSeed}
+        onConfirm={handleSeedConfirm}
+        onCancel={() => setShowImportSeed(false)}
+      />
+
+      {/* 시드 임포트 — PIN 설정 */}
+      <PinModal
+        isOpen={showImportPin}
+        title="🔒 PIN 설정"
+        subtitle="가져온 지갑의 암호 PIN을 설정합니다"
+        onConfirm={handleImportWallet}
+        onCancel={() => {
+          setShowImportPin(false);
+          setPendingMnemonic('');
+        }}
+        error={pinError}
+      />
+
+      {/* 시드 구문 표시 (최초 생성 시만) */}
+      <MnemonicDisplay
+        isOpen={showMnemonic}
+        mnemonic={createdMnemonic}
+        onClose={() => {
+          setShowMnemonic(false);
+          setCreatedMnemonic('');
+        }}
+      />
+
+      {/* 토스트 */}
+      {toast && (
+        <div className="fixed top-4 left-4 right-4 z-50 flex justify-center">
+          <div className="bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 text-sm shadow-lg animate-in fade-in slide-in-from-top-2">
+            {toast}
+          </div>
+        </div>
+      )}
     </main>
   );
 }
