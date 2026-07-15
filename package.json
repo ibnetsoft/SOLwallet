@@ -1,0 +1,23 @@
+{
+  "name": "solwallet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DEX MINER BOT — Solana 지정가 거래 텔레그램 미니앱",
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:server": "turbo run dev --filter=server",
+    "dev:mini-app": "turbo run dev --filter=mini-app",
+    "dev:admin": "turbo run dev --filter=admin",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.0",
+    "typescript": "^5.7.0"
+  },
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
