@@ -75,4 +75,23 @@ export class AuthService {
       telegramUid,
     });
   }
+
+  /**
+   * Admin JWT 토큰 생성
+   * ADMIN_SECRET이 일치하면 role: 'admin' JWT 발급
+   */
+  generateAdminToken(secret: string): string {
+    return this.jwtService.sign({
+      sub: 'admin',
+      role: 'admin',
+    });
+  }
+
+  /**
+   * Admin secret 검증
+   */
+  validateAdminSecret(secret: string): boolean {
+    const adminSecret = this.configService.get<string>('ADMIN_SECRET');
+    return !!adminSecret && secret === adminSecret;
+  }
 }

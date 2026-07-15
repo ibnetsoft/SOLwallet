@@ -17,6 +17,12 @@ importers:
 
   apps/admin:
     dependencies:
+      '@solwallet/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@solwallet/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
       '@tanstack/react-query':
         specifier: ^5.62.0
         version: 5.101.2(react@18.3.1)

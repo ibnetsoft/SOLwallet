@@ -49,4 +49,27 @@ export class AuthController {
       },
     };
   }
+
+  /**
+   * POST /api/auth/admin
+   * Admin secret 검증 → Admin JWT 발급
+   */
+  @Post('admin')
+  async adminAuth(@Body() body: { secret: string }) {
+    if (!body.secret) {
+      throw new UnauthorizedException('Admin secret is required.');
+    }
+
+    const isValid = this.authService.validateAdminSecret(body.secret);
+    if (!isValid) {
+      throw new UnauthorizedException('유효하지 않은 관리자 비밀키입니다.');
+    }
+
+    const token = this.authService.generateAdminToken(body.secret);
+
+    return {
+      success: true,
+      data: { token },
+    };
+  }
 }

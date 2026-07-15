@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import AdminSidebar from '@/components/AdminSidebar';
+import AdminAppShell from '@/components/AdminAppShell';
 
 export const metadata: Metadata = {
   title: 'DEX MINER BOT — Admin',
@@ -14,11 +14,8 @@ export default function AdminLayout({
 }) {
   return (
     <html lang="ko">
-      <body className="bg-gray-100 min-h-screen">
-        <div className="flex min-h-screen">
-          <AdminSidebar />
-          <main className="flex-1 p-6">{children}</main>
-        </div>
+      <body className="min-h-screen">
+        <AdminAppShell>{children}</AdminAppShell>
       </body>
     </html>
   );

@@ -4,13 +4,20 @@
     "jsx": "preserve",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "allowJs": true,
+    "noEmit": true,
+    "incremental": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@solwallet/shared-types": ["../../packages/shared-types/src"],
+      "@solwallet/shared-types/*": ["../../packages/shared-types/src/*"],
+      "@solwallet/config": ["../../packages/config/src"],
+      "@solwallet/config/*": ["../../packages/config/src/*"]
     },
     "plugins": [{ "name": "next" }],
     "target": "ES2022",
     "lib": ["dom", "dom.iterable", "ES2022"]
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "../../packages/shared-types/src/**/*", "../../packages/config/src/**/*"],
   "exclude": ["node_modules"]
 }

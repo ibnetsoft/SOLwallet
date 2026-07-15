@@ -1,0 +1,48 @@
+import { apiFetch } from './client';
+import type { AdminStats, AdminUserDetail, AdminTokenDetail, AdminOrderDetail } from '@solwallet/shared-types';
+
+// ─── 대시보드 ───
+
+export function getStats(): Promise<AdminStats> {
+  return apiFetch('/admin/stats');
+}
+
+// ─── 유저 관리 ───
+
+export function getUsers(page = 1, pageSize = 20): Promise<{ users: AdminUserDetail[]; total: number }> {
+  return apiFetch(`/admin/users?page=${page}&pageSize=${pageSize}`);
+}
+
+export function getUserWallets(userId: string): Promise<Array<Record<string, unknown>>> {
+  return apiFetch(`/admin/users/${userId}/wallets`);
+}
+
+// ─── 토큰 관리 ───
+
+export function getTokens(): Promise<AdminTokenDetail[]> {
+  return apiFetch('/admin/tokens');
+}
+
+export function createToken(dto: { mintAddress: string; symbol: string; decimals: number }): Promise<Record<string, unknown>> {
+  return apiFetch('/admin/tokens', {
+    method: 'POST',
+    body: JSON.stringify(dto),
+  });
+}
+
+export function toggleToken(tokenId: string): Promise<Record<string, unknown>> {
+  return apiFetch(`/admin/tokens/${tokenId}`, {
+    method: 'PATCH',
+  });
+}
+
+// ─── 주문 관리 ───
+
+export function getOrders(options: { status?: string; tokenId?: string; page?: number; pageSize?: number } = {}): Promise<{ orders: AdminOrderDetail[]; total: number }> {
+  const params = new URLSearchParams();
+  if (options.status) params.set('status', options.status);
+  if (options.tokenId) params.set('tokenId', options.tokenId);
+  if (options.page) params.set('page', String(options.page));
+  if (options.pageSize) params.set('pageSize', String(options.pageSize));
+  return apiFetch(`/admin/orders?${params.toString()}`);
+}

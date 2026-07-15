@@ -125,6 +125,52 @@ export interface Orderbook {
 }
 
 // ========================================
+// Admin Types
+// ========================================
+
+export interface AdminStats {
+  totalUsers: number;
+  todaySignups: number;
+  totalFeeRevenue: number;
+  totalOrders: number;
+  activeOrders: number;
+}
+
+export interface AdminUserDetail {
+  id: string;
+  telegramUid: string;
+  username: string;
+  firstName: string;
+  lastName: string;
+  referredBy: string | null;
+  walletCount: number;
+  createdAt: string;
+}
+
+export interface AdminTokenDetail {
+  id: string;
+  mintAddress: string;
+  symbol: string;
+  decimals: number;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface AdminOrderDetail {
+  id: string;
+  userId: string;
+  username: string;
+  tokenSymbol: string;
+  side: string;
+  price: string;
+  quantity: string;
+  fee: string;
+  status: string;
+  txSignature: string | null;
+  createdAt: string;
+}
+
+// ========================================
 // API Response Types
 // ========================================
 

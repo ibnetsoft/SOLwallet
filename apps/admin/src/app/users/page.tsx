@@ -1,57 +1,180 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { getUsers, getUserWallets } from '@/lib/api/admin';
+import type { AdminUserDetail } from '@solwallet/shared-types';
+
 export default function UsersPage() {
+  const [users, setUsers] = useState<AdminUserDetail[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  // 유저 잔액 상세보기
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [wallets, setWallets] = useState<Array<Record<string, unknown>>>([]);
+  const [walletsLoading, setWalletsLoading] = useState(false);
+
+  const pageSize = 20;
+  const totalPages = Math.ceil(total / pageSize);
+
+  const fetchUsers = async (p: number) => {
+    setIsLoading(true);
+    setError('');
+    try {
+      const data = await getUsers(p, pageSize);
+      setUsers(data.users);
+      setTotal(data.total);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '유저 조회 실패');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchUsers(page);
+  }, [page]);
+
+  const handleViewWallets = async (userId: string) => {
+    setSelectedUserId(selectedUserId === userId ? null : userId);
+    if (selectedUserId === userId) {
+      setWallets([]);
+      return;
+    }
+    setWalletsLoading(true);
+    try {
+      const data = await getUserWallets(userId);
+      setWallets(data);
+    } catch {
+      setWallets([]);
+    } finally {
+      setWalletsLoading(false);
+    }
+  };
+
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">👥 회원 관리</h1>
 
-      {/* Referrer 7-day Stats */}
-      <div className="bg-white rounded-xl shadow p-6 mb-6">
-        <h2 className="text-lg font-bold mb-4">🥇 방장 7일 실적</h2>
-        <p className="text-gray-500 text-sm">지난 7일 동안 각 방장이 가입시킨 신규 하위 유저 수</p>
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b">
-                <th className="text-left py-2 px-3">방장</th>
-                <th className="text-left py-2 px-3">Telegram UID</th>
-                <th className="text-right py-2 px-3">7일 신규</th>
-                <th className="text-right py-2 px-3">총 하위 유저</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td colSpan={4} className="text-center py-8 text-gray-400">
-                  데이터가 없습니다
-                </td>
-              </tr>
-            </tbody>
-          </table>
+      {error && (
+        <div className="bg-danger/10 border border-danger/30 rounded-xl p-4 mb-6 text-danger text-sm">
+          {error}
         </div>
-      </div>
+      )}
 
       {/* User Balance List */}
-      <div className="bg-white rounded-xl shadow p-6">
-        <h2 className="text-lg font-bold mb-4">💰 유저 잔고 조회</h2>
+      <div className="bg-gray-800/50 rounded-xl border border-gray-700/50">
+        <div className="p-6 pb-0 flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold">💰 유저 목록</h2>
+          <span className="text-sm text-gray-400">총 {total}명</span>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b">
-                <th className="text-left py-2 px-3">유저</th>
-                <th className="text-left py-2 px-3">지갑 주소</th>
-                <th className="text-right py-2 px-3">SOL</th>
-                <th className="text-right py-2 px-3">USDT</th>
-                <th className="text-right py-2 px-3">총 자산</th>
+              <tr className="border-b border-gray-700">
+                <th className="text-left py-3 px-6 text-gray-400 font-medium">유저</th>
+                <th className="text-left py-3 px-6 text-gray-400 font-medium">Telegram UID</th>
+                <th className="text-center py-3 px-6 text-gray-400 font-medium">가입일</th>
+                <th className="text-right py-3 px-6 text-gray-400 font-medium">지갑</th>
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td colSpan={5} className="text-center py-8 text-gray-400">
-                  데이터가 없습니다
-                </td>
-              </tr>
+              {isLoading ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-8 text-gray-400">로딩 중...</td>
+                </tr>
+              ) : users.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-8 text-gray-400">데이터가 없습니다</td>
+                </tr>
+              ) : (
+                users.map((user) => (
+                  <tr key={user.id} className="border-b border-gray-700/50 hover:bg-gray-700/30 transition">
+                    <td className="py-3 px-6">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{user.username || user.firstName || '—'}</span>
+                        {user.referredBy && (
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-primary-600/20 text-primary-400">추천</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-3 px-6 text-gray-400 font-mono text-xs">{user.telegramUid}</td>
+                    <td className="py-3 px-6 text-center text-gray-400 text-xs">
+                      {new Date(user.createdAt).toLocaleDateString('ko-KR')}
+                    </td>
+                    <td className="py-3 px-6 text-right">
+                      <button
+                        onClick={() => handleViewWallets(user.id)}
+                        className="text-xs px-3 py-1.5 rounded-lg bg-primary-600/20 text-primary-400 hover:bg-primary-600/30 transition"
+                      >
+                        {selectedUserId === user.id ? '닫기' : '지갑보기'}
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 p-4 border-t border-gray-700">
+            <button
+              disabled={page <= 1}
+              onClick={() => setPage(page - 1)}
+              className="px-3 py-1.5 rounded-lg bg-gray-700 text-sm disabled:opacity-50 hover:bg-gray-600 transition"
+            >
+              이전
+            </button>
+            <span className="text-sm text-gray-400">
+              {page} / {totalPages}
+            </span>
+            <button
+              disabled={page >= totalPages}
+              onClick={() => setPage(page + 1)}
+              className="px-3 py-1.5 rounded-lg bg-gray-700 text-sm disabled:opacity-50 hover:bg-gray-600 transition"
+            >
+              다음
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* Wallets Detail Panel */}
+      {selectedUserId && (
+        <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 mt-6 p-6">
+          <h3 className="text-lg font-bold mb-4">🔗 지갑 상세</h3>
+          {walletsLoading ? (
+            <p className="text-gray-400 text-sm">로딩 중...</p>
+          ) : wallets.length === 0 ? (
+            <p className="text-gray-400 text-sm">지갑이 없습니다.</p>
+          ) : (
+            <div className="space-y-3">
+              {wallets.map((w) => (
+                <div key={w.id as string} className="bg-gray-900/50 rounded-lg p-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1">지갑 #{String(w.wallet_index) ?? '—'}</p>
+                    <p className="text-sm font-mono text-gray-300">
+                      {String(w.public_key ?? '').slice(0, 12)}...{String(w.public_key ?? '').slice(-6)}
+                    </p>
+                  </div>
+                  <span className={`text-xs px-2 py-1 rounded-full ${
+                    w.is_active
+                      ? 'bg-success/20 text-success'
+                      : 'bg-gray-700 text-gray-400'
+                  }`}>
+                    {w.is_active ? '활성' : '비활성'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
