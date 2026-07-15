@@ -258,10 +258,12 @@
 - **어드민 토큰 등록 테이블:** Mint 주소, 심볼, 소수점 자리수
 - **주문 데이터:** 오더 이력, 거래 수수료(1%) 내역
 
-### 5.3 Manifest.trade SDK / RPC 연동
+### 5.3 Manifest.trade API / RPC 연동
 
-- **SDK:** `@cks-systems/manifest-sdk` 라이브러리 활용
-- **기능:** Manifest 지정가 오더북 조회 및 트랜잭션 빌더 연결
+- **API:** Manifest Orders API (`https://manifest-orders.fly.dev/v1`) — 공개 API, **API Key 불필요**
+- **방식:** 서버가 unsigned 트랜잭션을 요청 → 클라이언트에서 온디바이스 서명 → Solana 네트워크 제출
+- **엔드포인트:** `POST /v1/orders` (주문 생성), `GET /v1/orders` (조회), `DELETE /v1/orders` (취소)
+- **SDK (선택):** `@cks-systems/manifest-sdk` 라이브러리 활용 가능
 - **RPC:** 고성능 솔라나 RPC 노드 서비스를 백엔드에 바인딩하여 안전한 체결 처리
 
 ---
@@ -509,7 +511,7 @@ SUPABASE_URL=xxx
 SUPABASE_ANON_KEY=xxx
 SUPABASE_SERVICE_KEY=xxx
 SOLANA_RPC_URL=xxx
-MANIFEST_API_KEY=xxx
+MANIFEST_BASE_URL=https://manifest-orders.fly.dev/v1
 ADMIN_SECRET=xxx
 ```
 
@@ -614,7 +616,7 @@ SOLwallet/
 | **Supabase** | 데이터베이스, Auth | https://supabase.com |
 | **Solana RPC** | 블록체인 RPC 노드 | Helius / QuickNode / Triton |
 | **Telegram Bot** | 봇 토큰 발급 | @BotFather |
-| **Manifest.trade** | DEX API Key | https://manifest.trade |
+| **Manifest.trade** | DEX 오더북 API (공개, API Key 불필요) | https://manifest-orders.fly.dev/docs |
 | **Vercel** | 프론트 배포 | https://vercel.com |
 
 ### 13.2 로컬 개발 환경 구축
@@ -657,7 +659,7 @@ pnpm dev
 - [ ] Supabase 프로젝트 생성
 - [ ] DB 스키마 (5개 테이블) 마이그레이션
 - [ ] Solana RPC 서비스 가입 및 엔드포인트 확보
-- [ ] Manifest.trade API Key 발급
+- [ ] Manifest.trade API 확인 (공개 API, API Key 불필요)
 - [ ] Telegram Bot 생성 (@BotFather)
 - [ ] NestJS 프로젝트 초기화 및 Telegram Bot 서버 연동
 - [ ] `/start` 진입 → 웹뷰 주소 전송 흐름 완료
@@ -676,7 +678,7 @@ pnpm dev
 
 ### 14.3 거래 기능 (Day 6~8)
 
-- [ ] Manifest SDK 초기화 및 연동
+- [ ] Manifest API 연동 (공개 API, unsigned tx → 온디바이스 서명 → 제출)
 - [ ] 오더북 실시간 조회 UI
 - [ ] 현재가(체결가) 조회 API
 - [ ] Limit Buy 주문 생성 플로우

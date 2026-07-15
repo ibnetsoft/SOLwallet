@@ -39,3 +39,15 @@ export const WALLET_ENCRYPTION = {
   iterations: 100000,
   keyLength: 256,
 } as const;
+
+/** Manifest.trade API 설정 (공개 API — API Key 불필요) */
+export const MANIFEST = {
+  /** Base URL */
+  baseUrl: 'https://manifest-orders.fly.dev/v1',
+  /** 엔드포인트 */
+  endpoints: {
+    createOrder: '/orders',
+    getOrders: '/orders',
+    cancelOrder: '/orders',
+  } as const,
+} as const;
