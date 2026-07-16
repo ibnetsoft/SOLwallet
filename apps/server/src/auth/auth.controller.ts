@@ -1,9 +1,11 @@
-import { Controller, Post, Body, UnauthorizedException } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
+import { Controller, Post, Body, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Throttle, SkipThrottle, ThrottlerGuard } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { UserService } from '../user/user.service';
 
 @Controller('auth')
+@UseGuards(ThrottlerGuard)
+@SkipThrottle() // 기본적으로 건너뛰기 — 개별 엔드포인트에서 명시적 설정
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
@@ -16,7 +18,7 @@ export class AuthController {
    * Rate limit: 10회/분 (무차별 대입 방지)
    */
   @Post('telegram')
-  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
   async telegramAuth(@Body() body: { initData: string }) {
     if (!body.initData) {
       throw new UnauthorizedException('initData is required.');
@@ -59,7 +61,7 @@ export class AuthController {
    * Rate limit: 5회/분 (타이밍 공격 + 브루트포스 방지)
    */
   @Post('admin')
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   async adminAuth(@Body() body: { secret: string }) {
     if (!body.secret) {
       throw new UnauthorizedException('Admin secret is required.');

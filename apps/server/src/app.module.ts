@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { SupabaseModule } from './supabase/supabase.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { AuthModule } from './auth/auth.module';
@@ -17,9 +16,9 @@ import { HealthController } from './health.controller';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      envFilePath: ['.env', '../../.env'],
     }),
-    // 글로벌 Rate Limiting — 기본 100회/분 (auth 엔드포인트에서 별도 override)
+    // 글로벌 Rate Limiting — auth 엔드포인트에서 별도 override
     ThrottlerModule.forRoot([
       {
         ttl: 60000,
@@ -37,11 +36,5 @@ import { HealthController } from './health.controller';
     AdminModule,
   ],
   controllers: [HealthController],
-  providers: [
-    {
-      provide: APP_GUARD,
-      useClass: ThrottlerGuard,
-    },
-  ],
 })
 export class AppModule {}

@@ -17,7 +17,12 @@ export class TelegramModule implements OnModuleInit {
   async onModuleInit() {
     const token = this.configService.get<string>('TELEGRAM_BOT_TOKEN');
     if (token) {
-      await this.telegramService.launchBot(token);
+      // Telegram bot을 비동기로 시작 — 서버 부팅을 블로킹하지 않음
+      // bot.launch()는 long polling으로 인해 hang될 수 있음
+      this.telegramService.launchBot(token).catch((err) => {
+        // eslint-disable-next-line no-console
+        console.warn('⚠️ Telegram bot failed to start:', err instanceof Error ? err.message : String(err));
+      });
     } else {
       console.warn('⚠️ TELEGRAM_BOT_TOKEN is not set. Bot will not run.');
     }
