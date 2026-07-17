@@ -232,23 +232,26 @@ export default function UsersPage() {
             <p className="text-gray-400 text-sm">지갑이 없습니다.</p>
           ) : (
             <div className="space-y-3">
-              {wallets.map((w) => (
-                <div key={w.id as string} className="bg-gray-900/50 rounded-lg p-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-400 mb-1">지갑 #{String(w.wallet_index) ?? '—'}</p>
-                    <p className="text-sm font-mono text-gray-300">
-                      {String(w.public_key ?? '').slice(0, 12)}...{String(w.public_key ?? '').slice(-6)}
-                    </p>
+              {wallets.map((w) => {
+                const wallet = w as { id: string; publicKey: string; walletIndex: number; label: string; isActive: boolean };
+                return (
+                  <div key={wallet.id} className="bg-gray-900/50 rounded-lg p-4 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-gray-400 mb-1">지갑 #{wallet.walletIndex} · {wallet.label}</p>
+                      <p className="text-sm font-mono text-gray-300">
+                        {wallet.publicKey.slice(0, 12)}...{wallet.publicKey.slice(-6)}
+                      </p>
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      wallet.isActive
+                        ? 'bg-success/20 text-success'
+                        : 'bg-gray-700 text-gray-400'
+                    }`}>
+                      {wallet.isActive ? '활성' : '비활성'}
+                    </span>
                   </div>
-                  <span className={`text-xs px-2 py-1 rounded-full ${
-                    w.is_active
-                      ? 'bg-success/20 text-success'
-                      : 'bg-gray-700 text-gray-400'
-                  }`}>
-                    {w.is_active ? '활성' : '비활성'}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

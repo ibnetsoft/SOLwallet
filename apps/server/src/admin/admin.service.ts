@@ -105,7 +105,15 @@ export class AdminService {
       .eq('user_id', userId)
       .order('wallet_index', { ascending: true });
 
-    return wallets || [];
+    return (wallets || []).map((w) => ({
+      id: w.id,
+      userId: w.user_id,
+      publicKey: w.public_key,
+      walletIndex: w.wallet_index,
+      label: w.label,
+      isActive: w.is_active,
+      createdAt: w.created_at,
+    }));
   }
 
   /**
@@ -165,7 +173,7 @@ export class AdminService {
   }
 
   /**
-   * 토큰 목록
+   * 토큰 목록 — camelCase 변환
    */
   async getTokens() {
     const { data } = await this.client
@@ -173,7 +181,14 @@ export class AdminService {
       .select('*')
       .order('created_at', { ascending: false });
 
-    return data || [];
+    return (data || []).map((t) => ({
+      id: t.id,
+      mintAddress: t.mint_address,
+      symbol: t.symbol,
+      decimals: t.decimals,
+      isActive: t.is_active,
+      createdAt: t.created_at,
+    }));
   }
 
   /**

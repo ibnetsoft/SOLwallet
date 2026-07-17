@@ -13,7 +13,17 @@ export function getUsers(page = 1, pageSize = 20): Promise<{ users: AdminUserDet
   return apiFetch(`/admin/users?page=${page}&pageSize=${pageSize}`);
 }
 
-export function getUserWallets(userId: string): Promise<Array<Record<string, unknown>>> {
+export interface AdminWalletDetail {
+  id: string;
+  userId: string;
+  publicKey: string;
+  walletIndex: number;
+  label: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export function getUserWallets(userId: string): Promise<AdminWalletDetail[]> {
   return apiFetch(`/admin/users/${userId}/wallets`);
 }
 
