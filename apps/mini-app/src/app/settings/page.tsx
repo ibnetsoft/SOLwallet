@@ -10,6 +10,7 @@ import MnemonicDisplay from '@/components/MnemonicDisplay';
 import { MAX_WALLETS } from '@solwallet/config';
 import { getUserProfile } from '@/lib/api/user';
 import type { UserProfile } from '@/lib/api/user';
+import { isLoggedIn } from '@/lib/api/auth';
 
 export default function SettingsPage() {
   const {
@@ -38,6 +39,10 @@ export default function SettingsPage() {
 
   // 초기화
   useEffect(() => {
+    if (!isLoggedIn()) {
+      window.location.href = '/login';
+      return;
+    }
     if (!isInitialized) {
       initialize();
     }

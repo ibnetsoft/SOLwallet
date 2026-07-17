@@ -58,7 +58,7 @@ export class AuthController {
   /**
    * POST /api/auth/admin
    * Admin secret 검증 → Admin JWT 발급
-   * Rate limit: 5회/분 (타이밍 공격 + 브루트포스 방지)
+   * Rate limit: 10회/분
    */
   @Post('admin')
   @Throttle({ default: { limit: 10, ttl: 60000 } })
@@ -77,6 +77,43 @@ export class AuthController {
     return {
       success: true,
       data: { token },
+    };
+  }
+
+  /**
+   * POST /api/auth/dev
+   * 개발용 bypass — Telegram 없이 테스트 유저로 로그인
+   * ⚠️ NODE_ENV=development에서만 작동 (프로덕션에서는 403)
+   */
+  @Post('dev')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  async devAuth(@Body() body: { telegramUid?: number; username?: string }) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new UnauthorizedException('개발 모드 전용 엔드포인트입니다.');
+    }
+
+    // 테스트 유저 upsert (Telegram UID 999999999 = 개발용)
+    const testUid = body.telegramUid || 999999999;
+    const user = await this.userService.upsertUser({
+      telegramUid: testUid,
+      username: body.username || 'dev_user',
+      firstName: 'Dev',
+      lastName: 'User',
+    });
+
+    const token = this.authService.generateToken(user.id, testUid);
+
+    return {
+      success: true,
+      data: {
+        token,
+        user: {
+          id: user.id,
+          telegram_uid: user.telegram_uid,
+          username: user.username,
+          first_name: user.first_name,
+        },
+      },
     };
   }
 }

@@ -1,15 +1,18 @@
 'use client';
 
 import { useEffect, useState, useCallback, Suspense } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useWalletStore } from '@/stores/useWalletStore';
 import { getPortfolio } from '@/lib/api/balance';
 import { useToast } from '@/components/Toast';
 import { SkeletonStatCard, SkeletonCard } from '@/components/Skeleton';
 import DepositModal from '@/components/DepositModal';
+import { isLoggedIn } from '@/lib/api/auth';
 import type { Portfolio } from '@/lib/api/balance';
 
 function HomePage() {
+  const router = useRouter();
   const {
     wallets,
     activeWalletId,
@@ -23,13 +26,19 @@ function HomePage() {
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [isLoadingPortfolio, setIsLoadingPortfolio] = useState(false);
   const [showDeposit, setShowDeposit] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
 
-  // 초기화
+  // 초기화 + auth 체크
   useEffect(() => {
+    if (!isLoggedIn()) {
+      router.replace('/login');
+      return;
+    }
+    setAuthChecked(true);
     if (!isInitialized) {
       initialize();
     }
-  }, [isInitialized, initialize]);
+  }, [isInitialized, initialize, router]);
 
   // 포트폴리오 조회
   const fetchPortfolio = useCallback(async () => {
@@ -75,6 +84,15 @@ function HomePage() {
   // 주소 축약
   const truncateAddr = (addr: string) =>
     `${addr.slice(0, 4)}...${addr.slice(-4)}`;
+
+  // auth 확인 전에는 로딩
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-gray-400">로딩...</p>
+      </div>
+    );
+  }
 
   return (
     <main className="min-h-screen p-4 pb-24">

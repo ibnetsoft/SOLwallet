@@ -10,6 +10,7 @@ import PinModal from '@/components/PinModal';
 import { SkeletonCard } from '@/components/Skeleton';
 import { FEE_RATE, QUICK_AMOUNT_RATIOS } from '@solwallet/config';
 import { getWalletBalance } from '@/lib/api/balance';
+import { isLoggedIn } from '@/lib/api/auth';
 
 function TradeContent() {
   const {
@@ -46,6 +47,10 @@ function TradeContent() {
 
   // 초기화 + URL ?type= 파라미터 처리
   useEffect(() => {
+    if (!isLoggedIn()) {
+      window.location.href = '/login';
+      return;
+    }
     fetchTokens();
     fetchActiveOrders();
 
