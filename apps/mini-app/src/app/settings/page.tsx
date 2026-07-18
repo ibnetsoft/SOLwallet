@@ -9,6 +9,8 @@ import { BottomNav } from '@/components/BottomNav';
 import SeedInput from '@/components/SeedInput';
 import MnemonicDisplay from '@/components/MnemonicDisplay';
 import { MAX_WALLETS } from '@solwallet/config';
+import { getUserProfile } from '@/lib/api/user';
+import type { UserProfile } from '@/lib/api/user';
 import { isLoggedIn } from '@/lib/api/auth';
 
 export default function SettingsPage() {
@@ -34,6 +36,7 @@ export default function SettingsPage() {
   const [createdMnemonic, setCreatedMnemonic] = useState('');
   const [pinError, setPinError] = useState('');
   const [actionLoading, setActionLoading] = useState<string | false>(false);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
 
   // 초기화
   useEffect(() => {
@@ -44,6 +47,8 @@ export default function SettingsPage() {
     if (!isInitialized) {
       initialize();
     }
+    // 프로필 조회
+    getUserProfile().then(setProfile).catch(() => {});
   }, [isInitialized, initialize]);
 
   // 새 지갑 생성 → PIN 설정
@@ -214,6 +219,66 @@ export default function SettingsPage() {
               </div>
             ))
           )}
+        </div>
+      </section>
+
+      {/* Referral Section — 헤더 없이 본문만 */}
+      {profile && (
+        <section className="mb-6">
+          <div className="bg-gray-800/50 rounded-xl p-4 space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-400">내 추천 코드</span>
+              <button
+                onClick={() => {
+                  if (profile.referralCode) {
+                    navigator.clipboard.writeText(profile.referralCode).then(
+                      () => showToast('추천 코드가 복사되었습니다.'),
+                      () => {},
+                    );
+                  }
+                }}
+                className="text-xs bg-primary-600/20 text-primary-400 px-3 py-1 rounded-lg hover:bg-primary-600/30 transition"
+              >
+                {profile.referralCode.slice(0, 8)}... 복사
+              </button>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-400">초대한 친구</span>
+              <span className="font-medium">{profile.referralCount}명</span>
+            </div>
+            {profile.referrer && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-400">내 추천인</span>
+                <span>{profile.referrer.username || profile.referrer.first_name}</span>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* App Info — 헤더 없이 본문만 */}
+      <section className="mb-6">
+        <div className="bg-gray-800/50 rounded-xl p-4 space-y-2">
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-400">버전</span>
+            <span>v0.2.0</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-400">네트워크</span>
+            <span>Mainnet</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-400">DEX</span>
+            <span>Manifest.trade</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-400">최대 지갑</span>
+            <span>{MAX_WALLETS}개</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-400">수수료</span>
+            <span>1%</span>
+          </div>
         </div>
       </section>
 
