@@ -3,14 +3,37 @@
 import { useEffect, useState, useCallback, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  History,
+  Settings,
+  Copy,
+  Pickaxe,
+  CircleDot,
+} from 'lucide-react';
 import { useWalletStore } from '@/stores/useWalletStore';
 import { getPortfolio } from '@/lib/api/balance';
+import { fetchSolPrice, type SolPriceData } from '@/lib/api/price';
+import { useRoi } from '@/lib/hooks/useRoi';
+import { Sparkline } from '@/components/Sparkline';
 import { useToast } from '@/components/Toast';
-import { SkeletonStatCard, SkeletonCard } from '@/components/Skeleton';
 import DepositModal from '@/components/DepositModal';
 import WithdrawModal from '@/components/WithdrawModal';
 import { isLoggedIn } from '@/lib/api/auth';
-import type { Portfolio } from '@/lib/api/balance';
+import type { Portfolio, WalletBalance } from '@/lib/api/balance';
+
+// 화면에 항상 노출할 기본 토큰 목록 (잔고 0이어도 표시)
+const USDT_MINT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'; // 메인넷 USDT
+
+interface DisplayToken {
+  mint: string;
+  symbol: string;
+  decimals: number;
+  balance: number;
+  badge?: 'Stable' | 'Staking';
+  isNative?: boolean;
+}
 
 function HomePage() {
   const router = useRouter();
@@ -29,6 +52,8 @@ function HomePage() {
   const [showDeposit, setShowDeposit] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
+  // SOL 시세 (Jupiter Price API)
+  const [solPrice, setSolPrice] = useState<SolPriceData | null>(null);
 
   // 초기화 + auth 체크
   useEffect(() => {
@@ -45,7 +70,6 @@ function HomePage() {
   // 포트폴리오 조회 (silent: 데이터 있으면 로딩 표시 안 함)
   const fetchPortfolio = useCallback(async (silent = false) => {
     if (!activeWalletId) return;
-    // 첫 로드이거나 데이터가 없을 때만 로딩 표시
     if (!silent || !portfolio) {
       setIsLoadingPortfolio(true);
     }
@@ -63,12 +87,27 @@ function HomePage() {
     fetchPortfolio();
   }, [activeWalletId]);
 
-  // 30초마다 자동 갱신 (silent — 깜빡임 없이)
+  // 30초마다 자동 갱신 (silent)
   useEffect(() => {
     if (!activeWalletId) return;
     const interval = setInterval(() => fetchPortfolio(true), 30_000);
     return () => clearInterval(interval);
   }, [activeWalletId]);
+
+  // SOL 시세 갱신 — 60초마다 (깜빡임 없이 상태만 업데이트)
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const p = await fetchSolPrice();
+      if (!cancelled && p) setSolPrice(p);
+    };
+    load();
+    const interval = setInterval(load, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   const activeWallet = wallets.find((w) => w.isActive) || wallets[0];
 
@@ -76,16 +115,70 @@ function HomePage() {
   const copyAddress = useCallback(() => {
     if (!activeWallet?.publicKey) return;
     navigator.clipboard.writeText(activeWallet.publicKey).then(
-      () => showToast('📋 주소가 복사되었습니다.'),
-      () => showToast('❌ 복사에 실패했습니다.'),
+      () => showToast('주소가 복사되었습니다.'),
+      () => showToast('복사에 실패했습니다.'),
     );
   }, [activeWallet?.publicKey, showToast]);
 
-  // 포트폴리오에서 데이터 추출
-  const totalUsdt = portfolio?.totalUsdt ?? 0;
-  const holdings = portfolio?.wallets?.[0] ?? null;
+  // ===== 표시용 데이터 구성 =====
+  const holdings: (WalletBalance & { publicKey: string }) | null =
+    portfolio?.wallets?.[0] ?? null;
   const solBalance = holdings?.sol ?? 0;
-  const tokenBalances = holdings?.tokens ?? [];
+  const rawTokens = holdings?.tokens ?? [];
+  const totalUsdt = portfolio?.totalUsdt ?? 0;
+
+  // SOL USD 환산가 — Jupiter 시세 기반 (없으면 0)
+  const solUsdPrice = solPrice?.usdPrice ?? 0;
+  const solUsdValue = solBalance * solUsdPrice;
+  const solChangePct = solPrice?.change24hPct;
+
+  // 총 자산 — SOL 시세 반영
+  const computedTotal = solUsdPrice > 0 ? totalUsdt + solUsdValue : totalUsdt;
+
+  // ROI 추적 (localStorage 기반)
+  const roi = useRoi(computedTotal);
+  const sparkData = roi.history.length >= 2 ? roi.history.map((p) => p.v) : [computedTotal, computedTotal];
+
+  // 기본 토큰 강제 포함: USDT(Stable), SOL(Staking)
+  // 1) USDT — 보유 중이면 그것 사용, 없으면 0으로 생성
+  const usdtFromPortfolio =
+    rawTokens.find(
+      (t) => t.mint === USDT_MINT || t.symbol?.toUpperCase() === 'USDT',
+    ) ?? null;
+  const usdtToken: DisplayToken = {
+    mint: usdtFromPortfolio?.mint ?? USDT_MINT,
+    symbol: 'USDT',
+    decimals: usdtFromPortfolio?.decimals ?? 6,
+    balance: usdtFromPortfolio?.balance ?? 0,
+    badge: 'Stable',
+  };
+
+  // 2) SOL — 항상 2번째
+  const solToken: DisplayToken = {
+    mint: 'So11111111111111111111111111111111111111112',
+    symbol: 'SOL',
+    decimals: 9,
+    balance: solBalance,
+    badge: 'Staking',
+    isNative: true,
+  };
+
+  // 3) 나머지 토큰 — USDT/SOL 제외
+  const otherTokens: DisplayToken[] = rawTokens
+    .filter(
+      (t) =>
+        t.mint !== USDT_MINT &&
+        t.symbol?.toUpperCase() !== 'USDT' &&
+        t.symbol?.toUpperCase() !== 'SOL',
+    )
+    .map((t) => ({
+      mint: t.mint,
+      symbol: t.symbol,
+      decimals: t.decimals,
+      balance: t.balance,
+    }));
+
+  const displayTokens: DisplayToken[] = [usdtToken, solToken, ...otherTokens];
 
   // 주소 축약
   const truncateAddr = (addr: string) =>
@@ -102,33 +195,58 @@ function HomePage() {
 
   return (
     <main className="min-h-screen p-4 pb-24">
-      {/* Header — Wallet Area */}
-      <header className="mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-xl font-bold">DEX MINER BOT</h1>
-            <p className="text-sm text-gray-400">지정가 거래 전용</p>
+      {/* ===== Header ===== */}
+      <header className="mb-5">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            {/* DEX MINER BOT Logo */}
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-md">
+              <Pickaxe className="w-5 h-5 text-gray-900" strokeWidth={2.5} />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold tracking-tight">DEX MINER BOT</h1>
+              <p className="text-[10px] text-gray-500 -mt-0.5">지정가 거래 전용</p>
+            </div>
           </div>
-          <Link href="/settings" className="text-2xl">⚙️</Link>
+
+          <div className="flex items-center gap-3">
+            {/* Solana Network 상태 표시등 (모양만) */}
+            <div className="flex items-center gap-1.5">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+              </span>
+              <span className="text-[10px] text-gray-400">Solana</span>
+            </div>
+
+            <Link
+              href="/settings"
+              className="p-1.5 rounded-lg hover:bg-gray-800 transition text-gray-400"
+              aria-label="설정"
+            >
+              <Settings className="w-5 h-5" />
+            </Link>
+          </div>
         </div>
 
         {/* Wallet Address */}
-        <div className="bg-gray-800/50 rounded-xl p-4">
-          <p className="text-xs text-gray-400 mb-1">내 지갑</p>
+        <div className="bg-gray-800/50 rounded-xl p-3">
+          <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wider">내 지갑</p>
           {activeWallet ? (
             <div className="flex items-center justify-between">
-              <p className="text-sm font-mono">
+              <p className="text-xs font-mono text-gray-300">
                 {truncateAddr(activeWallet.publicKey)}
               </p>
               <button
                 onClick={copyAddress}
-                className="text-xs bg-gray-700 px-2 py-1 rounded hover:bg-gray-600 transition"
+                className="p-1.5 rounded-lg bg-gray-700/50 hover:bg-gray-700 transition text-gray-300"
+                aria-label="주소 복사"
               >
-                복사
+                <Copy className="w-3.5 h-3.5" />
               </button>
             </div>
           ) : (
-            <p className="text-sm text-gray-500">
+            <p className="text-xs text-gray-500">
               <Link href="/settings" className="text-primary-400 hover:underline">
                 지갑을 생성해주세요 →
               </Link>
@@ -137,130 +255,152 @@ function HomePage() {
         </div>
       </header>
 
-      {/* Total Balance */}
-      <section className="bg-gray-800/50 rounded-xl p-4 mb-6">
-        <p className="text-xs text-gray-400 mb-1">전체 자산 (USDT)</p>
-        {isLoadingPortfolio ? (
-          <SkeletonStatCard />
-        ) : (
-          <>
-            <p className="text-3xl font-bold">
-              ${totalUsdt > 0 ? totalUsdt.toFixed(2) : '0.00'}
-            </p>
-            <div className="flex gap-4 mt-2">
-              <span className="text-sm text-gray-400">
-                SOL: {solBalance.toFixed(4)}
-              </span>
-            </div>
+      {/* ===== Total Balance (고정 높이 — 레이아웃 흔들림 방지) ===== */}
+      <section className="bg-gray-800/50 rounded-2xl p-5 mb-5">
+        <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">전체 자산</p>
+        <div className="flex items-baseline gap-2">
+          <span className="text-3xl font-bold tabular-nums">
+            ${computedTotal > 0 ? computedTotal.toFixed(2) : '0.00'}
+          </span>
+          <span className="text-xs text-gray-500">USDT</span>
+        </div>
 
-            {/* Quick Action Buttons */}
-            <div className="flex gap-2 mt-4">
-              <button
-                onClick={() => {
-                  if (activeWallet) {
-                    setShowDeposit(true);
-                  } else {
-                    showToast('⚠️ 먼저 지갑을 생성해주세요.');
-                  }
-                }}
-                className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition"
-              >
-                입금
-              </button>
-              <button
-                className="flex-1 bg-gray-700 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-600 transition"
-                onClick={() => {
-                  if (!activeWallet) {
-                    showToast('⚠️ 먼저 지갑을 생성해주세요.');
-                  } else if (solBalance <= 0) {
-                    showToast('⚠️ 출금 가능한 SOL 잔액이 없습니다.');
-                  } else {
-                    setShowWithdraw(true);
-                  }
-                }}
-              >
-                출금
-              </button>
-              <Link
-                href="/settings"
-                className="flex-1 bg-gray-700 text-white py-2 rounded-lg text-sm font-medium hover:bg-gray-600 transition text-center"
-              >
-                지갑관리
-              </Link>
-            </div>
-          </>
-        )}
+        {/* ROI Sparkline 차트 */}
+        <div className="mt-3 mb-1">
+          <Sparkline data={sparkData} width={280} height={48} />
+        </div>
+
+        {/* ROI 서브 통계 — 최초잔고 / 총 수익 / 수익률 */}
+        <div className="grid grid-cols-3 gap-2 mt-3">
+          <div>
+            <p className="text-[9px] text-gray-500 uppercase tracking-wider">최초잔고</p>
+            <p className="text-xs font-medium text-gray-300 tabular-nums mt-0.5">
+              ${roi.initialBalance > 0 ? roi.initialBalance.toFixed(2) : '0.00'}
+            </p>
+          </div>
+          <div>
+            <p className="text-[9px] text-gray-500 uppercase tracking-wider">총 수익</p>
+            <p
+              className={`text-xs font-medium tabular-nums mt-0.5 ${
+                roi.totalProfit >= 0 ? 'text-green-400' : 'text-red-400'
+              }`}
+            >
+              {roi.totalProfit >= 0 ? '+' : ''}
+              {roi.totalProfit.toFixed(2)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[9px] text-gray-500 uppercase tracking-wider">수익률</p>
+            <p
+              className={`text-xs font-medium tabular-nums mt-0.5 ${
+                roi.roiPct >= 0 ? 'text-green-400' : 'text-red-400'
+              }`}
+            >
+              {roi.roiPct >= 0 ? '+' : ''}
+              {roi.roiPct.toFixed(2)}%
+            </p>
+          </div>
+        </div>
+
+        {/* Quick Action Buttons — 입금 / 출금 / 입출금내역 */}
+        <div className="grid grid-cols-3 gap-2 mt-4">
+          <button
+            onClick={() => {
+              if (activeWallet) {
+                setShowDeposit(true);
+              } else {
+                showToast('먼저 지갑을 생성해주세요.');
+              }
+            }}
+            className="flex flex-col items-center justify-center gap-1 bg-gray-700/40 hover:bg-gray-700/70 border border-gray-700/50 py-2.5 rounded-xl text-xs text-gray-200 transition"
+          >
+            <ArrowDownToLine className="w-4 h-4" strokeWidth={2} />
+            <span>입금</span>
+          </button>
+          <button
+            onClick={() => {
+              if (!activeWallet) {
+                showToast('먼저 지갑을 생성해주세요.');
+              } else if (solBalance <= 0) {
+                showToast('출금 가능한 SOL 잔액이 없습니다.');
+              } else {
+                setShowWithdraw(true);
+              }
+            }}
+            className="flex flex-col items-center justify-center gap-1 bg-gray-700/40 hover:bg-gray-700/70 border border-gray-700/50 py-2.5 rounded-xl text-xs text-gray-200 transition"
+          >
+            <ArrowUpFromLine className="w-4 h-4" strokeWidth={2} />
+            <span>출금</span>
+          </button>
+          <Link
+            href="/transactions"
+            className="flex flex-col items-center justify-center gap-1 bg-gray-700/40 hover:bg-gray-700/70 border border-gray-700/50 py-2.5 rounded-xl text-xs text-gray-200 transition"
+          >
+            <History className="w-4 h-4" strokeWidth={2} />
+            <span>내역</span>
+          </Link>
+        </div>
       </section>
 
-      {/* Trading Banner */}
-      <section className="mb-6">
-        <div className="bg-gradient-to-r from-primary-600 to-primary-800 rounded-xl p-4 text-center">
-          <p className="text-sm text-primary-200 mb-3">🚀 토큰 거래하러 가기</p>
+      {/* ===== Trading Banner ===== */}
+      <section className="mb-5">
+        <div className="bg-gradient-to-r from-primary-600 to-primary-800 rounded-2xl p-4 text-center">
+          <p className="text-xs text-primary-200 mb-3">토큰 거래하러 가기</p>
           <div className="flex gap-2 justify-center">
             <Link
               href="/trade?type=buy"
-              className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-bold transition"
+              className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl text-sm font-bold transition"
             >
-              📈 BUY
+              BUY
             </Link>
             <Link
               href="/trade?type=sell"
-              className="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-lg font-bold transition"
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-xl text-sm font-bold transition"
             >
-              📉 SELL
+              SELL
             </Link>
           </div>
         </div>
       </section>
 
-      {/* Holdings */}
+      {/* ===== Holdings (고정 구조 — 깜빡임 방지) ===== */}
       <section>
-        <h2 className="text-lg font-bold mb-3">보유 자산</h2>
-        {isLoadingPortfolio ? (
-          <div className="space-y-2">
-            <SkeletonCard />
-            <SkeletonCard />
-          </div>
-        ) : tokenBalances.length > 0 || solBalance > 0 ? (
-          <div className="space-y-2">
-            {/* SOL */}
-            <div className="bg-gray-800/50 rounded-xl p-4 flex items-center justify-between">
-              <div>
-                <p className="font-medium">SOL</p>
-                <p className="text-sm text-gray-400">{solBalance.toFixed(4)} SOL</p>
-              </div>
-              <p className="text-right">
-                <p className="font-medium">
-                  ${solBalance > 0 ? solBalance.toFixed(2) : '0.00'}
-                </p>
-              </p>
-            </div>
-            {/* SPL Tokens */}
-            {tokenBalances.map((t) => (
-              <div
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base font-bold">보유 자산</h2>
+          <span className="text-[10px] text-gray-500">{displayTokens.length} 종목</span>
+        </div>
+
+        {/* displayTokens가 항상 렌더링되므로 로딩 상태와 무관하게 레이아웃 안정 */}
+        <div className="space-y-2">
+          {displayTokens.map((t) => {
+            const isSol = t.symbol === 'SOL';
+            const isUsdt = t.symbol === 'USDT';
+            return (
+              <AssetRow
                 key={t.mint}
-                className="bg-gray-800/50 rounded-xl p-4 flex items-center justify-between"
-              >
-                <div>
-                  <p className="font-medium">{t.symbol}</p>
-                  <p className="text-sm text-gray-400">{t.balance.toFixed(4)} {t.symbol}</p>
-                </div>
-                <p className="text-right">
-                  <p className="font-medium">
-                    ${t.balance > 0 ? t.balance.toFixed(2) : '0.00'}
-                  </p>
-                </p>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-4 text-gray-500 text-sm">
-            보유 자산이 없습니다. 입금하여 시작하세요.
-          </div>
-        )}
+                symbol={t.symbol}
+                balance={t.balance}
+                badge={t.badge}
+                usdValue={
+                  isUsdt
+                    ? t.balance
+                    : isSol
+                      ? solUsdValue
+                      : t.balance
+                }
+                priceText={
+                  isSol
+                    ? `$${solUsdPrice.toFixed(2)}`
+                    : undefined
+                }
+                changePct={isSol ? solChangePct : undefined}
+              />
+            );
+          })}
+        </div>
       </section>
 
-      {/* Bottom Nav */}
+      {/* ===== Bottom Nav ===== */}
       <nav className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur border-t border-gray-800">
         <div className="flex justify-around py-2">
           <Link href="/" className="flex flex-col items-center text-primary-500 py-1">
@@ -298,6 +438,73 @@ function HomePage() {
         />
       )}
     </main>
+  );
+}
+
+// ===== 자산 행 컴포넌트 =====
+function AssetRow({
+  symbol,
+  balance,
+  badge,
+  usdValue,
+  priceText,
+  changePct,
+}: {
+  symbol: string;
+  balance: number;
+  badge?: 'Stable' | 'Staking';
+  usdValue: number;
+  priceText?: string;
+  changePct?: number;
+}) {
+  const badgeStyle =
+    badge === 'Stable'
+      ? 'bg-blue-500/15 text-blue-400 border border-blue-500/20'
+      : badge === 'Staking'
+        ? 'bg-purple-500/15 text-purple-400 border border-purple-500/20'
+        : '';
+
+  return (
+    <div className="bg-gray-800/50 rounded-xl p-3.5 flex items-center justify-between min-h-[64px]">
+      <div className="flex items-center gap-3">
+        {/* 토큰 아이콘 자리 (심볼 첫 글자) */}
+        <div className="w-9 h-9 rounded-full bg-gray-700 flex items-center justify-center text-xs font-bold text-gray-300 shrink-0">
+          {symbol.charAt(0)}
+        </div>
+        <div>
+          <div className="flex items-center gap-2">
+            <p className="font-medium text-sm">{symbol}</p>
+            {badge && (
+              <span className={`text-[9px] px-1.5 py-0.5 rounded-full uppercase tracking-wide ${badgeStyle}`}>
+                {badge}
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-gray-400 tabular-nums mt-0.5">
+            {balance.toFixed(4)} {symbol}
+          </p>
+        </div>
+      </div>
+      <div className="text-right">
+        <p className="font-medium text-sm tabular-nums">
+          ${usdValue > 0 ? usdValue.toFixed(2) : '0.00'}
+        </p>
+        {priceText && (
+          <p className="text-[10px] text-gray-500 tabular-nums mt-0.5">
+            {priceText}
+          </p>
+        )}
+        {typeof changePct === 'number' && (
+          <p
+            className={`text-[10px] tabular-nums mt-0.5 ${
+              changePct >= 0 ? 'text-green-400' : 'text-red-400'
+            }`}
+          >
+            {changePct >= 0 ? '▲' : '▼'} {Math.abs(changePct).toFixed(2)}%
+          </p>
+        )}
+      </div>
+    </div>
   );
 }
 
