@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowDownToLine, ArrowUpFromLine, Activity } from 'lucide-react';
 import { getOrderHistory } from '@/lib/api/orders';
+import { BottomNav } from '@/components/BottomNav';
 import { isLoggedIn } from '@/lib/api/auth';
 
 interface OrderItem {
@@ -161,22 +162,7 @@ export default function TransactionsPage() {
       )}
 
       {/* Bottom Nav */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur border-t border-gray-800">
-        <div className="flex justify-around py-2">
-          <Link href="/" className="flex flex-col items-center text-gray-500 py-1">
-            <span className="text-lg">🏠</span>
-            <span className="text-xs">홈</span>
-          </Link>
-          <Link href="/trade" className="flex flex-col items-center text-gray-500 py-1">
-            <span className="text-lg">📊</span>
-            <span className="text-xs">거래</span>
-          </Link>
-          <Link href="/settings" className="flex flex-col items-center text-gray-500 py-1">
-            <span className="text-lg">⚙️</span>
-            <span className="text-xs">설정</span>
-          </Link>
-        </div>
-      </nav>
+      <BottomNav />
     </main>
   );
 }

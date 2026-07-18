@@ -9,9 +9,6 @@ import {
   History,
   Copy,
   Pickaxe,
-  Home as HomeIcon,
-  BarChart3,
-  Settings,
 } from 'lucide-react';
 import { useWalletStore } from '@/stores/useWalletStore';
 import { getPortfolio } from '@/lib/api/balance';
@@ -19,6 +16,7 @@ import { fetchSolPrice, type SolPriceData } from '@/lib/api/price';
 import { useRoi } from '@/lib/hooks/useRoi';
 import { getTokenLogoUrl } from '@/lib/tokenLogo';
 import { Sparkline } from '@/components/Sparkline';
+import { BottomNav } from '@/components/BottomNav';
 import { useToast } from '@/components/Toast';
 import DepositModal from '@/components/DepositModal';
 import WithdrawModal from '@/components/WithdrawModal';
@@ -431,23 +429,8 @@ function HomePage() {
         </div>
       </section>
 
-      {/* ===== Bottom Nav ===== */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur border-t border-gray-800">
-        <div className="flex justify-around py-2">
-          <Link href="/" className="flex flex-col items-center gap-0.5 text-primary-500 py-1">
-            <HomeIcon className="w-5 h-5" strokeWidth={2} />
-            <span className="text-[10px]">홈</span>
-          </Link>
-          <Link href="/trade" className="flex flex-col items-center gap-0.5 text-gray-500 py-1">
-            <BarChart3 className="w-5 h-5" strokeWidth={2} />
-            <span className="text-[10px]">거래</span>
-          </Link>
-          <Link href="/settings" className="flex flex-col items-center gap-0.5 text-gray-500 py-1">
-            <Settings className="w-5 h-5" strokeWidth={2} />
-            <span className="text-[10px]">설정</span>
-          </Link>
-        </div>
-      </nav>
+      {/* ===== Bottom Nav (공통 컴포넌트) ===== */}
+      <BottomNav />
 
       {/* Deposit QR Modal */}
       {activeWallet && (
