@@ -11,6 +11,7 @@ import MnemonicDisplay from '@/components/MnemonicDisplay';
 import { MAX_WALLETS } from '@solwallet/config';
 import { getUserProfile } from '@/lib/api/user';
 import type { UserProfile } from '@/lib/api/user';
+import { buildShareText } from '@/lib/referral';
 import { isLoggedIn } from '@/lib/api/auth';
 
 export default function SettingsPage() {
@@ -226,20 +227,23 @@ export default function SettingsPage() {
       {profile && (
         <section className="mb-6">
           <div className="bg-gray-800/50 rounded-xl p-4 space-y-3">
+            {/* 내 추천 코드 + 링크 함께 복사 */}
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-400">내 추천 코드</span>
               <button
                 onClick={() => {
                   if (profile.referralCode) {
-                    navigator.clipboard.writeText(profile.referralCode).then(
-                      () => showToast('추천 코드가 복사되었습니다.'),
-                      () => {},
+                    // 코드 + 링크 함께 복사
+                    const shareText = buildShareText(profile.referralCode);
+                    navigator.clipboard.writeText(shareText).then(
+                      () => showToast('추천코드와 링크가 복사되었습니다.'),
+                      () => showToast('복사에 실패했습니다.'),
                     );
                   }
                 }}
-                className="text-xs bg-primary-600/20 text-primary-400 px-3 py-1 rounded-lg hover:bg-primary-600/30 transition"
+                className="text-xs bg-primary-600/20 text-primary-400 px-3 py-1.5 rounded-lg hover:bg-primary-600/30 transition"
               >
-                {profile.referralCode.slice(0, 8)}... 복사
+                {profile.referralCode} 복사
               </button>
             </div>
             <div className="flex justify-between text-sm">

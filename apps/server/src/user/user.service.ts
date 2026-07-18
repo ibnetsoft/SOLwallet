@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 
+// 추천코드 생성용 문자셋 — 혼동되는 문자 (0/O, 1/I/L) 제외
+const REFERRAL_CHARSET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const REFERRAL_CODE_LENGTH = 8;
+
 @Injectable()
 export class UserService {
   private readonly logger = new Logger(UserService.name);
@@ -9,6 +13,50 @@ export class UserService {
 
   private get client() {
     return this.supabaseService.getClient();
+  }
+
+  /**
+   * 8자리 랜덤 추천코드 생성 (대문자 + 숫자, 혼동 문자 제외)
+   * 중복 시 최대 5회 재시도
+   */
+  private async generateUniqueReferralCode(): Promise<string> {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      let code = '';
+      for (let i = 0; i < REFERRAL_CODE_LENGTH; i++) {
+        code += REFERRAL_CHARSET[Math.floor(Math.random() * REFERRAL_CHARSET.length)];
+      }
+
+      // 중복 확인
+      const { data: existing } = await this.client
+        .from('users')
+        .select('id')
+        .eq('referral_code', code)
+        .maybeSingle();
+
+      if (!existing) return code;
+    }
+    // 최후의 수단 — 타임스탬프 기반
+    return `R${Date.now().toString(36).toUpperCase().slice(-7)}`;
+  }
+
+  /**
+   * 추천코드로 추천인(referrer) 조회
+   * @returns referrer의 user id 또는 null
+   */
+  private async findReferrerIdByCode(code: string): Promise<string | null> {
+    if (!code || code.length < 4) return null;
+
+    const { data, error } = await this.client
+      .from('users')
+      .select('id')
+      .eq('referral_code', code.toUpperCase().trim())
+      .maybeSingle();
+
+    if (error) {
+      this.logger.warn(`Failed to find referrer by code: ${error.message}`);
+      return null;
+    }
+    return data?.id ?? null;
   }
 
   /**
@@ -31,13 +79,14 @@ export class UserService {
 
   /**
    * 사용자 생성 (upsert 기반) — username, first_name, last_name 모두 동기화
+   * referralCode(문자열)를 받아 referrer user id로 변환 후 연결
    */
   async upsertUser(params: {
     telegramUid: number;
     username?: string;
     firstName: string;
     lastName: string;
-    referredBy?: string;
+    referralCode?: string;
   }) {
     // 기존 유저 확인
     const existing = await this.findByTelegramUid(params.telegramUid);
@@ -57,6 +106,12 @@ export class UserService {
       }
       if (params.lastName !== existing.last_name) {
         updates.last_name = params.lastName;
+        needsUpdate = true;
+      }
+
+      // 기존 유저의 referral_code가 없으면 발급 (이전 마이그레이션 누락분 보정)
+      if (!existing.referral_code) {
+        updates.referral_code = await this.generateUniqueReferralCode();
         needsUpdate = true;
       }
 
@@ -83,11 +138,18 @@ export class UserService {
       username: params.username || null,
       first_name: params.firstName,
       last_name: params.lastName,
+      referral_code: await this.generateUniqueReferralCode(),
     };
 
-    // 추천인 코드가 있으면 referred_by 설정
-    if (params.referredBy) {
-      insertData.referred_by = params.referredBy;
+    // 추천인 코드 → referrer user id 변환 후 연결 (자기 자신 추천 방지)
+    let referrerId: string | null = null;
+    if (params.referralCode) {
+      referrerId = await this.findReferrerIdByCode(params.referralCode);
+      if (referrerId) {
+        insertData.referred_by = referrerId;
+      } else {
+        this.logger.warn(`Invalid referral code: ${params.referralCode}`);
+      }
     }
 
     const { data, error } = await this.client
@@ -102,9 +164,9 @@ export class UserService {
     }
 
     // 추천인 관계가 있으면 referrals 테이블에도 기록 (에러 시 로그만)
-    if (params.referredBy && data) {
+    if (referrerId && data) {
       const { error: refError } = await this.client.from('referrals').insert({
-        referrer_id: params.referredBy,
+        referrer_id: referrerId,
         referee_id: data.id,
       });
       if (refError) {
@@ -169,7 +231,7 @@ export class UserService {
       ...user,
       referrer,
       referralCount: refCount || 0,
-      referralCode: user.id, // 본인 ID가 추천 코드
+      referralCode: user.referral_code || user.id, // 8자리 코드 우선, 없으면 ID fallback
     };
   }
 

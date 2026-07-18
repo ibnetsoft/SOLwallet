@@ -30,13 +30,14 @@ export class TelegramService {
         );
 
         // 사용자 등록 (upsert — 기존 유저면 업데이트만)
+        // startPayload = 추천코드 (문자열) — user.service에서 referrer id로 변환
         try {
           await this.userService.upsertUser({
             telegramUid: Number(telegramUid),
             username: username || undefined,
             firstName,
             lastName,
-            referredBy: startPayload || undefined,
+            referralCode: startPayload || undefined,
           });
         } catch (error) {
           this.logger.error(`Failed to register user: ${error instanceof Error ? error.message : String(error)}`);

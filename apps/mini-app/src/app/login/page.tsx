@@ -21,7 +21,22 @@ export default function LoginPage() {
         return;
       }
 
-      // 2. Telegram WebApp 환경 확인 (SDK 로드 대기)
+      // 2. 추천인 코드 추출 — Telegram start_param 우선, URL ?ref= 폴백
+      const extractReferralCode = (): string | undefined => {
+        // Telegram 미니앱 딥링크 ?startapp=<code>
+        const startParam = window.Telegram?.WebApp?.initDataUnsafe?.start_param;
+        if (startParam && startParam.length >= 4) {
+          return startParam;
+        }
+        // 일반 웹 URL ?ref=<code>
+        const urlRef = new URLSearchParams(window.location.search).get('ref');
+        if (urlRef && urlRef.length >= 4) {
+          return urlRef;
+        }
+        return undefined;
+      };
+
+      // 3. Telegram WebApp 환경 확인 (SDK 로드 대기)
       const checkTelegram = () => {
         if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
           const tg = window.Telegram.WebApp;
@@ -30,10 +45,11 @@ export default function LoginPage() {
           const initData = tg.initData;
           if (initData && initData.length > 10) {
             setStatus('telegram');
-            // 자동 로그인
-            telegramLogin(initData)
+            // 자동 로그인 — 추천인 코드 함께 전달
+            const referralCode = extractReferralCode();
+            telegramLogin(initData, referralCode)
               .then(() => {
-                showToast('✅ Telegram 로그인 성공');
+                showToast('Telegram 로그인 성공');
                 // localStorage 저장 확인 후 이동
                 setTimeout(() => router.replace('/'), 300);
               })

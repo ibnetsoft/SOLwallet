@@ -9,6 +9,7 @@ export interface User {
   firstName?: string;
   lastName?: string;
   referredBy?: string;
+  referralCode?: string;
   createdAt: string;
   updatedAt: string;
 }

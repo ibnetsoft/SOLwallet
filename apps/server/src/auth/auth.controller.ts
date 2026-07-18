@@ -16,10 +16,11 @@ export class AuthController {
    * POST /api/auth/telegram
    * Telegram initData 검증 → 사용자 upsert → JWT 발급
    * Rate limit: 10회/분 (무차별 대입 방지)
+   * Body: { initData: string, referralCode?: string }
    */
   @Post('telegram')
   @Throttle({ default: { limit: 20, ttl: 60000 } })
-  async telegramAuth(@Body() body: { initData: string }) {
+  async telegramAuth(@Body() body: { initData: string; referralCode?: string }) {
     if (!body.initData) {
       throw new UnauthorizedException('initData is required.');
     }
@@ -27,12 +28,13 @@ export class AuthController {
     // Telegram 서명 검증
     const authData = this.authService.validateTelegramAuth(body.initData);
 
-    // 사용자 upsert (없으면 생성, 있으면 업데이트)
+    // 사용자 upsert — referralCode 전달 (신규 가입 시에만 referrer 연결)
     const user = await this.userService.upsertUser({
       telegramUid: authData.telegramUid,
       username: authData.username,
       firstName: authData.firstName,
       lastName: authData.lastName,
+      referralCode: body.referralCode,
     });
 
     // JWT 발급
