@@ -10,6 +10,7 @@ import { OrdersModule } from './orders/orders.module';
 import { BalanceModule } from './balance/balance.module';
 import { TokensModule } from './tokens/tokens.module';
 import { AdminModule } from './admin/admin.module';
+import { WithdrawModule } from './withdraw/withdraw.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -34,6 +35,7 @@ import { HealthController } from './health.controller';
     BalanceModule,
     TokensModule,
     AdminModule,
+    WithdrawModule,
   ],
   controllers: [HealthController],
 })

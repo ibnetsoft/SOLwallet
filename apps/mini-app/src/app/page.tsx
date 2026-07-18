@@ -8,6 +8,7 @@ import { getPortfolio } from '@/lib/api/balance';
 import { useToast } from '@/components/Toast';
 import { SkeletonStatCard, SkeletonCard } from '@/components/Skeleton';
 import DepositModal from '@/components/DepositModal';
+import WithdrawModal from '@/components/WithdrawModal';
 import { isLoggedIn } from '@/lib/api/auth';
 import type { Portfolio } from '@/lib/api/balance';
 
@@ -26,6 +27,7 @@ function HomePage() {
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [isLoadingPortfolio, setIsLoadingPortfolio] = useState(false);
   const [showDeposit, setShowDeposit] = useState(false);
+  const [showWithdraw, setShowWithdraw] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
 
   // 초기화 + auth 체크
@@ -40,10 +42,13 @@ function HomePage() {
     }
   }, [isInitialized, initialize, router]);
 
-  // 포트폴리오 조회
-  const fetchPortfolio = useCallback(async () => {
+  // 포트폴리오 조회 (silent: 데이터 있으면 로딩 표시 안 함)
+  const fetchPortfolio = useCallback(async (silent = false) => {
     if (!activeWalletId) return;
-    setIsLoadingPortfolio(true);
+    // 첫 로드이거나 데이터가 없을 때만 로딩 표시
+    if (!silent || !portfolio) {
+      setIsLoadingPortfolio(true);
+    }
     try {
       const data = await getPortfolio();
       setPortfolio(data);
@@ -52,17 +57,18 @@ function HomePage() {
     } finally {
       setIsLoadingPortfolio(false);
     }
-  }, [activeWalletId]);
+  }, [activeWalletId, portfolio]);
 
   useEffect(() => {
     fetchPortfolio();
-  }, [fetchPortfolio]);
+  }, [activeWalletId]);
 
-  // 30초마다 자동 갱신
+  // 30초마다 자동 갱신 (silent — 깜빡임 없이)
   useEffect(() => {
-    const interval = setInterval(fetchPortfolio, 30_000);
+    if (!activeWalletId) return;
+    const interval = setInterval(() => fetchPortfolio(true), 30_000);
     return () => clearInterval(interval);
-  }, [fetchPortfolio]);
+  }, [activeWalletId]);
 
   const activeWallet = wallets.find((w) => w.isActive) || wallets[0];
 
@@ -166,8 +172,10 @@ function HomePage() {
                 onClick={() => {
                   if (!activeWallet) {
                     showToast('⚠️ 먼저 지갑을 생성해주세요.');
+                  } else if (solBalance <= 0) {
+                    showToast('⚠️ 출금 가능한 SOL 잔액이 없습니다.');
                   } else {
-                    showToast('출금 기능은 준비 중입니다.');
+                    setShowWithdraw(true);
                   }
                 }}
               >
@@ -276,6 +284,17 @@ function HomePage() {
           isOpen={showDeposit}
           walletAddress={activeWallet.publicKey}
           onClose={() => setShowDeposit(false)}
+        />
+      )}
+
+      {/* Withdraw Modal */}
+      {activeWallet && (
+        <WithdrawModal
+          isOpen={showWithdraw}
+          walletId={activeWallet.id}
+          walletAddress={activeWallet.publicKey}
+          solBalance={solBalance}
+          onClose={() => setShowWithdraw(false)}
         />
       )}
     </main>

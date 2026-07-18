@@ -10,3 +10,5 @@ export type { EncryptedWallet } from './encrypt';
 export { decryptPrivateKey } from './decrypt';
 
 export { signTransaction } from './sign';
+
+export { buildSolTransferTx } from './transfer';
