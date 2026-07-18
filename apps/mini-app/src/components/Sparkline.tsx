@@ -2,32 +2,39 @@
 
 /**
  * 미니멀 SVG Sparkline (라이브러리 없이)
- * ROI 시계열 데이터를 부드러운 곡선으로 시각화
+ * - 그라데이션 영역 채우기 (위→아래로 투명하게)
+ * - 상향=초록, 하향=빨강
+ * - startOffset: 차트의 시작 x 위치 (픽셀). 기본 0 (왼쪽 끝).
+ *   수익률 텍스트 오른쪽에서 시작하도록 할 때 사용.
  */
 
 interface SparklineProps {
   data: number[];
   width?: number;
   height?: number;
-  stroke?: string;
-  fill?: string;
   strokeWidth?: number;
+  /** 차트 영역 시작 x 오프셋 (픽셀) */
+  startOffset?: number;
 }
+
+let gradIdCounter = 0;
 
 export function Sparkline({
   data,
-  width = 240,
-  height = 50,
-  stroke = '#10b981',
-  fill = 'rgba(16, 185, 129, 0.12)',
-  strokeWidth = 1.5,
+  width = 280,
+  height = 48,
+  strokeWidth = 1.8,
+  startOffset = 0,
 }: SparklineProps) {
+  // 고유 gradient id (인스턴스별)
+  const gradId = `spark-grad-${++gradIdCounter}`;
+
+  // 데이터 부족 시 평평한 baseline
   if (!data || data.length < 2) {
-    // 데이터 부족 시 평평한 baseline
     return (
       <svg width={width} height={height} className="block">
         <line
-          x1={0}
+          x1={startOffset}
           y1={height / 2}
           x2={width}
           y2={height / 2}
@@ -44,18 +51,20 @@ export function Sparkline({
   const range = max - min || 1;
 
   const padding = strokeWidth;
-  const w = width - padding * 2;
+  // 차트 영역: startOffset ~ width
+  const chartLeft = startOffset + padding;
+  const chartRight = width - padding;
+  const chartWidth = chartRight - chartLeft;
   const h = height - padding * 2;
 
   // 포인트 좌표 계산
   const points = data.map((v, i) => {
-    const x = padding + (i / (data.length - 1)) * w;
-    // 값이 클수록 위로 (y 작을수록 위)
+    const x = chartLeft + (i / (data.length - 1)) * chartWidth;
     const y = padding + h - ((v - min) / range) * h;
     return [x, y] as const;
   });
 
-  // 부드러운 곡선을 위한 path 생성 (Catmull-Rom → Bezier 근사)
+  // 부드러운 곡선 path (Quadratic 근사)
   let path = `M ${points[0][0]} ${points[0][1]}`;
   for (let i = 0; i < points.length - 1; i++) {
     const [x0, y0] = points[i];
@@ -64,32 +73,37 @@ export function Sparkline({
     path += ` Q ${cx} ${y0} ${cx} ${(y0 + y1) / 2} T ${x1} ${y1}`;
   }
 
-  // 영역 채우기 (path 닫기)
-  const areaPath =
-    `${path} L ${points[points.length - 1][0]} ${height} ` +
-    `L ${points[0][0]} ${height} Z`;
+  // 영역 채우기 path (아래쪽으로 닫기)
+  const lastX = points[points.length - 1][0];
+  const firstX = points[0][0];
+  const areaPath = `${path} L ${lastX} ${height} L ${firstX} ${height} Z`;
 
-  // 마지막 포인트 강조
-  const lastPoint = points[points.length - 1];
+  // 상향/하향 판별 — 마지막 vs 첫 번째
   const isUp = data[data.length - 1] >= data[0];
+  const lineColor = isUp ? '#10b981' : '#ef4444';
+  const fillColorTop = isUp ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.35)';
+  const fillColorBottom = isUp ? 'rgba(16, 185, 129, 0)' : 'rgba(239, 68, 68, 0)';
+
+  const lastPoint = points[points.length - 1];
 
   return (
     <svg width={width} height={height} className="block">
-      <path d={areaPath} fill={fill} stroke="none" />
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={fillColorTop} />
+          <stop offset="100%" stopColor={fillColorBottom} />
+        </linearGradient>
+      </defs>
+      <path d={areaPath} fill={`url(#${gradId})`} stroke="none" />
       <path
         d={path}
         fill="none"
-        stroke={isUp ? stroke : '#ef4444'}
+        stroke={lineColor}
         strokeWidth={strokeWidth}
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <circle
-        cx={lastPoint[0]}
-        cy={lastPoint[1]}
-        r={2.5}
-        fill={isUp ? stroke : '#ef4444'}
-      />
+      <circle cx={lastPoint[0]} cy={lastPoint[1]} r={2.8} fill={lineColor} />
     </svg>
   );
 }

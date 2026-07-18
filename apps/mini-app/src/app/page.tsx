@@ -7,10 +7,8 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   History,
-  Settings,
   Copy,
   Pickaxe,
-  CircleDot,
 } from 'lucide-react';
 import { useWalletStore } from '@/stores/useWalletStore';
 import { getPortfolio } from '@/lib/api/balance';
@@ -205,7 +203,6 @@ function HomePage() {
             </div>
             <div>
               <h1 className="text-lg font-bold tracking-tight">DEX MINER BOT</h1>
-              <p className="text-[10px] text-gray-500 -mt-0.5">지정가 거래 전용</p>
             </div>
           </div>
 
@@ -216,58 +213,82 @@ function HomePage() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
               </span>
-              <span className="text-[10px] text-gray-400">Solana</span>
+              <span className="text-[10px] text-gray-400">Solana Network</span>
             </div>
-
-            <Link
-              href="/settings"
-              className="p-1.5 rounded-lg hover:bg-gray-800 transition text-gray-400"
-              aria-label="설정"
-            >
-              <Settings className="w-5 h-5" />
-            </Link>
           </div>
         </div>
 
-        {/* Wallet Address */}
-        <div className="bg-gray-800/50 rounded-xl p-3">
-          <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wider">내 지갑</p>
-          {activeWallet ? (
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-mono text-gray-300">
-                {truncateAddr(activeWallet.publicKey)}
-              </p>
-              <button
-                onClick={copyAddress}
-                className="p-1.5 rounded-lg bg-gray-700/50 hover:bg-gray-700 transition text-gray-300"
-                aria-label="주소 복사"
+        {/* 두 개의 독립된 라운드 박스: SOL 시세 / 지갑 주소 */}
+        <div className="flex items-center gap-2">
+          {/* 좌측 박스: SOL 현재가 + 변동율 */}
+          <div className="bg-gray-800/50 rounded-xl px-3 py-2 flex items-baseline gap-1.5 shrink-0">
+            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+              SOL
+            </span>
+            <span className="text-sm font-medium tabular-nums">
+              ${solUsdPrice > 0 ? solUsdPrice.toFixed(2) : '0.00'}
+            </span>
+            {typeof solChangePct === 'number' && solUsdPrice > 0 && (
+              <span
+                className={`text-[10px] tabular-nums ${
+                  solChangePct > 0
+                    ? 'text-green-400'
+                    : solChangePct < 0
+                      ? 'text-red-400'
+                      : 'text-gray-500'
+                }`}
               >
-                <Copy className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          ) : (
-            <p className="text-xs text-gray-500">
-              <Link href="/settings" className="text-primary-400 hover:underline">
-                지갑을 생성해주세요 →
+                {solChangePct > 0 ? '▲' : solChangePct < 0 ? '▼' : ''}{' '}
+                {Math.abs(solChangePct).toFixed(2)}%
+              </span>
+            )}
+          </div>
+
+          {/* 우측 박스: 지갑 주소 + 복사 버튼 */}
+          <div className="bg-gray-800/50 rounded-xl px-3 py-2 flex items-center justify-between gap-2 min-w-0 flex-1">
+            {activeWallet ? (
+              <>
+                <p className="text-xs font-mono text-gray-400 truncate">
+                  {truncateAddr(activeWallet.publicKey)}
+                </p>
+                <button
+                  onClick={copyAddress}
+                  className="p-1 rounded-lg hover:bg-gray-700/70 transition text-gray-400 shrink-0"
+                  aria-label="주소 복사"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+              </>
+            ) : (
+              <Link
+                href="/settings"
+                className="text-xs text-primary-400 hover:underline"
+              >
+                지갑 생성 →
               </Link>
-            </p>
-          )}
+            )}
+          </div>
         </div>
       </header>
 
       {/* ===== Total Balance (고정 높이 — 레이아웃 흔들림 방지) ===== */}
       <section className="bg-gray-800/50 rounded-2xl p-5 mb-5">
-        <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">전체 자산</p>
-        <div className="flex items-baseline gap-2">
-          <span className="text-3xl font-bold tabular-nums">
-            ${computedTotal > 0 ? computedTotal.toFixed(2) : '0.00'}
-          </span>
-          <span className="text-xs text-gray-500">USDT</span>
-        </div>
-
-        {/* ROI Sparkline 차트 */}
-        <div className="mt-3 mb-1">
-          <Sparkline data={sparkData} width={280} height={48} />
+        {/* 금액(좌) + Sparkline(우) 같은 행 */}
+        <div className="flex items-end justify-between gap-3">
+          <div className="flex items-baseline gap-2">
+            <span className="text-3xl font-bold tabular-nums">
+              ${computedTotal > 0 ? computedTotal.toFixed(5) : '0.00000'}
+            </span>
+            <span className="text-xs text-gray-500">USDT</span>
+          </div>
+          <div className="shrink-0">
+            <Sparkline
+              data={sparkData}
+              width={140}
+              height={40}
+              startOffset={0}
+            />
+          </div>
         </div>
 
         {/* ROI 서브 통계 — 최초잔고 / 총 수익 / 수익률 */}
@@ -275,7 +296,7 @@ function HomePage() {
           <div>
             <p className="text-[9px] text-gray-500 uppercase tracking-wider">최초잔고</p>
             <p className="text-xs font-medium text-gray-300 tabular-nums mt-0.5">
-              ${roi.initialBalance > 0 ? roi.initialBalance.toFixed(2) : '0.00'}
+              ${roi.initialBalance > 0 ? roi.initialBalance.toFixed(5) : '0.00000'}
             </p>
           </div>
           <div>
@@ -286,7 +307,7 @@ function HomePage() {
               }`}
             >
               {roi.totalProfit >= 0 ? '+' : ''}
-              {roi.totalProfit.toFixed(2)}
+              {roi.totalProfit.toFixed(5)}
             </p>
           </div>
           <div>
@@ -342,24 +363,21 @@ function HomePage() {
         </div>
       </section>
 
-      {/* ===== Trading Banner ===== */}
+      {/* ===== Trading Buttons ===== */}
       <section className="mb-5">
-        <div className="bg-gradient-to-r from-primary-600 to-primary-800 rounded-2xl p-4 text-center">
-          <p className="text-xs text-primary-200 mb-3">토큰 거래하러 가기</p>
-          <div className="flex gap-2 justify-center">
-            <Link
-              href="/trade?type=buy"
-              className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl text-sm font-bold transition"
-            >
-              BUY
-            </Link>
-            <Link
-              href="/trade?type=sell"
-              className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-xl text-sm font-bold transition"
-            >
-              SELL
-            </Link>
-          </div>
+        <div className="flex gap-2 justify-center">
+          <Link
+            href="/trade?type=buy"
+            className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl text-sm font-bold transition"
+          >
+            BUY
+          </Link>
+          <Link
+            href="/trade?type=sell"
+            className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-xl text-sm font-bold transition"
+          >
+            SELL
+          </Link>
         </div>
       </section>
 
@@ -375,6 +393,15 @@ function HomePage() {
           {displayTokens.map((t) => {
             const isSol = t.symbol === 'SOL';
             const isUsdt = t.symbol === 'USDT';
+            // 내 자산가치 기준 변동율 — 보유량 0이면 0%, 보유 중인 SOL만 시세 변동율 반영
+            const assetChangePct =
+              isUsdt
+                ? 0 // 스테이블 — 0%
+                : isSol
+                  ? solBalance > 0
+                    ? (solChangePct ?? 0)
+                    : 0 // SOL 보유량 0 → 자산 변동 없음
+                  : 0; // 기타 토큰은 데이터 없음 → 0%
             return (
               <AssetRow
                 key={t.mint}
@@ -388,12 +415,7 @@ function HomePage() {
                       ? solUsdValue
                       : t.balance
                 }
-                priceText={
-                  isSol
-                    ? `$${solUsdPrice.toFixed(2)}`
-                    : undefined
-                }
-                changePct={isSol ? solChangePct : undefined}
+                changePct={assetChangePct}
               />
             );
           })}
@@ -447,14 +469,12 @@ function AssetRow({
   balance,
   badge,
   usdValue,
-  priceText,
   changePct,
 }: {
   symbol: string;
   balance: number;
   badge?: 'Stable' | 'Staking';
   usdValue: number;
-  priceText?: string;
   changePct?: number;
 }) {
   const badgeStyle =
@@ -487,20 +507,20 @@ function AssetRow({
       </div>
       <div className="text-right">
         <p className="font-medium text-sm tabular-nums">
-          ${usdValue > 0 ? usdValue.toFixed(2) : '0.00'}
+          ${usdValue > 0 ? usdValue.toFixed(5) : '0.00000'}
         </p>
-        {priceText && (
-          <p className="text-[10px] text-gray-500 tabular-nums mt-0.5">
-            {priceText}
-          </p>
-        )}
         {typeof changePct === 'number' && (
           <p
             className={`text-[10px] tabular-nums mt-0.5 ${
-              changePct >= 0 ? 'text-green-400' : 'text-red-400'
+              changePct > 0
+                ? 'text-green-400'
+                : changePct < 0
+                  ? 'text-red-400'
+                  : 'text-gray-500' // 0% — 회색
             }`}
           >
-            {changePct >= 0 ? '▲' : '▼'} {Math.abs(changePct).toFixed(2)}%
+            {changePct > 0 ? '▲ ' : changePct < 0 ? '▼ ' : ''}
+            {Math.abs(changePct).toFixed(2)}%
           </p>
         )}
       </div>
