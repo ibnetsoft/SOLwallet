@@ -3,7 +3,7 @@ import { apiFetch } from './client';
 export interface WalletBalance {
   walletAddress: string;
   sol: number;
-  tokens: Array<{ mint: string; symbol: string; decimals: number; balance: number }>;
+  tokens: Array<{ mint: string; symbol: string; decimals: number; balance: number; logoUrl?: string }>;
   totalUsdtValue: number;
 }
 

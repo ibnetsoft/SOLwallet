@@ -153,6 +153,7 @@ export interface AdminTokenDetail {
   symbol: string;
   decimals: number;
   isActive: boolean;
+  logoUrl?: string | null;
   createdAt: string;
 }
 

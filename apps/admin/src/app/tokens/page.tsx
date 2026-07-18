@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { getTokens, createToken, toggleToken, deleteToken } from '@/lib/api/admin';
+import { useEffect, useState, useRef } from 'react';
+import { getTokens, createToken, toggleToken, deleteToken, uploadTokenLogo } from '@/lib/api/admin';
 import type { AdminTokenDetail } from '@solwallet/shared-types';
 
 // Solana base58 mint address (32~44자)
@@ -119,6 +119,27 @@ export default function TokensPage() {
     }
   };
 
+  // 행별 업로드 진행 상태
+  const [uploadingSymbol, setUploadingSymbol] = useState<string | null>(null);
+
+  const handleLogoUpload = async (symbol: string, file: File) => {
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setError('파일 크기는 2MB 이하여야 합니다.');
+      return;
+    }
+    setUploadingSymbol(symbol);
+    setError('');
+    try {
+      await uploadTokenLogo(symbol, file);
+      fetchTokens(); // 새 URL(refresh)로 갱신
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '로고 업로드 실패');
+    } finally {
+      setUploadingSymbol(null);
+    }
+  };
+
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">🪙 토큰 관리</h1>
@@ -216,6 +237,7 @@ export default function TokensPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-700">
+                <th className="text-center py-3 px-6 text-gray-400 font-medium">로고</th>
                 <th className="text-left py-3 px-6 text-gray-400 font-medium">심볼</th>
                 <th className="text-left py-3 px-6 text-gray-400 font-medium">Mint Address</th>
                 <th className="text-center py-3 px-6 text-gray-400 font-medium">Decimals</th>
@@ -226,15 +248,23 @@ export default function TokensPage() {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-8 text-gray-400">로딩 중...</td>
+                  <td colSpan={6} className="text-center py-8 text-gray-400">로딩 중...</td>
                 </tr>
               ) : tokens.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-8 text-gray-400">데이터가 없습니다</td>
+                  <td colSpan={6} className="text-center py-8 text-gray-400">데이터가 없습니다</td>
                 </tr>
               ) : (
                 tokens.map((token) => (
                   <tr key={token.id} className="border-b border-gray-700/50 hover:bg-gray-700/30 transition">
+                    <td className="py-3 px-6">
+                      <LogoCell
+                        symbol={token.symbol}
+                        logoUrl={token.logoUrl}
+                        isUploading={uploadingSymbol === token.symbol}
+                        onUpload={(file) => handleLogoUpload(token.symbol, file)}
+                      />
+                    </td>
                     <td className="py-3 px-6 font-medium">{token.symbol}</td>
                     <td className="py-3 px-6 text-gray-400 font-mono text-xs">
                       {token.mintAddress.slice(0, 8)}...{token.mintAddress.slice(-4)}
@@ -277,6 +307,71 @@ export default function TokensPage() {
           </table>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ===== 토큰 로고 셀 — 미리보기 + 업로드 버튼 =====
+function LogoCell({
+  symbol,
+  logoUrl,
+  isUploading,
+  onUpload,
+}: {
+  symbol: string;
+  logoUrl?: string | null;
+  isUploading: boolean;
+  onUpload: (file: File) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="flex items-center justify-center gap-2">
+      {/* 로고 미리보기 — 32x32 */}
+      <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-700 flex items-center justify-center shrink-0">
+        {logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={logoUrl}
+            alt={symbol}
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              // 이미지 로드 실패 시 fallback (첫 글자)
+              const target = e.currentTarget;
+              target.style.display = 'none';
+              const parent = target.parentElement;
+              if (parent) parent.textContent = symbol.charAt(0).toUpperCase();
+            }}
+          />
+        ) : (
+          <span className="text-xs font-bold text-gray-300">
+            {symbol.charAt(0).toUpperCase()}
+          </span>
+        )}
+      </div>
+
+      {/* 업로드 버튼 (숨겨진 input) */}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) onUpload(file);
+          // 같은 파일 재선택 가능하도록 초기화
+          e.target.value = '';
+        }}
+      />
+      <button
+        type="button"
+        disabled={isUploading}
+        onClick={() => inputRef.current?.click()}
+        className="text-xs px-2 py-1 rounded-lg bg-primary-600/20 text-primary-400 hover:bg-primary-600/40 transition disabled:opacity-50"
+        title="PNG 로고 업로드"
+      >
+        {isUploading ? '...' : '업로드'}
+      </button>
     </div>
   );
 }

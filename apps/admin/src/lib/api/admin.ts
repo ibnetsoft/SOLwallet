@@ -1,4 +1,4 @@
-import { apiFetch } from './client';
+import { apiFetch, API_BASE } from './client';
 import type { AdminStats, AdminUserDetail, AdminTokenDetail, AdminOrderDetail } from '@solwallet/shared-types';
 
 // ─── 대시보드 ───
@@ -67,6 +67,43 @@ export function deleteToken(tokenId: string): Promise<Record<string, unknown>> {
   return apiFetch(`/admin/tokens/${tokenId}`, {
     method: 'DELETE',
   });
+}
+
+/**
+ * 토큰 로고 이미지 업로드 (PNG) — multipart/form-data
+ * 저장 규칙: token-logos/{symbol-lowercase}.png
+ */
+export async function uploadTokenLogo(symbol: string, file: File): Promise<{ logoUrl: string }> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('admin_auth_token') : null;
+  const form = new FormData();
+  form.append('file', file);
+  form.append('symbol', symbol);
+
+  const res = await fetch(`${API_BASE}/admin/tokens/logo`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    // multipart: Content-Type 자동 설정 (직접 지정 X — boundary 필요)
+    body: form,
+  });
+
+  if (res.status === 401) {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('admin_auth_token');
+      window.location.href = '/login';
+    }
+    throw new Error('인증이 만료되었습니다.');
+  }
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
+    throw new Error(err.message || '로고 업로드 실패');
+  }
+
+  const json = await res.json();
+  if (!json.success) {
+    throw new Error(json.message || '로고 업로드 실패');
+  }
+  return json.data as { logoUrl: string };
 }
 
 // ─── 주문 관리 ───

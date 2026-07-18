@@ -10,7 +10,11 @@ import {
   UseGuards,
   ParseIntPipe,
   DefaultValuePipe,
+  BadRequestException,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { AdminService } from './admin.service';
 import { AdminGuard } from './admin.guard';
 import { CreateTokenDto } from '../common/dto/token.dto';
@@ -65,6 +69,36 @@ export class AdminController {
   async createToken(@Body() dto: CreateTokenDto) {
     const token = await this.adminService.createToken(dto);
     return { success: true, data: token };
+  }
+
+  /**
+   * 토큰 로고 업로드 — multipart/form-data
+   * 필드: file (PNG 이미지), symbol (심볼)
+   * 저장 규칙: token-logos/{symbol-lowercase}.png
+   * 응답: { success, data: { logoUrl } }
+   */
+  @Post('tokens/logo')
+  @UseInterceptors(FileInterceptor('file', {
+    limits: { fileSize: 2 * 1024 * 1024 }, // 2MB 제한
+    fileFilter: (_req, file, cb) => {
+      if (!/^image\/(png|jpe?g|webp)$/.test(file.mimetype)) {
+        return cb(new BadRequestException('PNG/JPG/WebP 이미지만 업로드 가능합니다.'), false);
+      }
+      cb(null, true);
+    },
+  }))
+  async uploadTokenLogo(
+    @UploadedFile() file: Express.Multer.File,
+    @Body('symbol') symbol: string,
+  ) {
+    if (!file || !file.buffer) {
+      throw new BadRequestException('파일이 누락되었습니다.');
+    }
+    if (!symbol) {
+      throw new BadRequestException('심볼이 누락되었습니다.');
+    }
+    const logoUrl = await this.adminService.uploadTokenLogo(symbol, file.buffer);
+    return { success: true, data: { logoUrl } };
   }
 
   @Patch('tokens/:id')

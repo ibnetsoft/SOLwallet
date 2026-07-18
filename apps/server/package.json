@@ -37,6 +37,7 @@
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@types/express": "^5.0.6",
+    "@types/multer": "^2.2.0",
     "@types/node": "^22.0.0",
     "@types/passport-jwt": "^4.0.1",
     "ts-loader": "^9.6.2",

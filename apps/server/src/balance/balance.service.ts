@@ -53,7 +53,7 @@ export class BalanceService {
    */
   async getTokenBalances(
     walletAddress: string,
-  ): Promise<Array<{ mint: string; symbol: string; decimals: number; balance: number }>> {
+  ): Promise<Array<{ mint: string; symbol: string; decimals: number; balance: number; logoUrl?: string }>> {
     const { data: tokens } = await this.client
       .from('tokens')
       .select('*')
@@ -61,7 +61,7 @@ export class BalanceService {
 
     if (!tokens || tokens.length === 0) return [];
 
-    const balances: Array<{ mint: string; symbol: string; decimals: number; balance: number }> = [];
+    const balances: Array<{ mint: string; symbol: string; decimals: number; balance: number; logoUrl?: string }> = [];
 
     for (const token of tokens) {
       try {
@@ -93,6 +93,7 @@ export class BalanceService {
             symbol: token.symbol,
             decimals,
             balance: amount / Math.pow(10, decimals),
+            logoUrl: this.getTokenLogoUrl(token.symbol),
           });
         }
       } catch (err) {
@@ -103,6 +104,16 @@ export class BalanceService {
     }
 
     return balances;
+  }
+
+  /**
+   * 토큰 로고 public URL 생성 (파일명 규칙)
+   * token-logos/{symbol-lowercase}.png
+   */
+  private getTokenLogoUrl(symbol: string): string {
+    const BUCKET = 'token-logos';
+    const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
+    return `${supabaseUrl}/storage/v1/object/public/${BUCKET}/${symbol.toLowerCase()}.png`;
   }
 
   /**

@@ -14,6 +14,7 @@ import { useWalletStore } from '@/stores/useWalletStore';
 import { getPortfolio } from '@/lib/api/balance';
 import { fetchSolPrice, type SolPriceData } from '@/lib/api/price';
 import { useRoi } from '@/lib/hooks/useRoi';
+import { getTokenLogoUrl } from '@/lib/tokenLogo';
 import { Sparkline } from '@/components/Sparkline';
 import { useToast } from '@/components/Toast';
 import DepositModal from '@/components/DepositModal';
@@ -31,6 +32,7 @@ interface DisplayToken {
   balance: number;
   badge?: 'Stable' | 'Staking';
   isNative?: boolean;
+  logoUrl?: string;
 }
 
 function HomePage() {
@@ -149,6 +151,7 @@ function HomePage() {
     decimals: usdtFromPortfolio?.decimals ?? 6,
     balance: usdtFromPortfolio?.balance ?? 0,
     badge: 'Stable',
+    logoUrl: getTokenLogoUrl('USDT'),
   };
 
   // 2) SOL — 항상 2번째
@@ -159,6 +162,7 @@ function HomePage() {
     balance: solBalance,
     badge: 'Staking',
     isNative: true,
+    logoUrl: getTokenLogoUrl('SOL'),
   };
 
   // 3) 나머지 토큰 — USDT/SOL 제외
@@ -174,6 +178,7 @@ function HomePage() {
       symbol: t.symbol,
       decimals: t.decimals,
       balance: t.balance,
+      logoUrl: t.logoUrl || getTokenLogoUrl(t.symbol),
     }));
 
   const displayTokens: DisplayToken[] = [usdtToken, solToken, ...otherTokens];
@@ -368,13 +373,13 @@ function HomePage() {
         <div className="flex gap-2 justify-center">
           <Link
             href="/trade?type=buy"
-            className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl text-sm font-bold transition"
+            className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl text-sm font-bold transition text-center"
           >
             BUY
           </Link>
           <Link
             href="/trade?type=sell"
-            className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-xl text-sm font-bold transition"
+            className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-xl text-sm font-bold transition text-center"
           >
             SELL
           </Link>
@@ -408,6 +413,7 @@ function HomePage() {
                 symbol={t.symbol}
                 balance={t.balance}
                 badge={t.badge}
+                logoUrl={t.logoUrl}
                 usdValue={
                   isUsdt
                     ? t.balance
@@ -468,12 +474,14 @@ function AssetRow({
   symbol,
   balance,
   badge,
+  logoUrl,
   usdValue,
   changePct,
 }: {
   symbol: string;
   balance: number;
   badge?: 'Stable' | 'Staking';
+  logoUrl?: string;
   usdValue: number;
   changePct?: number;
 }) {
@@ -484,12 +492,26 @@ function AssetRow({
         ? 'bg-purple-500/15 text-purple-400 border border-purple-500/20'
         : '';
 
+  const [imgError, setImgError] = useState(false);
+
   return (
     <div className="bg-gray-800/50 rounded-xl p-3.5 flex items-center justify-between min-h-[64px]">
       <div className="flex items-center gap-3">
-        {/* 토큰 아이콘 자리 (심볼 첫 글자) */}
-        <div className="w-9 h-9 rounded-full bg-gray-700 flex items-center justify-center text-xs font-bold text-gray-300 shrink-0">
-          {symbol.charAt(0)}
+        {/* 토큰 로고 — 이미지 우선, 실패 시 첫 글자 fallback */}
+        <div className="w-9 h-9 rounded-full overflow-hidden bg-gray-700 flex items-center justify-center shrink-0">
+          {logoUrl && !imgError ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={logoUrl}
+              alt={symbol}
+              className="w-full h-full object-cover"
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            <span className="text-xs font-bold text-gray-300">
+              {symbol.charAt(0).toUpperCase()}
+            </span>
+          )}
         </div>
         <div>
           <div className="flex items-center gap-2">

@@ -1,4 +1,5 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
 import type { AdminStats } from '@solwallet/shared-types';
 
@@ -6,7 +7,10 @@ import type { AdminStats } from '@solwallet/shared-types';
 export class AdminService {
   private readonly logger = new Logger(AdminService.name);
 
-  constructor(private readonly supabaseService: SupabaseService) {}
+  constructor(
+    private readonly supabaseService: SupabaseService,
+    private readonly configService: ConfigService,
+  ) {}
 
   private get client() {
     return this.supabaseService.getClient();
@@ -181,14 +185,50 @@ export class AdminService {
       .select('*')
       .order('created_at', { ascending: false });
 
+    // 로고 URL은 파일명 규칙으로 생성 (token-logos/{symbol-lowercase}.png)
+    // DB logo_url 컬럼 의존 제거 — Storage 버킷만 사용
     return (data || []).map((t) => ({
       id: t.id,
       mintAddress: t.mint_address,
       symbol: t.symbol,
       decimals: t.decimals,
       isActive: t.is_active,
+      logoUrl: this.getTokenLogoUrl(t.symbol),
       createdAt: t.created_at,
     }));
+  }
+
+  /**
+   * 토큰 로고 public URL 생성 (규칙 기반)
+   * 버전 쿼리스트링으로 CDN 캐시 무효화
+   */
+  private getTokenLogoUrl(symbol: string): string {
+    const BUCKET = 'token-logos';
+    const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
+    return `${supabaseUrl}/storage/v1/object/public/${BUCKET}/${symbol.toLowerCase()}.png?v=${Date.now()}`;
+  }
+
+  /**
+   * 토큰 로고 이미지 업로드 — Supabase Storage
+   * 규칙: token-logos/{symbol-lowercase}.png (항상 png로 통일 저장)
+   */
+  async uploadTokenLogo(symbol: string, fileBuffer: Buffer): Promise<string> {
+    const BUCKET = 'token-logos';
+    const path = `${symbol.toLowerCase()}.png`;
+
+    const { error } = await this.client
+      .storage
+      .from(BUCKET)
+      .upload(path, fileBuffer, {
+        contentType: 'image/png',
+        upsert: true, // 덮어쓰기
+      });
+
+    if (error) {
+      throw new BadRequestException(`로고 업로드 실패: ${error.message}`);
+    }
+
+    return this.getTokenLogoUrl(symbol);
   }
 
   /**
