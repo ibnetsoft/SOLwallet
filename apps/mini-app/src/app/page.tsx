@@ -9,6 +9,9 @@ import {
   History,
   Copy,
   Pickaxe,
+  Home as HomeIcon,
+  BarChart3,
+  Settings,
 } from 'lucide-react';
 import { useWalletStore } from '@/stores/useWalletStore';
 import { getPortfolio } from '@/lib/api/balance';
@@ -431,17 +434,17 @@ function HomePage() {
       {/* ===== Bottom Nav ===== */}
       <nav className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur border-t border-gray-800">
         <div className="flex justify-around py-2">
-          <Link href="/" className="flex flex-col items-center text-primary-500 py-1">
-            <span className="text-lg">🏠</span>
-            <span className="text-xs">홈</span>
+          <Link href="/" className="flex flex-col items-center gap-0.5 text-primary-500 py-1">
+            <HomeIcon className="w-5 h-5" strokeWidth={2} />
+            <span className="text-[10px]">홈</span>
           </Link>
-          <Link href="/trade" className="flex flex-col items-center text-gray-500 py-1">
-            <span className="text-lg">📊</span>
-            <span className="text-xs">거래</span>
+          <Link href="/trade" className="flex flex-col items-center gap-0.5 text-gray-500 py-1">
+            <BarChart3 className="w-5 h-5" strokeWidth={2} />
+            <span className="text-[10px]">거래</span>
           </Link>
-          <Link href="/settings" className="flex flex-col items-center text-gray-500 py-1">
-            <span className="text-lg">⚙️</span>
-            <span className="text-xs">설정</span>
+          <Link href="/settings" className="flex flex-col items-center gap-0.5 text-gray-500 py-1">
+            <Settings className="w-5 h-5" strokeWidth={2} />
+            <span className="text-[10px]">설정</span>
           </Link>
         </div>
       </nav>
