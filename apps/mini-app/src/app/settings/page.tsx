@@ -271,14 +271,6 @@ export default function SettingsPage() {
             <span className="text-gray-400">DEX</span>
             <span>Manifest.trade</span>
           </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-400">최대 지갑</span>
-            <span>{MAX_WALLETS}개</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-400">수수료</span>
-            <span>1%</span>
-          </div>
         </div>
       </section>
 
