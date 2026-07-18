@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useWalletStore } from '@/stores/useWalletStore';
 import { useToast } from '@/components/Toast';
@@ -9,8 +9,6 @@ import { BottomNav } from '@/components/BottomNav';
 import SeedInput from '@/components/SeedInput';
 import MnemonicDisplay from '@/components/MnemonicDisplay';
 import { MAX_WALLETS } from '@solwallet/config';
-import { getUserProfile } from '@/lib/api/user';
-import type { UserProfile } from '@/lib/api/user';
 import { isLoggedIn } from '@/lib/api/auth';
 
 export default function SettingsPage() {
@@ -36,7 +34,6 @@ export default function SettingsPage() {
   const [createdMnemonic, setCreatedMnemonic] = useState('');
   const [pinError, setPinError] = useState('');
   const [actionLoading, setActionLoading] = useState<string | false>(false);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
 
   // 초기화
   useEffect(() => {
@@ -47,8 +44,6 @@ export default function SettingsPage() {
     if (!isInitialized) {
       initialize();
     }
-    // 프로필 조회
-    getUserProfile().then(setProfile).catch(() => {});
   }, [isInitialized, initialize]);
 
   // 새 지갑 생성 → PIN 설정
@@ -133,12 +128,11 @@ export default function SettingsPage() {
 
       {/* Wallet Management */}
       <section className="mb-6">
-        <h2 className="text-sm text-gray-400 mb-2">지갑 관리</h2>
         <div className="space-y-2">
           <button
             onClick={() => {
               if (wallets.length >= MAX_WALLETS) {
-                showToast(`⚠️ 최대 ${MAX_WALLETS}개까지 가능합니다.`);
+                showToast(`최대 ${MAX_WALLETS}개까지 가능합니다.`);
                 return;
               }
               setShowCreatePin(true);
@@ -146,16 +140,13 @@ export default function SettingsPage() {
             disabled={!!actionLoading}
             className="w-full bg-gray-800/50 rounded-xl p-4 text-left flex items-center justify-between active:bg-gray-700/50 transition-colors"
           >
-            <div>
-              <p className="font-medium">🆕 새 지갑 생성</p>
-              <p className="text-xs text-gray-400">새 솔라나 지갑을 만듭니다</p>
-            </div>
+            <p className="font-medium">새 지갑 생성</p>
             <span className="text-gray-500">→</span>
           </button>
           <button
             onClick={() => {
               if (wallets.length >= MAX_WALLETS) {
-                showToast(`⚠️ 최대 ${MAX_WALLETS}개까지 가능합니다.`);
+                showToast(`최대 ${MAX_WALLETS}개까지 가능합니다.`);
                 return;
               }
               setShowImportSeed(true);
@@ -163,10 +154,7 @@ export default function SettingsPage() {
             disabled={!!actionLoading}
             className="w-full bg-gray-800/50 rounded-xl p-4 text-left flex items-center justify-between active:bg-gray-700/50 transition-colors"
           >
-            <div>
-              <p className="font-medium">📥 시드구문 Import</p>
-              <p className="text-xs text-gray-400">기존 지갑을 가져옵니다</p>
-            </div>
+            <p className="font-medium">시드구문 Import</p>
             <span className="text-gray-500">→</span>
           </button>
         </div>
@@ -174,124 +162,58 @@ export default function SettingsPage() {
 
       {/* Wallet List */}
       <section className="mb-6">
-        <h2 className="text-sm text-gray-400 mb-2">
-          내 지갑 목록 ({wallets.length}/{MAX_WALLETS})
-        </h2>
         <div className="space-y-2">
           {wallets.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
-              <p className="text-3xl mb-2">👛</p>
               <p className="text-sm">생성된 지갑이 없습니다</p>
-              <p className="text-xs">새 지갑을 생성하거나 시드구문을 가져오세요</p>
             </div>
           ) : (
             wallets.map((wallet) => (
               <div
                 key={wallet.id}
-                className={`bg-gray-800/50 rounded-xl p-4 ${
+                className={`bg-gray-800/50 rounded-xl p-3.5 ${
                   wallet.id === activeWalletId ? 'border border-primary-500/30' : ''
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium">{wallet.label}</p>
-                      {wallet.id === activeWalletId && (
-                        <span className="text-xs bg-primary-600 px-2 py-0.5 rounded">
-                          활성
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-gray-400 font-mono truncate">
-                      {wallet.publicKey ? truncateKey(wallet.publicKey) : '—'}
-                    </p>
-                  </div>
-                </div>
-                {wallets.length > 1 && (
-                  <div className="flex gap-2 mt-3">
-                    {wallet.id !== activeWalletId && (
-                      <button
-                        onClick={() => handleActivate(wallet.id)}
-                        disabled={!!actionLoading}
-                        className="text-xs px-3 py-1.5 rounded-lg bg-primary-600/20 text-primary-400 disabled:opacity-50"
-                      >
-                        활성으로 전환
-                      </button>
+                <div className="flex items-center gap-2">
+                  {/* 라벨 */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="font-medium text-sm">{wallet.label}</span>
+                    {wallet.id === activeWalletId && (
+                      <span className="text-[9px] bg-primary-600 px-1.5 py-0.5 rounded text-white">
+                        활성
+                      </span>
                     )}
-                    <button
-                      onClick={() => handleDelete(wallet.id)}
-                      disabled={!!actionLoading}
-                      className="text-xs px-3 py-1.5 rounded-lg bg-red-600/20 text-red-400 disabled:opacity-50"
-                    >
-                      삭제
-                    </button>
                   </div>
-                )}
+                  {/* 주소 */}
+                  <p className="text-xs text-gray-400 font-mono truncate flex-1 min-w-0">
+                    {wallet.publicKey ? truncateKey(wallet.publicKey) : '—'}
+                  </p>
+                  {/* 액션 버튼 */}
+                  {wallets.length > 1 && (
+                    <div className="flex gap-1.5 shrink-0">
+                      {wallet.id !== activeWalletId && (
+                        <button
+                          onClick={() => handleActivate(wallet.id)}
+                          disabled={!!actionLoading}
+                          className="text-[10px] px-2 py-1 rounded-lg bg-primary-600/20 text-primary-400 hover:bg-primary-600/30 transition disabled:opacity-50"
+                        >
+                          활성화
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDelete(wallet.id)}
+                        disabled={!!actionLoading}
+                        className="text-[10px] px-2 py-1 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition disabled:opacity-50"
+                      >
+                        삭제
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             ))
           )}
-        </div>
-      </section>
-
-      {/* Referral Section */}
-      {profile && (
-        <section className="mb-6">
-          <h2 className="text-sm text-gray-400 mb-2">🎁 추천인</h2>
-          <div className="bg-gray-800/50 rounded-xl p-4 space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-400">내 추천 코드</span>
-              <button
-                onClick={() => {
-                  if (profile.referralCode) {
-                    navigator.clipboard.writeText(profile.referralCode).then(
-                      () => showToast('📋 추천 코드가 복사되었습니다.'),
-                      () => {},
-                    );
-                  }
-                }}
-                className="text-xs bg-primary-600/20 text-primary-400 px-3 py-1 rounded-lg hover:bg-primary-600/30 transition"
-              >
-                {profile.referralCode.slice(0, 8)}... 복사
-              </button>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-400">초대한 친구</span>
-              <span className="font-medium">{profile.referralCount}명</span>
-            </div>
-            {profile.referrer && (
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">내 추천인</span>
-                <span>{profile.referrer.username || profile.referrer.first_name}</span>
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* App Info */}
-      <section className="mb-6">
-        <h2 className="text-sm text-gray-400 mb-2">앱 정보</h2>
-        <div className="bg-gray-800/50 rounded-xl p-4 space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-400">버전</span>
-            <span>v0.2.0</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-400">네트워크</span>
-            <span>Mainnet</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-400">DEX</span>
-            <span>Manifest.trade</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-400">최대 지갑</span>
-            <span>{MAX_WALLETS}개</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-400">수수료</span>
-            <span>1%</span>
-          </div>
         </div>
       </section>
 
