@@ -27,6 +27,7 @@ interface OrderbookEntry {
 interface TradeState {
   // Trade form
   side: 'buy' | 'sell';
+  orderType: 'limit' | 'market';
   selectedToken: Token | null;
   price: string;
   quantity: string;
@@ -46,6 +47,7 @@ interface TradeState {
 
   // Actions
   setSide: (side: 'buy' | 'sell') => void;
+  setOrderType: (orderType: 'limit' | 'market') => void;
   setSelectedToken: (token: Token | null) => void;
   setPrice: (price: string) => void;
   setQuantity: (quantity: string) => void;
@@ -66,6 +68,7 @@ interface TradeState {
 
 export const useTradeStore = create<TradeState>((set, get) => ({
   side: 'buy',
+  orderType: 'limit',
   selectedToken: null,
   price: '',
   quantity: '',
@@ -78,6 +81,15 @@ export const useTradeStore = create<TradeState>((set, get) => ({
   isOrderbookLoading: false,
 
   setSide: (side) => set({ side }),
+  setOrderType: (orderType) => {
+    // 시장가 전환 시 자동으로 현재가 적용
+    if (orderType === 'market') {
+      const { currentPrice } = get();
+      set({ orderType, price: currentPrice > 0 ? String(currentPrice) : '' });
+    } else {
+      set({ orderType });
+    }
+  },
   setSelectedToken: (token) => set({ selectedToken: token, price: '', quantity: '' }),
   setPrice: (price) => set({ price }),
   setQuantity: (quantity) => set({ quantity }),
@@ -130,6 +142,11 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     try {
       const price = await manifestClient.fetchCurrentPrice(selectedToken.mint_address);
       set({ currentPrice: price });
+      // 시장가 모드일 때 가격 자동 동기화
+      const { orderType } = get();
+      if (orderType === 'market' && price > 0) {
+        set({ price: String(price) });
+      }
     } catch {
       // 무시
     }

@@ -128,7 +128,7 @@ export default function SettingsPage() {
       {/* Header */}
       <header className="flex items-center gap-3 mb-6">
         <Link href="/" className="text-xl">←</Link>
-        <h1 className="text-xl font-bold">⚙️ 설정</h1>
+        <h1 className="text-xl font-bold">설정</h1>
       </header>
 
       {/* Wallet Management */}

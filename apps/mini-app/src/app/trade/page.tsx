@@ -16,6 +16,7 @@ import { isLoggedIn } from '@/lib/api/auth';
 function TradeContent() {
   const {
     side, setSide,
+    orderType, setOrderType,
     selectedToken, setSelectedToken,
     price, setPrice,
     quantity, setQuantity,
@@ -133,6 +134,10 @@ function TradeContent() {
   const validateOrder = (): string | null => {
     if (!activeWallet) return '⚠️ 먼저 지갑을 생성해주세요.';
     if (!selectedToken) return '⚠️ 토큰을 선택해주세요.';
+    // 시장가일 때 오더북 없으면 차단
+    if (orderType === 'market' && currentPrice <= 0) {
+      return '⚠️ 현재가 정보가 없어 시장가 주문이 불가능합니다.';
+    }
     const priceNum = Number(price);
     if (!price || !isFinite(priceNum) || priceNum <= 0) return '⚠️ 올바른 가격을 입력해주세요.';
     const qtyNum = Number(quantity);
@@ -171,12 +176,12 @@ function TradeContent() {
       <header className="flex items-center gap-3 mb-6">
         <Link href="/" className="text-xl">←</Link>
         <h1 className="text-xl font-bold">
-          {side === 'buy' ? '📈 매수 주문' : '📉 매도 주문'}
+          {side === 'buy' ? '매수 주문' : '매도 주문'}
         </h1>
       </header>
 
       {/* Buy/Sell Toggle */}
-      <div className="flex bg-gray-800 rounded-xl p-1 mb-6">
+      <div className="flex bg-gray-800 rounded-xl p-1 mb-4">
         <button
           onClick={() => { setSide('buy'); setQuantity(''); }}
           className={`flex-1 py-2 rounded-lg text-center text-sm font-medium transition ${
@@ -193,6 +198,23 @@ function TradeContent() {
         >
           매도 (SELL)
         </button>
+      </div>
+
+      {/* Order Type Tab — 지정가 / 시장가 */}
+      <div className="flex gap-1 mb-6 border-b border-gray-800">
+        {(['limit', 'market'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setOrderType(t)}
+            className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
+              orderType === t
+                ? 'border-primary-500 text-white'
+                : 'border-transparent text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            {t === 'limit' ? '지정가' : '시장가'}
+          </button>
+        ))}
       </div>
 
       {/* Token Selection */}
@@ -234,31 +256,47 @@ function TradeContent() {
         )}
       </section>
 
-      {/* Price Input */}
-      <section className="mb-4">
-        <label className="text-sm text-gray-400 mb-1 block">지정가 (USDT)</label>
-        <div className="bg-gray-800/50 rounded-xl p-4 flex items-center gap-2">
-          <input
-            type="number"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            placeholder="가격을 입력하세요"
-            min="0"
-            step="any"
-            className="bg-transparent flex-1 outline-none text-white placeholder-gray-500"
-          />
-          <button
-            onClick={applyCurrentPrice}
-            disabled={currentPrice === 0}
-            className="bg-gray-700 text-xs px-2 py-1 rounded disabled:opacity-50 hover:bg-gray-600 transition"
-          >
-            최근가
-          </button>
-        </div>
-        {currentPrice > 0 && (
-          <p className="text-xs text-gray-500 mt-1">현재가: {currentPrice.toFixed(4)} USDT</p>
-        )}
-      </section>
+      {/* Price Input — 지정가일 때만 표시 */}
+      {orderType === 'limit' ? (
+        <section className="mb-4">
+          <label className="text-sm text-gray-400 mb-1 block">지정가 (USDT)</label>
+          <div className="bg-gray-800/50 rounded-xl p-4 flex items-center gap-2">
+            <input
+              type="number"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              placeholder="가격을 입력하세요"
+              min="0"
+              step="any"
+              className="bg-transparent flex-1 outline-none text-white placeholder-gray-500"
+            />
+            <button
+              onClick={applyCurrentPrice}
+              disabled={currentPrice === 0}
+              className="bg-gray-700 text-xs px-2 py-1 rounded disabled:opacity-50 hover:bg-gray-600 transition"
+            >
+              최근가
+            </button>
+          </div>
+          {currentPrice > 0 && (
+            <p className="text-xs text-gray-500 mt-1">현재가: {currentPrice.toFixed(4)} USDT</p>
+          )}
+        </section>
+      ) : (
+        <section className="mb-4">
+          <label className="text-sm text-gray-400 mb-1 block">체결가 (Market)</label>
+          <div className="bg-gray-800/30 rounded-xl p-4 flex items-center justify-between border border-dashed border-gray-700">
+            <span className="text-sm text-gray-400">
+              {currentPrice > 0
+                ? '현재가로 즉시 체결'
+                : '현재가를 불러오는 중...'}
+            </span>
+            <span className="text-sm font-medium tabular-nums">
+              {currentPrice > 0 ? `${currentPrice.toFixed(4)} USDT` : '-'}
+            </span>
+          </div>
+        </section>
+      )}
 
       {/* Amount Input */}
       <section className="mb-4">
@@ -333,8 +371,8 @@ function TradeContent() {
         {isSubmitting
           ? '처리중...'
           : side === 'buy'
-            ? '📈 매수 주문하기 (Limit)'
-            : '📉 매도 주문하기 (Limit)'}
+            ? `매수 주문하기 (${orderType === 'limit' ? 'Limit' : 'Market'})`
+            : `매도 주문하기 (${orderType === 'limit' ? 'Limit' : 'Market'})`}
       </button>
 
       {/* Active Orders */}
