@@ -60,10 +60,22 @@ export async function getActiveOrders(): Promise<Record<string, unknown>[]> {
   return Array.isArray(res) ? res : [];
 }
 
+export interface OrderHistoryPage {
+  items: Record<string, unknown>[];
+  hasMore: boolean;
+  nextCursor: string | null;
+}
+
 /**
- * 과거 주문 내역
+ * 과거 주문 내역 (cursor 페이지네이션)
+ * @param before — ISO 시각. 이 값보다 이전 주문만 반환 (첫 페이지는 생략)
  */
-export async function getOrderHistory(): Promise<Record<string, unknown>[]> {
-  const res = await apiFetch<Record<string, unknown>[]>('/orders/history');
-  return Array.isArray(res) ? res : [];
+export async function getOrderHistory(before?: string): Promise<OrderHistoryPage> {
+  const params = before ? `?before=${encodeURIComponent(before)}` : '';
+  const res = await apiFetch<OrderHistoryPage>(`/orders/history${params}`);
+  // 구버전 응답(배열) 호환
+  if (Array.isArray(res)) {
+    return { items: res, hasMore: false, nextCursor: null };
+  }
+  return res;
 }

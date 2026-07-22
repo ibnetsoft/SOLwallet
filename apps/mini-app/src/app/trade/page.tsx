@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, Suspense } from 'react';
+import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useTradeStore } from '@/stores/useTradeStore';
@@ -26,11 +26,17 @@ function TradeContent() {
     orderbook,
     tokens,
     activeOrders,
+    orderHistory,
+    historyHasMore,
+    historyCursor,
+    isLoadingMoreHistory,
     isSubmitting,
     fetchTokens,
     fetchOrderbook,
     fetchCurrentPrice,
     fetchActiveOrders,
+    fetchOrderHistory,
+    fetchMoreHistory,
     applyCurrentPrice,
     createAndSubmitOrder,
     cancelOrder,
@@ -46,6 +52,25 @@ function TradeContent() {
   const [showCancelPinModal, setShowCancelPinModal] = useState(false);
   const [cancelPinError, setCancelPinError] = useState('');
   const [pendingCancelOrderId, setPendingCancelOrderId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'open' | 'history'>('open');
+
+  // 무한 스크롤 — History 탭에서 sentinel이 보이면 다음 페이지 로드
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (activeTab !== 'history') return;
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          fetchMoreHistory();
+        }
+      },
+      { rootMargin: '100px' },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [activeTab, historyHasMore, historyCursor, fetchMoreHistory]);
 
   // 잔액 기반 최대 수량
   const [maxBalance, setMaxBalance] = useState(0);
@@ -59,6 +84,7 @@ function TradeContent() {
     }
     fetchTokens();
     fetchActiveOrders();
+    fetchOrderHistory();
 
     // /trade?type=sell → side를 sell로 설정
     const type = searchParams.get('type');
@@ -443,49 +469,132 @@ function TradeContent() {
           : t('trade.submitOrder', { side: side === 'buy' ? 'Buy' : 'Sell', type: orderType === 'limit' ? 'Limit' : 'Market' })}
       </button>
 
-      {/* Active Orders */}
+      {/* Orders Tabs — Open Orders / History */}
       <section className="mt-6">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-bold">{t('trade.openOrders')}</h2>
+        {/* Tab Header */}
+        <div className="flex items-center justify-between border-b border-gray-800 mb-3">
+          <div className="flex gap-1">
+            <button
+              onClick={() => setActiveTab('open')}
+              className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
+                activeTab === 'open'
+                  ? 'border-primary-500 text-white'
+                  : 'border-transparent text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              {t('trade.openOrders')}
+              {activeOrders.length > 0 && (
+                <span className="ml-1.5 text-xs text-gray-500">{activeOrders.length}</span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('history')}
+              className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
+                activeTab === 'history'
+                  ? 'border-primary-500 text-white'
+                  : 'border-transparent text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              {t('trade.history')}
+            </button>
+          </div>
           <button
-            onClick={() => fetchActiveOrders()}
+            onClick={() => activeTab === 'open' ? fetchActiveOrders() : fetchOrderHistory()}
             className="text-xs text-gray-400 hover:text-white transition"
           >
             {t('trade.refresh')}
           </button>
         </div>
-        {activeOrders.length === 0 ? (
-          <p className="text-sm text-gray-400">{t('trade.noOpenOrders')}</p>
-        ) : (
-          <div className="space-y-2">
-            {activeOrders.map((order) => (
-              <div key={order.id} className="bg-gray-800/50 rounded-xl p-3 flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs px-1.5 py-0.5 rounded ${
-                      order.side === 'buy' ? 'bg-green-600/20 text-green-400' : 'bg-red-600/20 text-red-400'
-                    }`}>
-                      {order.side === 'buy' ? 'BUY' : 'SELL'}
-                    </span>
-                    <span className="font-medium text-sm">{order.tokenSymbol}</span>
+
+        {/* Tab: Open Orders */}
+        {activeTab === 'open' && (
+          <>
+            {activeOrders.length === 0 ? (
+              <p className="text-sm text-gray-400">{t('trade.noOpenOrders')}</p>
+            ) : (
+              <div className="space-y-2">
+                {activeOrders.map((order) => (
+                  <div key={order.id} className="bg-gray-800/50 rounded-xl p-3 flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${
+                          order.side === 'buy' ? 'bg-green-600/20 text-green-400' : 'bg-red-600/20 text-red-400'
+                        }`}>
+                          {order.side === 'buy' ? 'BUY' : 'SELL'}
+                        </span>
+                        <span className="font-medium text-sm">{order.tokenSymbol}</span>
+                      </div>
+                      <p className="text-xs text-gray-400">
+                        {order.price} × {order.quantity}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setPendingCancelOrderId(order.id);
+                        setCancelPinError('');
+                        setShowCancelPinModal(true);
+                      }}
+                      className="text-xs px-3 py-1 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition"
+                    >
+                      {t('trade.cancel')}
+                    </button>
                   </div>
-                  <p className="text-xs text-gray-400">
-                    {order.price} × {order.quantity}
-                  </p>
-                </div>
-                <button
-                  onClick={() => {
-                    setPendingCancelOrderId(order.id);
-                    setCancelPinError('');
-                    setShowCancelPinModal(true);
-                  }}
-                  className="text-xs px-3 py-1 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition"
-                >
-                  {t('trade.cancel')}
-                </button>
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+          </>
+        )}
+
+        {/* Tab: History */}
+        {activeTab === 'history' && (
+          <>
+            {orderHistory.length === 0 ? (
+              <p className="text-sm text-gray-400">{t('trade.noHistory')}</p>
+            ) : (
+              <div className="space-y-2">
+                {orderHistory.map((order) => {
+                  const statusLabel = order.status === 'filled' ? t('trade.statusFilled')
+                    : order.status === 'cancelled' ? t('trade.statusCancelled')
+                    : order.status === 'failed' ? t('trade.statusFailed')
+                    : order.status === 'expired' ? t('trade.statusExpired')
+                    : order.status;
+                  const statusColor = order.status === 'filled' ? 'text-blue-400 bg-blue-600/20'
+                    : order.status === 'cancelled' ? 'text-gray-400 bg-gray-600/20'
+                    : order.status === 'failed' ? 'text-red-400 bg-red-600/20'
+                    : 'text-gray-400 bg-gray-600/20';
+                  return (
+                    <div key={order.id} className="bg-gray-800/50 rounded-xl p-3 flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${
+                            order.side === 'buy' ? 'bg-green-600/20 text-green-400' : 'bg-red-600/20 text-red-400'
+                          }`}>
+                            {order.side === 'buy' ? 'BUY' : 'SELL'}
+                          </span>
+                          <span className="font-medium text-sm">{order.tokenSymbol}</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${statusColor}`}>
+                            {statusLabel}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {order.price} × {order.quantity}
+                          <span className="ml-2">{new Date(order.created_at).toLocaleDateString()}</span>
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+                {/* 무한 스크롤 sentinel + 로딩 인디케이터 */}
+                {historyHasMore && (
+                  <div ref={sentinelRef} className="py-3 text-center">
+                    {isLoadingMoreHistory && (
+                      <span className="text-xs text-gray-500">{t('common.loading')}</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
       </section>
 

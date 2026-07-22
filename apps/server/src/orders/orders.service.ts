@@ -275,22 +275,36 @@ export class OrdersService {
 
   /**
    * 과거 주문 내역 (filled, cancelled, expired, failed)
+   * cursor 기반 페이지네이션 — before 시각보다 이전 주문을 limit만큼 반환
    */
-  async getOrderHistory(userId: string) {
-    const { data, error } = await this.client
+  async getOrderHistory(userId: string, before?: string, limit = 20) {
+    let query = this.client
       .from('orders')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('user_id', userId)
-      .in('status', ['filled', 'cancelled', 'expired', 'failed'])
+      .in('status', ['filled', 'cancelled', 'expired', 'failed']);
+
+    if (before) {
+      query = query.lt('created_at', before);
+    }
+
+    const { data, error } = await query
       .order('created_at', { ascending: false })
-      .limit(50);
+      .limit(limit);
 
     if (error) {
       this.logger.error(`Failed to get order history: ${error.message}`);
       throw error;
     }
 
-    return (data || []) as Record<string, unknown>[];
+    // 다음 페이지 존재 여부 — 반환된 마지막 주문의 created_at이 cursor
+    const items = (data || []) as Record<string, unknown>[];
+    const hasMore = items.length === limit;
+    const nextCursor = hasMore && items.length > 0
+      ? (items[items.length - 1].created_at as string)
+      : null;
+
+    return { items, hasMore, nextCursor };
   }
 
   /**

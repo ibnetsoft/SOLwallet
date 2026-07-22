@@ -41,6 +41,9 @@ interface TradeState {
   // Orders
   activeOrders: OrderInfo[];
   orderHistory: OrderInfo[];
+  historyHasMore: boolean;
+  historyCursor: string | null;
+  isLoadingMoreHistory: boolean;
 
   // UI state
   isSubmitting: boolean;
@@ -61,6 +64,7 @@ interface TradeState {
   fetchCurrentPrice: () => Promise<void>;
   fetchActiveOrders: () => Promise<void>;
   fetchOrderHistory: () => Promise<void>;
+  fetchMoreHistory: () => Promise<void>;
 
   // Order actions
   createAndSubmitOrder: (pin: string) => Promise<{ txSignature?: string }>;
@@ -78,6 +82,9 @@ export const useTradeStore = create<TradeState>((set, get) => ({
   tokens: [],
   activeOrders: [],
   orderHistory: [],
+  historyHasMore: false,
+  historyCursor: null,
+  isLoadingMoreHistory: false,
   isSubmitting: false,
   isOrderbookLoading: false,
 
@@ -164,10 +171,33 @@ export const useTradeStore = create<TradeState>((set, get) => ({
 
   fetchOrderHistory: async () => {
     try {
-      const orders = await ordersApi.getOrderHistory();
-      set({ orderHistory: (orders || []).map(normalizeOrder) });
+      const page = await ordersApi.getOrderHistory();
+      set({
+        orderHistory: (page.items || []).map(normalizeOrder),
+        historyHasMore: page.hasMore,
+        historyCursor: page.nextCursor,
+      });
     } catch {
       // 무시
+    }
+  },
+
+  fetchMoreHistory: async () => {
+    const { historyCursor, historyHasMore, isLoadingMoreHistory } = get();
+    if (!historyHasMore || !historyCursor || isLoadingMoreHistory) return;
+
+    set({ isLoadingMoreHistory: true });
+    try {
+      const page = await ordersApi.getOrderHistory(historyCursor);
+      const more = (page.items || []).map(normalizeOrder);
+      set((state) => ({
+        orderHistory: [...state.orderHistory, ...more],
+        historyHasMore: page.hasMore,
+        historyCursor: page.nextCursor,
+        isLoadingMoreHistory: false,
+      }));
+    } catch {
+      set({ isLoadingMoreHistory: false });
     }
   },
 

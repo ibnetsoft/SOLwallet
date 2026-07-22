@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Body,
+  Query,
   UseGuards,
   ParseUUIDPipe,
 } from '@nestjs/common';
@@ -77,12 +78,21 @@ export class OrdersController {
   }
 
   /**
-   * GET /api/orders/history — 과거 주문 내역
+   * GET /api/orders/history — 과거 주문 내역 (cursor 페이지네이션)
+   * ?before=ISO시각&limit=개수 — before 시각보다 이전 주문 반환
    */
   @Get('history')
-  async getOrderHistory(@CurrentUser() userId: string) {
-    const orders = await this.ordersService.getOrderHistory(userId);
-    return { success: true, data: orders };
+  async getOrderHistory(
+    @CurrentUser() userId: string,
+    @Query('before') before?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const result = await this.ordersService.getOrderHistory(
+      userId,
+      before,
+      limit ? Math.min(Number(limit), 100) : undefined,
+    );
+    return { success: true, data: result };
   }
 
   /**

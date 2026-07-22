@@ -39,8 +39,9 @@ export default function TransactionsPage() {
     setLoading(true);
     try {
       const data = await getOrderHistory();
-      // 응답 형태 정규화
-      const normalized: OrderItem[] = (data || []).map((raw) => {
+      // 응답 형태 정규화 (OrderHistoryPage.items)
+      const rawItems = data.items ?? data;
+      const normalized: OrderItem[] = (rawItems as Record<string, unknown>[] || []).map((raw) => {
         const r = raw as Record<string, unknown>;
         return {
           id: String(r.id ?? ''),
