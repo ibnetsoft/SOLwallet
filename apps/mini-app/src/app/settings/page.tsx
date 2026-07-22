@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { Copy } from 'lucide-react';
 import { useWalletStore } from '@/stores/useWalletStore';
 import { useToast } from '@/components/Toast';
 import PinModal from '@/components/PinModal';
@@ -273,7 +274,7 @@ export default function SettingsPage() {
                 }}
                 className="text-xs bg-primary-600/20 text-primary-400 px-3 py-1.5 rounded-lg hover:bg-primary-600/30 transition"
               >
-                {profile.referralCode} 복사
+                {profile.referralCode} <Copy className="inline w-3.5 h-3.5 ml-1" />
               </button>
             </div>
             <div className="flex justify-between text-sm">

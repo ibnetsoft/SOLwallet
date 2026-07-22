@@ -19,5 +19,8 @@
   "packageManager": "pnpm@10.34.5",
   "engines": {
     "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "graceful-fs": "^4.2.11"
   }
 }
