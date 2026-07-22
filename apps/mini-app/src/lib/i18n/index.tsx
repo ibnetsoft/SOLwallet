@@ -3,14 +3,16 @@
 import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from 'react';
 import ko from './locales/ko';
 import en from './locales/en';
+import zh from './locales/zh';
+import ja from './locales/ja';
 import type { TranslationKey } from './locales/ko';
 
-export type Locale = 'en' | 'ko';
+export type Locale = 'en' | 'ko' | 'zh' | 'ja';
 
 const STORAGE_KEY = 'solwallet_language';
 const DEFAULT_LOCALE: Locale = 'en';
 
-const translations: Record<Locale, Record<TranslationKey, string>> = { en, ko };
+const translations: Record<Locale, Record<TranslationKey, string>> = { en, ko, zh, ja };
 
 interface I18nContextValue {
   locale: Locale;

@@ -158,6 +158,22 @@ export default function SettingsPage() {
               >
                 🇰🇷 한국어
               </button>
+              <button
+                onClick={() => setLocale('zh')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                  locale === 'zh' ? 'bg-primary-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                }`}
+              >
+                🇨🇳 中文
+              </button>
+              <button
+                onClick={() => setLocale('ja')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                  locale === 'ja' ? 'bg-primary-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                }`}
+              >
+                🇯🇵 日本語
+              </button>
             </div>
           </div>
         </div>
