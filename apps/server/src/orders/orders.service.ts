@@ -2,7 +2,7 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from '@nes
 import { SupabaseService } from '../supabase/supabase.service';
 import { ConfigService } from '@nestjs/config';
 import { Connection, PublicKey } from '@solana/web3.js';
-import { FEE_RATE, MANIFEST, USDC_MINT } from '@solwallet/config';
+import { FEE_RATE, MANIFEST, USDT_MINT } from '@solwallet/config';
 import type { CreateOrderDto } from '../common/dto/order.dto';
 
 /** Manifest POST /orders 응답 */
@@ -77,7 +77,7 @@ export class OrdersService {
    *   { maker, baseMint, quoteMint, orders: [{ size, price, side, orderType, clientOrderId }], computeUnitPrice }
    *   → { transaction, requestId }
    *
-   * base는 항상 토큰, quote는 항상 USDC (side 무관 — 같은 마켓에서 매수/매도 매칭)
+   * base는 항상 토큰, quote는 항상 USDT (side 무관 — 같은 마켓에서 매수/매도 매칭)
    */
   async createOrder(
     userId: string,
@@ -138,7 +138,7 @@ export class OrdersService {
         body: JSON.stringify({
           maker: walletPublicKey,
           baseMint: token.mint_address, // base = 토큰 (고정)
-          quoteMint: USDC_MINT, // quote = USDC (고정)
+          quoteMint: USDT_MINT, // quote = USDT (고정)
           orders: [
             {
               size: String(dto.quantity),
@@ -356,7 +356,7 @@ export class OrdersService {
         body: JSON.stringify({
           maker: wallet.public_key,
           baseMint: token.mint_address,
-          quoteMint: USDC_MINT,
+          quoteMint: USDT_MINT,
           orders: [
             sequenceNumber != null
               ? { sequenceNumber }
@@ -463,7 +463,7 @@ export class OrdersService {
       const { Market } = await import('@cks-systems/manifest-sdk');
 
       const baseMint = new PublicKey(tokenMint);
-      const quoteMint = new PublicKey(USDC_MINT);
+      const quoteMint = new PublicKey(USDT_MINT);
 
       // base/quote 쌍의 마켓 조회
       const markets = await Market.findByMints(this.connection, baseMint, quoteMint);

@@ -9,10 +9,10 @@ export const FEE_RATE = 0.01; // 1%
 export const MAX_WALLETS = 3;
 
 /** 기본 기축 통화 (Manifest 마켓 quote 통화) */
-export const BASE_CURRENCY = 'USDC';
+export const BASE_CURRENCY = 'USDT';
 
-/** USDC mint (Manifest 메인넷 마켓의 표준 quote 토큰) */
-export const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+/** USDT mint (Manifest 메인넷 마켓의 quote 토큰 — USDT-quote 마켓 46개 존재 확인) */
+export const USDT_MINT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
 
 /** 랩드 SOL mint (Native SOL 래핑 — 출금 등에서만 사용, 거래 quote에는 사용 안 함) */
 export const WSOL_MINT = 'So11111111111111111111111111111111111111112';

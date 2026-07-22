@@ -111,10 +111,10 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     try {
       const tokens = await tokensApi.getTokens();
       set({ tokens });
-      // 기본 토큰 선택 (USDC 제외 — 기축 통화)
-      const nonUsdc = tokens.find((t) => t.symbol !== 'USDC');
-      if (!get().selectedToken && nonUsdc) {
-        set({ selectedToken: nonUsdc });
+      // 기본 토큰 선택 (USDT 제외 — 기축 통화)
+      const nonUsdt = tokens.find((t) => t.symbol !== 'USDT');
+      if (!get().selectedToken && nonUsdt) {
+        set({ selectedToken: nonUsdt });
       }
     } catch {
       // 무시

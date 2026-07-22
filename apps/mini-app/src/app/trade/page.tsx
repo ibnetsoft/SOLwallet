@@ -9,7 +9,7 @@ import { useToast } from '@/components/Toast';
 import PinModal from '@/components/PinModal';
 import { BottomNav } from '@/components/BottomNav';
 import { SkeletonCard } from '@/components/Skeleton';
-import { FEE_RATE, QUICK_AMOUNT_RATIOS, USDC_MINT } from '@solwallet/config';
+import { FEE_RATE, QUICK_AMOUNT_RATIOS, USDT_MINT } from '@solwallet/config';
 import { getWalletBalance } from '@/lib/api/balance';
 import { isLoggedIn } from '@/lib/api/auth';
 import { useT } from '@/lib/i18n';
@@ -96,10 +96,10 @@ function TradeContent() {
       try {
         const bal = await getWalletBalance(activeWallet.publicKey);
         if (side === 'buy') {
-          // 매수 시: 보유 USDC 잔액 → 구매 가능한 토큰 수량
-          const usdcBal = bal.tokens.find((tok) => tok.mint === USDC_MINT);
-          const usdc = usdcBal?.balance ?? 0;
-          setMaxBalance(usdc > 0 && Number(price) > 0 ? usdc / Number(price) : 0);
+          // 매수 시: 보유 USDT 잔액 → 구매 가능한 토큰 수량
+          const usdtBal = bal.tokens.find((tok) => tok.mint === USDT_MINT);
+          const usdt = usdtBal?.balance ?? 0;
+          setMaxBalance(usdt > 0 && Number(price) > 0 ? usdt / Number(price) : 0);
         } else {
           // 매도 시: 보유 토큰 수량
           if (selectedToken) {
@@ -247,7 +247,7 @@ function TradeContent() {
           <div>
             <p className="font-medium">{selectedToken ? selectedToken.symbol : t('trade.selectToken')}</p>
             <p className="text-sm text-gray-400">
-              {selectedToken ? `${selectedToken.symbol}/USDC` : t('trade.baseCurrency')}
+              {selectedToken ? `${selectedToken.symbol}/USDT` : t('trade.baseCurrency')}
             </p>
           </div>
           <span className="text-gray-400">▼</span>
@@ -256,7 +256,7 @@ function TradeContent() {
         {showTokenDropdown && (
           <div className="absolute left-0 right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-xl z-10 max-h-48 overflow-y-auto">
             {tokens
-              .filter((tok) => tok.symbol !== 'USDC')
+              .filter((tok) => tok.symbol !== 'USDT')
               .map((token) => (
                 <button
                   key={token.id}
@@ -299,7 +299,7 @@ function TradeContent() {
             </button>
           </div>
           {currentPrice > 0 && (
-            <p className="text-xs text-gray-500 mt-1">{t('trade.currentPriceLabel')} {currentPrice.toFixed(4)} USDC</p>
+            <p className="text-xs text-gray-500 mt-1">{t('trade.currentPriceLabel')} {currentPrice.toFixed(4)} USDT</p>
           )}
         </section>
       ) : (
@@ -312,7 +312,7 @@ function TradeContent() {
                 : t('trade.loadingPrice')}
             </span>
             <span className="text-sm font-medium tabular-nums">
-              {currentPrice > 0 ? `${currentPrice.toFixed(4)} USDC` : '-'}
+              {currentPrice > 0 ? `${currentPrice.toFixed(4)} USDT` : '-'}
             </span>
           </div>
         </section>
