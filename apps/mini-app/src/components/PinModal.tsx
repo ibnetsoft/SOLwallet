@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { PIN_MIN_LENGTH } from '@solwallet/config';
+import { useT } from '@/lib/i18n';
 
 interface PinModalProps {
   isOpen: boolean;
@@ -20,6 +21,7 @@ export default function PinModal({
   onCancel,
   error,
 }: PinModalProps) {
+  const { t } = useT();
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [step, setStep] = useState<'input' | 'confirm'>('input');
@@ -37,7 +39,7 @@ export default function PinModal({
 
   const handleNext = async () => {
     if (pin.length < PIN_MIN_LENGTH) {
-      setLocalError(`PIN은 최소 ${PIN_MIN_LENGTH}자리입니다.`);
+      setLocalError(t('pin.minDigits', { min: PIN_MIN_LENGTH }));
       return;
     }
 
@@ -50,7 +52,7 @@ export default function PinModal({
 
     // confirm 단계
     if (confirmPin !== pin) {
-      setLocalError('PIN이 일치하지 않습니다.');
+      setLocalError(t('pin.mismatch'));
       return;
     }
 
@@ -63,7 +65,7 @@ export default function PinModal({
       setStep('input');
       setLocalError('');
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : '오류가 발생했습니다.');
+      setLocalError(err instanceof Error ? err.message : t('common.error'));
     } finally {
       setLoading(false);
     }
@@ -104,7 +106,7 @@ export default function PinModal({
         )}
 
         <p className="text-sm text-gray-400 text-center mb-2">
-          {step === 'input' ? `PIN을 설정하세요 (${PIN_MIN_LENGTH}~6자리)` : 'PIN을 다시 입력하세요'}
+          {step === 'input' ? t('pin.setup', { min: PIN_MIN_LENGTH }) : t('pin.reenter')}
         </p>
 
         <input
@@ -157,14 +159,14 @@ export default function PinModal({
             onClick={handleCancel}
             className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 font-medium"
           >
-            취소
+            {t('common.cancel')}
           </button>
           <button
             onClick={handleNext}
             disabled={loading || (step === 'input' ? pin.length < PIN_MIN_LENGTH : confirmPin.length < PIN_MIN_LENGTH)}
             className="flex-1 py-3 rounded-xl bg-primary-600 text-white font-medium disabled:opacity-50"
           >
-            {loading ? '처리중...' : step === 'input' ? '다음' : '확인'}
+            {loading ? t('common.processing') : step === 'input' ? t('common.next') : t('common.confirm')}
           </button>
         </div>
       </div>

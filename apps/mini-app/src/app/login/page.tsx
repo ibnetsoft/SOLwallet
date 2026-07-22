@@ -4,8 +4,10 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { devLogin, telegramLogin, isLoggedIn } from '@/lib/api/auth';
 import { useToast } from '@/components/Toast';
+import { useT } from '@/lib/i18n';
 
 export default function LoginPage() {
+  const { t } = useT();
   const router = useRouter();
   const { showToast } = useToast();
   const [username, setUsername] = useState('');
@@ -24,7 +26,7 @@ export default function LoginPage() {
       // 2. 추천인 코드 추출 — Telegram start_param 우선, URL ?ref= 폴백
       const extractReferralCode = (): string | undefined => {
         // Telegram 미니앱 딥링크 ?startapp=<code>
-        const startParam = window.Telegram?.WebApp?.initDataUnsafe?.start_param;
+        const startParam = (window as any).Telegram?.WebApp?.initDataUnsafe?.start_param;
         if (startParam && startParam.length >= 4) {
           return startParam;
         }
@@ -38,8 +40,8 @@ export default function LoginPage() {
 
       // 3. Telegram WebApp 환경 확인 (SDK 로드 대기)
       const checkTelegram = () => {
-        if (typeof window !== 'undefined' && window.Telegram?.WebApp) {
-          const tg = window.Telegram.WebApp;
+        if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp) {
+          const tg = (window as any).Telegram.WebApp;
           tg.ready();
           tg.expand();
           const initData = tg.initData;
@@ -49,13 +51,13 @@ export default function LoginPage() {
             const referralCode = extractReferralCode();
             telegramLogin(initData, referralCode)
               .then(() => {
-                showToast('Telegram 로그인 성공');
+                showToast(t('login.telegramSuccess'));
                 // localStorage 저장 확인 후 이동
                 setTimeout(() => router.replace('/'), 300);
               })
               .catch((err) => {
                 setStatus('dev');
-                showToast(err instanceof Error ? err.message : 'Telegram 로그인 실패');
+                showToast(err instanceof Error ? err.message : t('login.telegramFailed'));
               });
             return true;
           }
@@ -74,7 +76,7 @@ export default function LoginPage() {
     };
 
     init();
-  }, [router, showToast]);
+  }, [router, showToast, t]);
 
   // 개발용 로그인
   const handleDevLogin = async (e: React.FormEvent) => {
@@ -84,14 +86,14 @@ export default function LoginPage() {
       const token = await devLogin(username.trim() || 'dev_user');
       // 토큰 저장 확인
       if (token && isLoggedIn()) {
-        showToast('✅ 로그인 성공');
+        showToast(t('login.success'));
         // 약간 대기 후 이동 (localStorage 동기화 보장)
         setTimeout(() => router.replace('/'), 500);
       } else {
-        showToast('❌ 토큰 저장 실패');
+        showToast(t('login.tokenSaveFailed'));
       }
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '로그인 실패');
+      showToast(err instanceof Error ? err.message : t('login.failed'));
     } finally {
       setIsLoading(false);
     }
@@ -102,20 +104,20 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold mb-2">🔥 DEX MINER</h1>
-          <p className="text-sm text-gray-400">솔라나 지정가 거래</p>
+          <p className="text-sm text-gray-400">{t('login.subtitle')}</p>
         </div>
 
         {/* 체크 중 */}
         {status === 'checking' && (
           <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700/50 text-center">
-            <p className="text-sm text-gray-400">확인 중...</p>
+            <p className="text-sm text-gray-400">{t('login.checking')}</p>
           </div>
         )}
 
         {/* Telegram 자동 로그인 중 */}
         {status === 'telegram' && (
           <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700/50 text-center">
-            <p className="text-sm text-gray-400">Telegram 인증 중...</p>
+            <p className="text-sm text-gray-400">{t('login.telegramAuth')}</p>
           </div>
         )}
 
@@ -123,16 +125,16 @@ export default function LoginPage() {
         {status === 'dev' && (
           <>
             <form onSubmit={handleDevLogin} className="bg-gray-800/50 rounded-xl p-6 border border-gray-700/50">
-              <h2 className="text-lg font-bold mb-1">🔐 개발용 로그인</h2>
+              <h2 className="text-lg font-bold mb-1">{t('login.devTitle')}</h2>
               <p className="text-xs text-gray-400 mb-4">
-                브라우저에서 테스트용으로 로그인합니다
+                {t('login.devDesc')}
               </p>
 
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="사용자명 (선택, 기본: dev_user)"
+                placeholder={t('login.usernamePlaceholder')}
                 className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 outline-none focus:border-primary-500 transition mb-4"
               />
 
@@ -141,19 +143,19 @@ export default function LoginPage() {
                 disabled={isLoading}
                 className="w-full bg-primary-600 hover:bg-primary-700 text-white py-3 rounded-lg font-medium transition disabled:opacity-50"
               >
-                {isLoading ? '로그인 중...' : '로그인하기'}
+                {isLoading ? t('login.loggingIn') : t('login.loginBtn')}
               </button>
             </form>
 
             <button
               onClick={() => {
                 localStorage.clear();
-                showToast('🗑️ 캐시 삭제됨');
+                showToast(t('login.cacheCleared'));
                 setStatus('dev');
               }}
               className="w-full mt-3 text-xs text-gray-500 hover:text-gray-400 py-2"
             >
-              캐시 삭제 후 다시 시도
+              {t('login.clearCache')}
             </button>
           </>
         )}

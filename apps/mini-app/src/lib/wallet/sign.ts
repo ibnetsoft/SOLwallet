@@ -1,4 +1,5 @@
 import { Keypair, Transaction } from '@solana/web3.js';
+import { getMsg } from '@/lib/i18n';
 
 /**
  * 트랜잭션에 서명 (온디바이스)
@@ -27,7 +28,7 @@ export function signTransaction(
   } catch {
     // 실패 시에도 작업용 키 제로화
     keypair.secretKey.fill(0);
-    throw new Error('유효하지 않은 트랜잭션입니다.');
+    throw new Error(getMsg('error.invalidTx'));
   }
 
   // 서명

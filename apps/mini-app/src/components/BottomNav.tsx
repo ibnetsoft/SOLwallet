@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home as HomeIcon, BarChart3, Settings } from 'lucide-react';
+import { useT } from '@/lib/i18n';
 
 /**
  * 하단 네비게이션 — 모든 페이지에서 공통 사용
@@ -10,15 +11,16 @@ import { Home as HomeIcon, BarChart3, Settings } from 'lucide-react';
  */
 export function BottomNav() {
   const pathname = usePathname();
+  const { t } = useT();
 
   // 활성 탭 감지 — 정확히 일치하거나 하위 경로
   const isActive = (href: string) =>
     href === '/' ? pathname === '/' : pathname.startsWith(href);
 
   const items = [
-    { href: '/', label: '홈', Icon: HomeIcon },
-    { href: '/trade', label: '거래', Icon: BarChart3 },
-    { href: '/settings', label: '설정', Icon: Settings },
+    { href: '/', label: t('nav.home'), Icon: HomeIcon },
+    { href: '/trade', label: t('nav.trade'), Icon: BarChart3 },
+    { href: '/settings', label: t('nav.settings'), Icon: Settings },
   ];
 
   return (

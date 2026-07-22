@@ -13,8 +13,11 @@ import { getUserProfile } from '@/lib/api/user';
 import type { UserProfile } from '@/lib/api/user';
 import { buildShareText } from '@/lib/referral';
 import { isLoggedIn } from '@/lib/api/auth';
+import { useT } from '@/lib/i18n';
 
 export default function SettingsPage() {
+  const { t, locale, setLocale } = useT();
+
   const {
     wallets,
     activeWalletId,
@@ -63,7 +66,7 @@ export default function SettingsPage() {
       setShowCreatePin(false);
       setShowMnemonic(true);
     } catch (err) {
-      setPinError(err instanceof Error ? err.message : '오류가 발생했습니다.');
+      setPinError(err instanceof Error ? err.message : t('common.error'));
     } finally {
       setActionLoading('');
     }
@@ -84,9 +87,9 @@ export default function SettingsPage() {
       await importWallet(pendingMnemonic, `Wallet ${nextIndex + 1}`, pin);
       setShowImportPin(false);
       setPendingMnemonic('');
-      showToast('✅ 지갑을 성공적으로 가져왔습니다!');
+      showToast(t('settings.walletImported'));
     } catch (err) {
-      setPinError(err instanceof Error ? err.message : '오류가 발생했습니다.');
+      setPinError(err instanceof Error ? err.message : t('common.error'));
     } finally {
       setActionLoading('');
     }
@@ -98,9 +101,9 @@ export default function SettingsPage() {
     setActionLoading(`activate-${walletId}`);
     try {
       await activateWallet(walletId);
-      showToast('✅ 활성 지갑이 변경되었습니다.');
+      showToast(t('settings.walletActivated'));
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '지갑 전환 실패');
+      showToast(err instanceof Error ? err.message : t('settings.activateFailed'));
     } finally {
       setActionLoading('');
     }
@@ -108,13 +111,13 @@ export default function SettingsPage() {
 
   // 지갑 삭제
   const handleDelete = async (walletId: string) => {
-    if (!confirm('이 지갑을 삭제하시겠습니까?\n암호화된 데이터가 로컬에서 제거됩니다.')) return;
+    if (!confirm(t('settings.deleteConfirm'))) return;
     setActionLoading(`delete-${walletId}`);
     try {
       await deleteWallet(walletId);
-      showToast('🗑️ 지갑이 삭제되었습니다.');
+      showToast(t('settings.walletDeleted'));
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '지갑 삭제 실패');
+      showToast(err instanceof Error ? err.message : t('settings.deleteFailed'));
     } finally {
       setActionLoading('');
     }
@@ -129,8 +132,35 @@ export default function SettingsPage() {
       {/* Header */}
       <header className="flex items-center gap-3 mb-6">
         <Link href="/" className="text-xl">←</Link>
-        <h1 className="text-xl font-bold">설정</h1>
+        <h1 className="text-xl font-bold">{t('settings.title')}</h1>
       </header>
+
+      {/* Language Selector */}
+      <section className="mb-4">
+        <div className="bg-gray-800/50 rounded-xl p-4">
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-400">{t('settings.language')}</span>
+            <div className="flex gap-1">
+              <button
+                onClick={() => setLocale('en')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                  locale === 'en' ? 'bg-primary-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                }`}
+              >
+                🇬🇧 English
+              </button>
+              <button
+                onClick={() => setLocale('ko')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                  locale === 'ko' ? 'bg-primary-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                }`}
+              >
+                🇰🇷 한국어
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* Wallet Management */}
       <section className="mb-6">
@@ -138,7 +168,7 @@ export default function SettingsPage() {
           <button
             onClick={() => {
               if (wallets.length >= MAX_WALLETS) {
-                showToast(`최대 ${MAX_WALLETS}개까지 가능합니다.`);
+                showToast(t('settings.maxWallets', { max: MAX_WALLETS }));
                 return;
               }
               setShowCreatePin(true);
@@ -146,13 +176,13 @@ export default function SettingsPage() {
             disabled={!!actionLoading}
             className="w-full bg-gray-800/50 rounded-xl p-4 text-left flex items-center justify-between active:bg-gray-700/50 transition-colors"
           >
-            <p className="font-medium">새 지갑 생성</p>
+            <p className="font-medium">{t('settings.createWallet')}</p>
             <span className="text-gray-500">→</span>
           </button>
           <button
             onClick={() => {
               if (wallets.length >= MAX_WALLETS) {
-                showToast(`최대 ${MAX_WALLETS}개까지 가능합니다.`);
+                showToast(t('settings.maxWallets', { max: MAX_WALLETS }));
                 return;
               }
               setShowImportSeed(true);
@@ -160,7 +190,7 @@ export default function SettingsPage() {
             disabled={!!actionLoading}
             className="w-full bg-gray-800/50 rounded-xl p-4 text-left flex items-center justify-between active:bg-gray-700/50 transition-colors"
           >
-            <p className="font-medium">시드구문 Import</p>
+            <p className="font-medium">{t('settings.importSeed')}</p>
             <span className="text-gray-500">→</span>
           </button>
         </div>
@@ -171,7 +201,7 @@ export default function SettingsPage() {
         <div className="space-y-2">
           {wallets.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
-              <p className="text-sm">생성된 지갑이 없습니다</p>
+              <p className="text-sm">{t('settings.noWallets')}</p>
             </div>
           ) : (
             wallets.map((wallet) => (
@@ -187,7 +217,7 @@ export default function SettingsPage() {
                     <span className="font-medium text-sm">{wallet.label}</span>
                     {wallet.id === activeWalletId && (
                       <span className="text-[9px] bg-primary-600 px-1.5 py-0.5 rounded text-white">
-                        활성
+                        {t('settings.active')}
                       </span>
                     )}
                   </div>
@@ -204,7 +234,7 @@ export default function SettingsPage() {
                           disabled={!!actionLoading}
                           className="text-[10px] px-2 py-1 rounded-lg bg-primary-600/20 text-primary-400 hover:bg-primary-600/30 transition disabled:opacity-50"
                         >
-                          활성화
+                          {t('settings.activate')}
                         </button>
                       )}
                       <button
@@ -212,7 +242,7 @@ export default function SettingsPage() {
                         disabled={!!actionLoading}
                         className="text-[10px] px-2 py-1 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition disabled:opacity-50"
                       >
-                        삭제
+                        {t('settings.delete')}
                       </button>
                     </div>
                   )}
@@ -229,15 +259,15 @@ export default function SettingsPage() {
           <div className="bg-gray-800/50 rounded-xl p-4 space-y-3">
             {/* 내 추천 코드 + 링크 함께 복사 */}
             <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-400">내 추천 코드</span>
+              <span className="text-sm text-gray-400">{t('settings.myReferralCode')}</span>
               <button
                 onClick={() => {
                   if (profile.referralCode) {
                     // 코드 + 링크 함께 복사
                     const shareText = buildShareText(profile.referralCode);
                     navigator.clipboard.writeText(shareText).then(
-                      () => showToast('추천코드와 링크가 복사되었습니다.'),
-                      () => showToast('복사에 실패했습니다.'),
+                      () => showToast(t('settings.copied')),
+                      () => showToast(t('settings.copyFailed')),
                     );
                   }
                 }}
@@ -247,12 +277,12 @@ export default function SettingsPage() {
               </button>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-400">초대한 친구</span>
-              <span className="font-medium">{profile.referralCount}명</span>
+              <span className="text-gray-400">{t('settings.friendsInvited')}</span>
+              <span className="font-medium">{t('settings.friendsCount', { count: profile.referralCount })}</span>
             </div>
             {profile.referrer && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-400">내 추천인</span>
+                <span className="text-gray-400">{t('settings.myReferrer')}</span>
                 <span>{profile.referrer.username || profile.referrer.first_name}</span>
               </div>
             )}
@@ -264,11 +294,11 @@ export default function SettingsPage() {
       <section className="mb-6">
         <div className="bg-gray-800/50 rounded-xl p-4 space-y-2">
           <div className="flex justify-between text-sm">
-            <span className="text-gray-400">버전</span>
+            <span className="text-gray-400">{t('settings.version')}</span>
             <span>v0.2.0</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-gray-400">네트워크</span>
+            <span className="text-gray-400">{t('settings.network')}</span>
             <span>Mainnet</span>
           </div>
           <div className="flex justify-between text-sm">
@@ -286,8 +316,8 @@ export default function SettingsPage() {
       {/* 새 지갑 PIN 설정 */}
       <PinModal
         isOpen={showCreatePin}
-        title="🔒 PIN 설정"
-        subtitle="새 지갑의 암호 PIN을 설정합니다"
+        title={t('settings.pinTitle')}
+        subtitle={t('settings.pinSubtitleCreate')}
         onConfirm={handleCreateWallet}
         onCancel={() => setShowCreatePin(false)}
         error={pinError}
@@ -303,8 +333,8 @@ export default function SettingsPage() {
       {/* 시드 임포트 — PIN 설정 */}
       <PinModal
         isOpen={showImportPin}
-        title="🔒 PIN 설정"
-        subtitle="가져온 지갑의 암호 PIN을 설정합니다"
+        title={t('settings.pinTitle')}
+        subtitle={t('settings.pinSubtitleImport')}
         onConfirm={handleImportWallet}
         onCancel={() => {
           setShowImportPin(false);

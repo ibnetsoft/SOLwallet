@@ -7,6 +7,7 @@ import { ArrowLeft, ArrowDownToLine, ArrowUpFromLine, Activity } from 'lucide-re
 import { getOrderHistory } from '@/lib/api/orders';
 import { BottomNav } from '@/components/BottomNav';
 import { isLoggedIn } from '@/lib/api/auth';
+import { useT } from '@/lib/i18n';
 
 interface OrderItem {
   id: string;
@@ -20,6 +21,7 @@ interface OrderItem {
 }
 
 export default function TransactionsPage() {
+  const { t, locale } = useT();
   const router = useRouter();
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,6 +63,8 @@ export default function TransactionsPage() {
 
   const filtered = filter === 'all' ? orders : orders.filter((o) => o.side === filter);
 
+  const dateLocale = locale === 'ko' ? 'ko-KR' : 'en-US';
+
   return (
     <main className="min-h-screen p-4 pb-24">
       {/* Header */}
@@ -68,13 +72,13 @@ export default function TransactionsPage() {
         <Link
           href="/"
           className="p-1.5 rounded-lg hover:bg-gray-800 transition text-gray-400"
-          aria-label="뒤로"
+          aria-label={t('tx.back')}
         >
           <ArrowLeft className="w-5 h-5" />
         </Link>
         <div>
-          <h1 className="text-lg font-bold">입출금 내역</h1>
-          <p className="text-[10px] text-gray-500">거래 주문 이력</p>
+          <h1 className="text-lg font-bold">{t('tx.title')}</h1>
+          <p className="text-[10px] text-gray-500">{t('tx.subtitle')}</p>
         </div>
       </header>
 
@@ -90,23 +94,23 @@ export default function TransactionsPage() {
                 : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
             }`}
           >
-            {f === 'all' ? '전체' : f === 'buy' ? '매수' : '매도'}
+            {f === 'all' ? t('tx.all') : f === 'buy' ? t('tx.buy') : t('tx.sell')}
           </button>
         ))}
       </div>
 
       {/* List */}
       {loading ? (
-        <div className="text-center py-10 text-gray-500 text-sm">불러오는 중...</div>
+        <div className="text-center py-10 text-gray-500 text-sm">{t('tx.loading')}</div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-16">
           <Activity className="w-10 h-10 text-gray-700 mx-auto mb-3" strokeWidth={1.5} />
-          <p className="text-sm text-gray-500">거래 내역이 없습니다.</p>
+          <p className="text-sm text-gray-500">{t('tx.noHistory')}</p>
           <Link
             href="/trade"
             className="inline-block mt-4 text-xs text-primary-400 hover:underline"
           >
-            첫 거래 시작하기 →
+            {t('tx.startFirst')}
           </Link>
         </div>
       ) : (
@@ -133,11 +137,11 @@ export default function TransactionsPage() {
                   </div>
                   <div>
                     <p className="text-sm font-medium">
-                      {isBuy ? '매수' : '매도'} · {o.tokenSymbol || 'TOKEN'}
+                      {isBuy ? t('tx.buy') : t('tx.sell')} · {o.tokenSymbol || 'TOKEN'}
                     </p>
                     <p className="text-[10px] text-gray-500 mt-0.5">
                       {o.createdAt
-                        ? new Date(o.createdAt).toLocaleString('ko-KR', {
+                        ? new Date(o.createdAt).toLocaleString(dateLocale, {
                             month: '2-digit',
                             day: '2-digit',
                             hour: '2-digit',

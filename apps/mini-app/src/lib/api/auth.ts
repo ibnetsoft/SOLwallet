@@ -1,5 +1,6 @@
 import { API_BASE } from './client';
 import { saveAuthToken } from '@/lib/storage';
+import { getMsg } from '@/lib/i18n';
 
 /**
  * Telegram initData로 로그인 (프로덕션)
@@ -15,12 +16,12 @@ export async function telegramLogin(initData: string, referralCode?: string): Pr
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({}));
-    throw new Error(error.message || 'Telegram 인증 실패');
+    throw new Error(error.message || getMsg('error.telegramAuth'));
   }
 
   const json = await res.json();
   if (!json.success || !json.data?.token) {
-    throw new Error('유효하지 않은 응답');
+    throw new Error(getMsg('error.invalidResponse'));
   }
 
   saveAuthToken(json.data.token);
@@ -40,12 +41,12 @@ export async function devLogin(username?: string): Promise<string> {
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({}));
-    throw new Error(error.message || '개발 로그인 실패');
+    throw new Error(error.message || getMsg('error.devLoginFailed'));
   }
 
   const json = await res.json();
   if (!json.success || !json.data?.token) {
-    throw new Error('유효하지 않은 응답');
+    throw new Error(getMsg('error.invalidResponse'));
   }
 
   saveAuthToken(json.data.token);

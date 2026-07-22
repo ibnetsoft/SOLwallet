@@ -8,6 +8,8 @@
  *    → Telegram 밖(일반 브라우저, 다른 메신저)에서도 작동
  */
 
+import { getMsg } from '@/lib/i18n';
+
 const TELEGRAM_BOT_USERNAME =
   process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || '';
 const MINI_APP_URL =
@@ -34,16 +36,16 @@ export function getWebReferralUrl(referralCode: string): string {
  */
 export function buildShareText(referralCode: string): string {
   const lines = [
-    '🔥 DEX MINER BOT 추천 링크',
+    getMsg('referral.shareTitle'),
     '',
-    `추천코드: ${referralCode}`,
+    getMsg('referral.code', { code: referralCode }),
   ];
 
   const tgLink = getTelegramDeepLink(referralCode);
   const webLink = getWebReferralUrl(referralCode);
 
-  if (tgLink) lines.push('', `Telegram: ${tgLink}`);
-  if (webLink) lines.push(`웹: ${webLink}`);
+  if (tgLink) lines.push('', getMsg('referral.telegram', { link: tgLink }));
+  if (webLink) lines.push(getMsg('referral.web', { link: webLink }));
 
   return lines.join('\n');
 }

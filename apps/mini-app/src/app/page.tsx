@@ -21,10 +21,10 @@ import { useToast } from '@/components/Toast';
 import DepositModal from '@/components/DepositModal';
 import WithdrawModal from '@/components/WithdrawModal';
 import { isLoggedIn } from '@/lib/api/auth';
+import { useT } from '@/lib/i18n';
 import type { Portfolio, WalletBalance } from '@/lib/api/balance';
 
-// 화면에 항상 노출할 기본 토큰 목록 (잔고 0이어도 표시)
-const USDT_MINT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB'; // 메인넷 USDT
+const USDT_MINT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
 
 interface DisplayToken {
   mint: string;
@@ -37,6 +37,7 @@ interface DisplayToken {
 }
 
 function HomePage() {
+  const { t } = useT();
   const router = useRouter();
   const {
     wallets,
@@ -47,16 +48,13 @@ function HomePage() {
 
   const { showToast } = useToast();
 
-  // 포트폴리오 데이터
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [isLoadingPortfolio, setIsLoadingPortfolio] = useState(false);
   const [showDeposit, setShowDeposit] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
-  // SOL 시세 (Jupiter Price API)
   const [solPrice, setSolPrice] = useState<SolPriceData | null>(null);
 
-  // 초기화 + auth 체크
   useEffect(() => {
     if (!isLoggedIn()) {
       router.replace('/login');
@@ -68,7 +66,6 @@ function HomePage() {
     }
   }, [isInitialized, initialize, router]);
 
-  // 포트폴리오 조회 (silent: 데이터 있으면 로딩 표시 안 함)
   const fetchPortfolio = useCallback(async (silent = false) => {
     if (!activeWalletId) return;
     if (!silent || !portfolio) {
@@ -88,14 +85,12 @@ function HomePage() {
     fetchPortfolio();
   }, [activeWalletId]);
 
-  // 30초마다 자동 갱신 (silent)
   useEffect(() => {
     if (!activeWalletId) return;
     const interval = setInterval(() => fetchPortfolio(true), 30_000);
     return () => clearInterval(interval);
   }, [activeWalletId]);
 
-  // SOL 시세 갱신 — 60초마다 (깜빡임 없이 상태만 업데이트)
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -112,39 +107,32 @@ function HomePage() {
 
   const activeWallet = wallets.find((w) => w.isActive) || wallets[0];
 
-  // 주소 복사
   const copyAddress = useCallback(() => {
     if (!activeWallet?.publicKey) return;
     navigator.clipboard.writeText(activeWallet.publicKey).then(
-      () => showToast('주소가 복사되었습니다.'),
-      () => showToast('복사에 실패했습니다.'),
+      () => showToast(t('home.addressCopied')),
+      () => showToast(t('home.copyFailed')),
     );
-  }, [activeWallet?.publicKey, showToast]);
+  }, [activeWallet?.publicKey, showToast, t]);
 
-  // ===== 표시용 데이터 구성 =====
   const holdings: (WalletBalance & { publicKey: string }) | null =
     portfolio?.wallets?.[0] ?? null;
   const solBalance = holdings?.sol ?? 0;
   const rawTokens = holdings?.tokens ?? [];
   const totalUsdt = portfolio?.totalUsdt ?? 0;
 
-  // SOL USD 환산가 — Jupiter 시세 기반 (없으면 0)
   const solUsdPrice = solPrice?.usdPrice ?? 0;
   const solUsdValue = solBalance * solUsdPrice;
   const solChangePct = solPrice?.change24hPct;
 
-  // 총 자산 — SOL 시세 반영
   const computedTotal = solUsdPrice > 0 ? totalUsdt + solUsdValue : totalUsdt;
 
-  // ROI 추적 (localStorage 기반)
   const roi = useRoi(computedTotal);
   const sparkData = roi.history.length >= 2 ? roi.history.map((p) => p.v) : [computedTotal, computedTotal];
 
-  // 기본 토큰 강제 포함: USDT(Stable), SOL(Staking)
-  // 1) USDT — 보유 중이면 그것 사용, 없으면 0으로 생성
   const usdtFromPortfolio =
     rawTokens.find(
-      (t) => t.mint === USDT_MINT || t.symbol?.toUpperCase() === 'USDT',
+      (tok) => tok.mint === USDT_MINT || tok.symbol?.toUpperCase() === 'USDT',
     ) ?? null;
   const usdtToken: DisplayToken = {
     mint: usdtFromPortfolio?.mint ?? USDT_MINT,
@@ -155,7 +143,6 @@ function HomePage() {
     logoUrl: getTokenLogoUrl('USDT'),
   };
 
-  // 2) SOL — 항상 2번째
   const solToken: DisplayToken = {
     mint: 'So11111111111111111111111111111111111111112',
     symbol: 'SOL',
@@ -166,33 +153,30 @@ function HomePage() {
     logoUrl: getTokenLogoUrl('SOL'),
   };
 
-  // 3) 나머지 토큰 — USDT/SOL 제외
   const otherTokens: DisplayToken[] = rawTokens
     .filter(
-      (t) =>
-        t.mint !== USDT_MINT &&
-        t.symbol?.toUpperCase() !== 'USDT' &&
-        t.symbol?.toUpperCase() !== 'SOL',
+      (tok) =>
+        tok.mint !== USDT_MINT &&
+        tok.symbol?.toUpperCase() !== 'USDT' &&
+        tok.symbol?.toUpperCase() !== 'SOL',
     )
-    .map((t) => ({
-      mint: t.mint,
-      symbol: t.symbol,
-      decimals: t.decimals,
-      balance: t.balance,
-      logoUrl: t.logoUrl || getTokenLogoUrl(t.symbol),
+    .map((tok) => ({
+      mint: tok.mint,
+      symbol: tok.symbol,
+      decimals: tok.decimals,
+      balance: tok.balance,
+      logoUrl: tok.logoUrl || getTokenLogoUrl(tok.symbol),
     }));
 
   const displayTokens: DisplayToken[] = [usdtToken, solToken, ...otherTokens];
 
-  // 주소 축약
   const truncateAddr = (addr: string) =>
     `${addr.slice(0, 4)}...${addr.slice(-4)}`;
 
-  // auth 확인 전에는 로딩
   if (!authChecked) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-400">로딩...</p>
+        <p className="text-gray-400">{t('common.loading')}</p>
       </div>
     );
   }
@@ -260,7 +244,7 @@ function HomePage() {
                 <button
                   onClick={copyAddress}
                   className="p-1 rounded-lg hover:bg-gray-700/70 transition text-gray-400 shrink-0"
-                  aria-label="주소 복사"
+                  aria-label={t('home.addressCopy')}
                 >
                   <Copy className="w-3.5 h-3.5" />
                 </button>
@@ -270,7 +254,7 @@ function HomePage() {
                 href="/settings"
                 className="text-xs text-primary-400 hover:underline"
               >
-                지갑 생성 →
+                {t('home.createWallet')}
               </Link>
             )}
           </div>
@@ -300,13 +284,13 @@ function HomePage() {
         {/* ROI 서브 통계 — 최초잔고 / 총 수익 / 수익률 */}
         <div className="grid grid-cols-3 gap-2 mt-3">
           <div>
-            <p className="text-[9px] text-gray-500 uppercase tracking-wider">최초잔고</p>
+            <p className="text-[9px] text-gray-500 uppercase tracking-wider">{t('home.initialBalance')}</p>
             <p className="text-xs font-medium text-gray-300 tabular-nums mt-0.5">
               ${roi.initialBalance > 0 ? roi.initialBalance.toFixed(5) : '0.00000'}
             </p>
           </div>
           <div>
-            <p className="text-[9px] text-gray-500 uppercase tracking-wider">총 수익</p>
+            <p className="text-[9px] text-gray-500 uppercase tracking-wider">{t('home.totalProfit')}</p>
             <p
               className={`text-xs font-medium tabular-nums mt-0.5 ${
                 roi.totalProfit >= 0 ? 'text-green-400' : 'text-red-400'
@@ -317,7 +301,7 @@ function HomePage() {
             </p>
           </div>
           <div>
-            <p className="text-[9px] text-gray-500 uppercase tracking-wider">수익률</p>
+            <p className="text-[9px] text-gray-500 uppercase tracking-wider">{t('home.profitRate')}</p>
             <p
               className={`text-xs font-medium tabular-nums mt-0.5 ${
                 roi.roiPct >= 0 ? 'text-green-400' : 'text-red-400'
@@ -336,20 +320,20 @@ function HomePage() {
               if (activeWallet) {
                 setShowDeposit(true);
               } else {
-                showToast('먼저 지갑을 생성해주세요.');
+                showToast(t('home.createWalletFirst'));
               }
             }}
             className="flex flex-col items-center justify-center gap-1 bg-gray-700/40 hover:bg-gray-700/70 border border-gray-700/50 py-2.5 rounded-xl text-xs text-gray-200 transition"
           >
             <ArrowDownToLine className="w-4 h-4" strokeWidth={2} />
-            <span>입금</span>
+            <span>{t('home.deposit')}</span>
           </button>
           <button
             onClick={() => {
               if (!activeWallet) {
-                showToast('먼저 지갑을 생성해주세요.');
+                showToast(t('home.createWalletFirst'));
               } else if (solBalance <= 0) {
-                showToast('출금 가능한 SOL 잔액이 없습니다.');
+                showToast(t('home.noSolToWithdraw'));
               } else {
                 setShowWithdraw(true);
               }
@@ -357,14 +341,14 @@ function HomePage() {
             className="flex flex-col items-center justify-center gap-1 bg-gray-700/40 hover:bg-gray-700/70 border border-gray-700/50 py-2.5 rounded-xl text-xs text-gray-200 transition"
           >
             <ArrowUpFromLine className="w-4 h-4" strokeWidth={2} />
-            <span>출금</span>
+            <span>{t('home.withdraw')}</span>
           </button>
           <Link
             href="/transactions"
             className="flex flex-col items-center justify-center gap-1 bg-gray-700/40 hover:bg-gray-700/70 border border-gray-700/50 py-2.5 rounded-xl text-xs text-gray-200 transition"
           >
             <History className="w-4 h-4" strokeWidth={2} />
-            <span>내역</span>
+            <span>{t('home.history')}</span>
           </Link>
         </div>
       </section>
@@ -390,37 +374,36 @@ function HomePage() {
       {/* ===== Holdings (고정 구조 — 깜빡임 방지) ===== */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-base font-bold">보유 자산</h2>
-          <span className="text-[10px] text-gray-500">{displayTokens.length} 종목</span>
+          <h2 className="text-base font-bold">{t('home.holdings')}</h2>
+          <span className="text-[10px] text-gray-500">{displayTokens.length} {t('common.items')}</span>
         </div>
 
         {/* displayTokens가 항상 렌더링되므로 로딩 상태와 무관하게 레이아웃 안정 */}
         <div className="space-y-2">
-          {displayTokens.map((t) => {
-            const isSol = t.symbol === 'SOL';
-            const isUsdt = t.symbol === 'USDT';
-            // 내 자산가치 기준 변동율 — 보유량 0이면 0%, 보유 중인 SOL만 시세 변동율 반영
+          {displayTokens.map((tok) => {
+            const isSol = tok.symbol === 'SOL';
+            const isUsdt = tok.symbol === 'USDT';
             const assetChangePct =
               isUsdt
-                ? 0 // 스테이블 — 0%
+                ? 0
                 : isSol
                   ? solBalance > 0
                     ? (solChangePct ?? 0)
-                    : 0 // SOL 보유량 0 → 자산 변동 없음
-                  : 0; // 기타 토큰은 데이터 없음 → 0%
+                    : 0
+                  : 0;
             return (
               <AssetRow
-                key={t.mint}
-                symbol={t.symbol}
-                balance={t.balance}
-                badge={t.badge}
-                logoUrl={t.logoUrl}
+                key={tok.mint}
+                symbol={tok.symbol}
+                balance={tok.balance}
+                badge={tok.badge}
+                logoUrl={tok.logoUrl}
                 usdValue={
                   isUsdt
-                    ? t.balance
+                    ? tok.balance
                     : isSol
                       ? solUsdValue
-                      : t.balance
+                      : tok.balance
                 }
                 changePct={assetChangePct}
               />
@@ -537,8 +520,9 @@ function AssetRow({
 }
 
 export default function Home() {
+  const { t } = useT();
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-400">로딩...</div>}>
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-400">{t('common.loading')}</div>}>
       <HomePage />
     </Suspense>
   );

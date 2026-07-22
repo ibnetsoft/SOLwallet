@@ -1,5 +1,6 @@
 import * as bip39 from 'bip39';
 import { deriveKeypairFromSeed } from './helpers';
+import { getMsg } from '@/lib/i18n';
 
 export interface ImportWalletResult {
   publicKey: string;
@@ -16,7 +17,7 @@ export function importSeedPhrase(mnemonic: string): ImportWalletResult {
   const trimmed = mnemonic.trim().toLowerCase();
 
   if (!bip39.validateMnemonic(trimmed)) {
-    throw new Error('유효하지 않은 시드 구문입니다.');
+    throw new Error(getMsg('error.invalidSeed'));
   }
 
   const seed = bip39.mnemonicToSeedSync(trimmed);

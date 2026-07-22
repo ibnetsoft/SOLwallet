@@ -14,6 +14,7 @@ import {
 } from '@/lib/storage';
 import type { StoredWallet } from '@/lib/storage';
 import { MAX_WALLETS, AUTO_LOCK_TIMEOUT } from '@solwallet/config';
+import { getMsg } from '@/lib/i18n';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
@@ -135,7 +136,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   createWallet: async (label, pin) => {
     const { wallets } = get();
     if (wallets.length >= MAX_WALLETS) {
-      throw new Error(`최대 ${MAX_WALLETS}개의 지갑만 생성할 수 있습니다.`);
+      throw new Error(getMsg('error.maxWallets', { max: MAX_WALLETS }));
     }
 
     // 1. Keypair 생성
@@ -154,7 +155,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       // 서버 등록 실패 시 메모리 키 제로화
       zeroizeKey(secretKey);
       const error = await res.json().catch(() => ({}));
-      throw new Error(error.message || '지갑 등록에 실패했습니다.');
+      throw new Error(error.message || getMsg('error.walletRegisterFailed'));
     }
 
     const serverWallet = await res.json();
@@ -199,7 +200,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   importWallet: async (mnemonic, label, pin) => {
     const { wallets } = get();
     if (wallets.length >= MAX_WALLETS) {
-      throw new Error(`최대 ${MAX_WALLETS}개의 지갑만 생성할 수 있습니다.`);
+      throw new Error(getMsg('error.maxWallets', { max: MAX_WALLETS }));
     }
 
     // 1. 시드 구문 복원
@@ -208,7 +209,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
     // 중복 지갑 체크
     if (wallets.some((w) => w.publicKey === publicKey)) {
       zeroizeKey(secretKey);
-      throw new Error('이미 추가된 지갑입니다.');
+      throw new Error(getMsg('error.walletExists'));
     }
 
     // 2. 암호화
@@ -223,7 +224,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
     if (!res.ok) {
       zeroizeKey(secretKey);
       const error = await res.json().catch(() => ({}));
-      throw new Error(error.message || '지갑 등록에 실패했습니다.');
+      throw new Error(error.message || getMsg('error.walletRegisterFailed'));
     }
 
     const serverWallet = await res.json();
@@ -306,7 +307,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
     if (!res.ok) {
       const error = await res.json().catch(() => ({}));
-      throw new Error(error.message || '지갑 전환에 실패했습니다.');
+      throw new Error(error.message || getMsg('error.walletSwitchFailed'));
     }
 
     // 로컬 상태 + localStorage 업데이트
@@ -333,7 +334,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
     if (!res.ok) {
       const error = await res.json().catch(() => ({}));
-      throw new Error(error.message || '지갑 삭제에 실패했습니다.');
+      throw new Error(error.message || getMsg('error.walletDeleteFailed'));
     }
 
     removeWalletFromStorage(walletId);
@@ -390,7 +391,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
     const target = stored.find((w) => w.id === walletId);
 
     if (!target) {
-      throw new Error('지갑을 찾을 수 없습니다.');
+      throw new Error(getMsg('error.walletNotFound'));
     }
 
     try {
@@ -406,7 +407,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       // 자동 잠금 타이머 시작
       resetAutoLockTimer(() => get().lockWallets());
     } catch {
-      throw new Error('PIN이 올바르지 않습니다.');
+      throw new Error(getMsg('error.wrongPin'));
     }
   },
 }));

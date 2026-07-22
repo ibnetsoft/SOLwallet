@@ -6,6 +6,7 @@ import * as manifestClient from '@/lib/manifest/client';
 import { FEE_RATE, QUICK_AMOUNT_RATIOS } from '@solwallet/config';
 import { useWalletStore } from './useWalletStore';
 import type { Token } from '@/lib/api/tokens';
+import { getMsg } from '@/lib/i18n';
 
 interface OrderInfo {
   id: string;
@@ -173,13 +174,13 @@ export const useTradeStore = create<TradeState>((set, get) => ({
   createAndSubmitOrder: async (pin) => {
     const { selectedToken, side, price, quantity } = get();
     if (!selectedToken || !price || !quantity) {
-      throw new Error('토큰, 가격, 수량을 모두 입력해주세요.');
+      throw new Error(getMsg('error.fillAllFields'));
     }
 
     const wallets = useWalletStore.getState().wallets;
     const activeWallet = wallets.find((w) => w.isActive) || wallets[0];
     if (!activeWallet) {
-      throw new Error('활성 지갑이 없습니다.');
+      throw new Error(getMsg('error.noActiveWallet'));
     }
 
     // 지갑 잠금 해제
@@ -188,7 +189,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     const secretKey = useWalletStore.getState().wallets.find((w) => w.id === activeWallet.id)?.secretKey;
     if (!secretKey) {
       useWalletStore.getState().lockWallets();
-      throw new Error('지갑 잠금 해제에 실패했습니다.');
+      throw new Error(getMsg('error.walletUnlockFailed'));
     }
 
     set({ isSubmitting: true });
@@ -205,7 +206,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
 
       if (!result.unsignedTx) {
         useWalletStore.getState().lockWallets();
-        throw new Error('트랜잭션 생성에 실패했습니다.');
+        throw new Error(getMsg('error.txBuildFailed'));
       }
 
       // 2. 온디바이스 서명

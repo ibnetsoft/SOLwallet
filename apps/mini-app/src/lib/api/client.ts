@@ -1,4 +1,5 @@
 import { clearAuthToken } from '@/lib/storage';
+import { getMsg } from '@/lib/i18n';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
@@ -43,29 +44,29 @@ export async function apiFetch<T>(
       if (typeof window !== 'undefined') {
         clearAuthToken();
       }
-      throw new Error('인증이 만료되었습니다. 다시 로그인해주세요.');
+      throw new Error(getMsg('error.authExpired'));
     }
 
     if (!res.ok) {
       const error = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
-      throw new Error(error.message || 'API 요청에 실패했습니다.');
+      throw new Error(error.message || getMsg('error.apiFailed'));
     }
 
     const json: ApiResponse<T> = await res.json();
 
     if (!json.success) {
-      throw new Error(json.message || 'API 응답 오류');
+      throw new Error(json.message || getMsg('error.apiResponse'));
     }
 
     return json.data;
   } catch (err) {
     // 타임아웃
     if (err instanceof Error && err.name === 'AbortError') {
-      throw new Error('요청 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.');
+      throw new Error(getMsg('error.timeout'));
     }
     // 네트워크 에러
     if (err instanceof TypeError && err.message.includes('Failed to fetch')) {
-      throw new Error('서버에 연결할 수 없습니다. 네트워크를 확인해주세요.');
+      throw new Error(getMsg('error.network'));
     }
     throw err;
   } finally {

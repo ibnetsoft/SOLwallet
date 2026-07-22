@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { validateMnemonic } from '@/lib/wallet/import';
+import { useT } from '@/lib/i18n';
 
 interface SeedInputProps {
   isOpen: boolean;
@@ -12,31 +13,34 @@ interface SeedInputProps {
 
 export default function SeedInput({
   isOpen,
-  title = '📥 시드구문 Import',
+  title,
   onConfirm,
   onCancel,
 }: SeedInputProps) {
+  const { t } = useT();
   const [mnemonic, setMnemonic] = useState('');
   const [error, setError] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const displayTitle = title || t('seed.title');
 
   const handleConfirm = () => {
     const trimmed = mnemonic.trim();
 
     if (!trimmed) {
-      setError('시드 구문을 입력해주세요.');
+      setError(t('seed.enterSeed'));
       return;
     }
 
     const words = trimmed.split(/\s+/);
 
     if (words.length !== 12 && words.length !== 24) {
-      setError('시드 구문은 12단어 또는 24단어여야 합니다.');
+      setError(t('seed.wordCount'));
       return;
     }
 
     if (!validateMnemonic(trimmed)) {
-      setError('유효하지 않은 시드 구문입니다. 다시 확인해주세요.');
+      setError(t('seed.invalidSeed'));
       return;
     }
 
@@ -51,7 +55,7 @@ export default function SeedInput({
       setMnemonic(text.trim());
       setError('');
     } catch {
-      setError('클립보드 접근 권한이 필요합니다.');
+      setError(t('seed.clipboardDenied'));
     }
   };
 
@@ -60,9 +64,9 @@ export default function SeedInput({
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-gray-900 rounded-2xl w-full max-w-sm p-6 border border-gray-800">
-        <h3 className="text-lg font-bold text-center mb-1">{title}</h3>
+        <h3 className="text-lg font-bold text-center mb-1">{displayTitle}</h3>
         <p className="text-sm text-gray-400 text-center mb-4">
-          기존 지갑의 12단어 또는 24단어 시드 구문을 입력하세요
+          {t('seed.desc')}
         </p>
 
         <textarea
@@ -84,21 +88,21 @@ export default function SeedInput({
         {/* 힌트 */}
         <div className="flex items-center gap-2 mt-3 mb-4">
           <span className="text-xs text-gray-500">
-            단어 수: {mnemonic.trim() ? mnemonic.trim().split(/\s+/).length : 0}
+            {t('seed.wordCountLabel')} {mnemonic.trim() ? mnemonic.trim().split(/\s+/).length : 0}
           </span>
           <button
             onClick={handlePaste}
             className="ml-auto text-xs text-primary-400 underline"
           >
-            📋 붙여넣기
+            {t('seed.paste')}
           </button>
         </div>
 
         {/* 보안 경고 */}
         <div className="bg-yellow-900/30 border border-yellow-800/50 rounded-lg p-3 mb-4">
           <p className="text-xs text-yellow-400">
-            ⚠️ 시드 구문은 절대 타인과 공유하지 마세요.<br />
-            이 앱은 시드 구문을 서버로 전송하지 않습니다.
+            {t('seed.warning')}<br />
+            {t('seed.warningLine2')}
           </p>
         </div>
 
@@ -111,14 +115,14 @@ export default function SeedInput({
             }}
             className="flex-1 py-3 rounded-xl bg-gray-800 text-gray-300 font-medium"
           >
-            취소
+            {t('common.cancel')}
           </button>
           <button
             onClick={handleConfirm}
             disabled={!mnemonic.trim()}
             className="flex-1 py-3 rounded-xl bg-primary-600 text-white font-medium disabled:opacity-50"
           >
-            확인
+            {t('common.confirm')}
           </button>
         </div>
       </div>
