@@ -1,0 +1,49 @@
+# ─── Build stage ───
+FROM node:20-alpine AS builder
+
+RUN corepack enable && corepack prepare pnpm@10.34.5 --activate
+
+WORKDIR /app
+
+# Copy workspace config
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY tsconfig.base.json ./
+COPY packages/ packages/
+COPY apps/admin/ apps/admin/
+
+# Install dependencies (include devDeps for build)
+RUN pnpm install --frozen-lockfile
+
+# Build shared packages first, then admin
+RUN cd packages/config && pnpm build
+RUN cd packages/shared-types && pnpm build
+RUN cd apps/admin && pnpm build
+
+# ─── Production stage ───
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Set hostname for standalone server
+ENV HOSTNAME="0.0.0.0"
+ENV PORT=3002
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# Copy standalone build output
+COPY --from=builder /app/apps/admin/.next/standalone ./
+COPY --from=builder /app/apps/admin/.next/static ./apps/admin/.next/static
+COPY --from=builder /app/apps/admin/public ./apps/admin/public
+
+# Fix permissions
+RUN chown -R nextjs:nodejs /app
+
+USER nextjs
+
+EXPOSE 3002
+
+CMD ["node", "apps/admin/server.js"]

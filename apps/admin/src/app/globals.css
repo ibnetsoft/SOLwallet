@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  html {
+    font-size: 18px;
+  }
+}
+
 :root {
   --bg-primary: #111827;
   --bg-secondary: #1f2937;

@@ -1,0 +1,16 @@
+node_modules
+.next
+dist
+.env
+.env.local
+*.log
+.git
+.gitignore
+certbot
+*.md
+!DEPLOY.md
+docker-compose.yml
+Dockerfile.*
+nginx*.conf
+deploy.sh
+ssl-setup.sh

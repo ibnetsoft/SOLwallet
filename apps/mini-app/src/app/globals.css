@@ -2,6 +2,58 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  html {
+    font-size: 18px;
+  }
+}
+
+/* Range Slider (수량 슬라이더) 커스터마이징 */
+@layer components {
+  input[type='range'].slider-primary {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 9999px;
+    background: #374151; /* gray-700 트랙 */
+    outline: none;
+  }
+
+  input[type='range'].slider-primary::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #6366f1; /* primary-500 */
+    border: 3px solid #ffffff;
+    cursor: pointer;
+    box-shadow: 0 0 6px rgba(99, 102, 241, 0.5);
+    transition: transform 0.1s ease;
+  }
+
+  input[type='range'].slider-primary::-webkit-slider-thumb:active {
+    transform: scale(1.2);
+  }
+
+  input[type='range'].slider-primary::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #6366f1;
+    border: 3px solid #ffffff;
+    cursor: pointer;
+    box-shadow: 0 0 6px rgba(99, 102, 241, 0.5);
+  }
+
+  input[type='range'].slider-primary::-moz-range-track {
+    height: 6px;
+    border-radius: 9999px;
+    background: #374151;
+  }
+}
+
 :root {
   --tg-theme-bg-color: #1a1a2e;
   --tg-theme-text-color: #ffffff;

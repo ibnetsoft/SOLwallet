@@ -318,6 +318,27 @@ function TradeContent() {
             step="any"
             className="bg-transparent w-full outline-none text-white placeholder-gray-500 mb-3"
           />
+
+          {/* 수량 슬라이더 — 드래그로 수량 선택 (maxBalance 기준) */}
+          {maxBalance > 0 && (
+            <input
+              type="range"
+              min={0}
+              max={maxBalance}
+              step={maxBalance / 1000}
+              value={Math.min(Number(quantity) || 0, maxBalance)}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                // 유효 자릿수로 반올림하여 표시 (불필요한 소수점 방지)
+                const decimals = selectedToken?.decimals || 6;
+                const rounded = Number(val.toFixed(decimals));
+                setQuantity(String(rounded));
+              }}
+              className="slider-primary mb-3 cursor-pointer"
+              aria-label="수량 슬라이더"
+            />
+          )}
+
           <div className="flex gap-2">
             {QUICK_AMOUNT_RATIOS.map((ratio) => (
               <button
