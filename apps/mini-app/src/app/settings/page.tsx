@@ -141,38 +141,46 @@ export default function SettingsPage() {
         <div className="bg-gray-800/50 rounded-xl p-4">
           <div className="flex justify-between items-center">
             <span className="text-sm text-gray-400">{t('settings.language')}</span>
-            <div className="flex gap-1">
+            <div className="flex gap-1.5">
               <button
                 onClick={() => setLocale('en')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                  locale === 'en' ? 'bg-primary-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                aria-label="English"
+                title="English"
+                className={`flex items-center justify-center w-6 h-6 rounded-md overflow-hidden transition ${
+                  locale === 'en' ? 'ring-2 ring-primary-400' : 'opacity-60 hover:opacity-100'
                 }`}
               >
-                🇬🇧 English
+                <img src="https://flagcdn.com/gb.svg" alt="" className="w-full h-full object-cover" />
               </button>
               <button
                 onClick={() => setLocale('ko')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                  locale === 'ko' ? 'bg-primary-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                aria-label="한국어"
+                title="한국어"
+                className={`flex items-center justify-center w-6 h-6 rounded-md overflow-hidden transition ${
+                  locale === 'ko' ? 'ring-2 ring-primary-400' : 'opacity-60 hover:opacity-100'
                 }`}
               >
-                🇰🇷 한국어
+                <img src="https://flagcdn.com/kr.svg" alt="" className="w-full h-full object-cover" />
               </button>
               <button
                 onClick={() => setLocale('zh')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                  locale === 'zh' ? 'bg-primary-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                aria-label="中文"
+                title="中文"
+                className={`flex items-center justify-center w-6 h-6 rounded-md overflow-hidden transition ${
+                  locale === 'zh' ? 'ring-2 ring-primary-400' : 'opacity-60 hover:opacity-100'
                 }`}
               >
-                🇨🇳 中文
+                <img src="https://flagcdn.com/cn.svg" alt="" className="w-full h-full object-cover" />
               </button>
               <button
                 onClick={() => setLocale('ja')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                  locale === 'ja' ? 'bg-primary-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                aria-label="日本語"
+                title="日本語"
+                className={`flex items-center justify-center w-6 h-6 rounded-md overflow-hidden transition ${
+                  locale === 'ja' ? 'ring-2 ring-primary-400' : 'opacity-60 hover:opacity-100'
                 }`}
               >
-                🇯🇵 日本語
+                <img src="https://flagcdn.com/jp.svg" alt="" className="w-full h-full object-cover" />
               </button>
             </div>
           </div>
