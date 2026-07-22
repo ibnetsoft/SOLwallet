@@ -8,8 +8,14 @@ export const FEE_RATE = 0.01; // 1%
 /** 최대 지갑 수 */
 export const MAX_WALLETS = 3;
 
-/** 기본 기축 통화 */
-export const BASE_CURRENCY = 'USDT';
+/** 기본 기축 통화 (Manifest 마켓 quote 통화) */
+export const BASE_CURRENCY = 'USDC';
+
+/** USDC mint (Manifest 메인넷 마켓의 표준 quote 토큰) */
+export const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+
+/** 랩드 SOL mint (Native SOL 래핑 — 출금 등에서만 사용, 거래 quote에는 사용 안 함) */
+export const WSOL_MINT = 'So11111111111111111111111111111111111111112';
 
 /** 주문 타입 (지정가만 지원) */
 export const ORDER_TYPE = 'limit' as const;
@@ -56,4 +62,6 @@ export const MANIFEST = {
     getOrders: '/orders',
     cancelOrder: '/orders',
   } as const,
+  /** 컴퓨트 유닛 가격 — "auto"는 자동 우선순위 */
+  computeUnitPrice: 'auto' as const,
 } as const;

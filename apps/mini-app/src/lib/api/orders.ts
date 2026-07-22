@@ -14,7 +14,7 @@ export interface CreateOrderResult {
 }
 
 /**
- * 주문 생성
+ * 주문 생성 (1단계: unsigned tx 반환)
  */
 export async function createOrder(params: CreateOrderParams): Promise<CreateOrderResult> {
   return apiFetch('/orders', {
@@ -24,7 +24,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
 }
 
 /**
- * 서명된 트랜잭션 제출
+ * 서명된 주문 트랜잭션 제출 (2단계)
  */
 export async function submitOrder(orderId: string, signedTx: string): Promise<{ txSignature: string }> {
   return apiFetch(`/orders/${orderId}/submit`, {
@@ -34,11 +34,21 @@ export async function submitOrder(orderId: string, signedTx: string): Promise<{ 
 }
 
 /**
- * 주문 취소
+ * 주문 취소 — 1단계: unsigned cancel tx 반환
  */
-export async function cancelOrder(orderId: string): Promise<{ success: boolean }> {
+export async function cancelOrder(orderId: string): Promise<{ order: Record<string, unknown>; unsignedTx: string }> {
   return apiFetch(`/orders/${orderId}/cancel`, {
     method: 'POST',
+  });
+}
+
+/**
+ * 주문 취소 — 2단계: 서명된 cancel tx 제출
+ */
+export async function submitCancelOrder(orderId: string, signedTx: string): Promise<{ txSignature: string }> {
+  return apiFetch(`/orders/${orderId}/cancel/submit`, {
+    method: 'POST',
+    body: JSON.stringify({ signedTx }),
   });
 }
 

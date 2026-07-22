@@ -13,6 +13,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@cks-systems/manifest-sdk": "^0.2.38",
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.0",
@@ -20,6 +21,7 @@
     "@nestjs/passport": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
     "@nestjs/throttler": "^6.5.0",
+    "@solana/web3.js": "^1.98.4",
     "@solwallet/config": "workspace:*",
     "@solwallet/shared-types": "workspace:*",
     "@supabase/supabase-js": "^2.49.0",

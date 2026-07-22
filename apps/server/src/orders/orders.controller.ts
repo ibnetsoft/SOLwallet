@@ -18,7 +18,7 @@ export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
   /**
-   * POST /api/orders — 주문 생성
+   * POST /api/orders — 주문 생성 (unsigned tx 반환)
    */
   @Post()
   async createOrder(
@@ -30,7 +30,7 @@ export class OrdersController {
   }
 
   /**
-   * POST /api/orders/:id/submit — 서명된 트랜잭션 제출
+   * POST /api/orders/:id/submit — 서명된 주문 트랜잭션 제출
    */
   @Post(':id/submit')
   async submitOrder(
@@ -43,7 +43,7 @@ export class OrdersController {
   }
 
   /**
-   * POST /api/orders/:id/cancel — 주문 취소
+   * POST /api/orders/:id/cancel — 주문 취소 (1단계: unsigned cancel tx 반환)
    */
   @Post(':id/cancel')
   async cancelOrder(
@@ -51,6 +51,19 @@ export class OrdersController {
     @Param('id', ParseUUIDPipe) orderId: string,
   ) {
     const result = await this.ordersService.cancelOrder(orderId, userId);
+    return { success: true, data: result };
+  }
+
+  /**
+   * POST /api/orders/:id/cancel/submit — 서명된 cancel tx 제출 (2단계)
+   */
+  @Post(':id/cancel/submit')
+  async submitCancelOrder(
+    @CurrentUser() userId: string,
+    @Param('id', ParseUUIDPipe) orderId: string,
+    @Body() dto: SubmitOrderDto,
+  ) {
+    const result = await this.ordersService.submitCancelOrder(orderId, dto.signedTx, userId);
     return { success: true, data: result };
   }
 
@@ -73,7 +86,7 @@ export class OrdersController {
   }
 
   /**
-   * GET /api/orders/orderbook/:tokenMint — 오더북 조회
+   * GET /api/orders/orderbook/:tokenMint — 오더북 조회 (Manifest SDK 프록시)
    */
   @Get('orderbook/:tokenMint')
   async getOrderbook(@Param('tokenMint') tokenMint: string) {

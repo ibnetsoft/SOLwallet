@@ -9,7 +9,7 @@ import { useToast } from '@/components/Toast';
 import PinModal from '@/components/PinModal';
 import { BottomNav } from '@/components/BottomNav';
 import { SkeletonCard } from '@/components/Skeleton';
-import { FEE_RATE, QUICK_AMOUNT_RATIOS } from '@solwallet/config';
+import { FEE_RATE, QUICK_AMOUNT_RATIOS, USDC_MINT } from '@solwallet/config';
 import { getWalletBalance } from '@/lib/api/balance';
 import { isLoggedIn } from '@/lib/api/auth';
 import { useT } from '@/lib/i18n';
@@ -43,6 +43,9 @@ function TradeContent() {
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinError, setPinError] = useState('');
   const [showTokenDropdown, setShowTokenDropdown] = useState(false);
+  const [showCancelPinModal, setShowCancelPinModal] = useState(false);
+  const [cancelPinError, setCancelPinError] = useState('');
+  const [pendingCancelOrderId, setPendingCancelOrderId] = useState<string | null>(null);
 
   // 잔액 기반 최대 수량
   const [maxBalance, setMaxBalance] = useState(0);
@@ -93,8 +96,10 @@ function TradeContent() {
       try {
         const bal = await getWalletBalance(activeWallet.publicKey);
         if (side === 'buy') {
-          // 매수 시: 보유 USDT 잔액 (TODO: USDT 전용 조회)
-          setMaxBalance(bal.sol > 0 ? bal.sol / (Number(price) || 1) : 0);
+          // 매수 시: 보유 USDC 잔액 → 구매 가능한 토큰 수량
+          const usdcBal = bal.tokens.find((tok) => tok.mint === USDC_MINT);
+          const usdc = usdcBal?.balance ?? 0;
+          setMaxBalance(usdc > 0 && Number(price) > 0 ? usdc / Number(price) : 0);
         } else {
           // 매도 시: 보유 토큰 수량
           if (selectedToken) {
@@ -128,6 +133,20 @@ function TradeContent() {
       }
     } catch (err) {
       setPinError(err instanceof Error ? err.message : t('trade.orderFailed'));
+    }
+  };
+
+  // 주문 취소 → PIN 입력 → 서명 + 제출
+  const handleCancelExecute = async (pin: string) => {
+    if (!pendingCancelOrderId) return;
+    setCancelPinError('');
+    try {
+      await cancelOrder(pendingCancelOrderId, pin);
+      setShowCancelPinModal(false);
+      setPendingCancelOrderId(null);
+      showToast(t('trade.orderCancelled'));
+    } catch (err) {
+      setCancelPinError(err instanceof Error ? err.message : t('trade.cancelFailed'));
     }
   };
 
@@ -228,7 +247,7 @@ function TradeContent() {
           <div>
             <p className="font-medium">{selectedToken ? selectedToken.symbol : t('trade.selectToken')}</p>
             <p className="text-sm text-gray-400">
-              {selectedToken ? `${selectedToken.symbol}/USDT` : t('trade.baseCurrency')}
+              {selectedToken ? `${selectedToken.symbol}/USDC` : t('trade.baseCurrency')}
             </p>
           </div>
           <span className="text-gray-400">▼</span>
@@ -237,7 +256,7 @@ function TradeContent() {
         {showTokenDropdown && (
           <div className="absolute left-0 right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-xl z-10 max-h-48 overflow-y-auto">
             {tokens
-              .filter((tok) => tok.symbol !== 'USDT')
+              .filter((tok) => tok.symbol !== 'USDC')
               .map((token) => (
                 <button
                   key={token.id}
@@ -280,7 +299,7 @@ function TradeContent() {
             </button>
           </div>
           {currentPrice > 0 && (
-            <p className="text-xs text-gray-500 mt-1">{t('trade.currentPriceLabel')} {currentPrice.toFixed(4)} USDT</p>
+            <p className="text-xs text-gray-500 mt-1">{t('trade.currentPriceLabel')} {currentPrice.toFixed(4)} USDC</p>
           )}
         </section>
       ) : (
@@ -293,7 +312,7 @@ function TradeContent() {
                 : t('trade.loadingPrice')}
             </span>
             <span className="text-sm font-medium tabular-nums">
-              {currentPrice > 0 ? `${currentPrice.toFixed(4)} USDT` : '-'}
+              {currentPrice > 0 ? `${currentPrice.toFixed(4)} USDC` : '-'}
             </span>
           </div>
         </section>
@@ -456,9 +475,9 @@ function TradeContent() {
                 </div>
                 <button
                   onClick={() => {
-                    cancelOrder(order.id)
-                      .then(() => showToast(t('trade.orderCancelled')))
-                      .catch((err) => showToast(err instanceof Error ? err.message : t('trade.cancelFailed')));
+                    setPendingCancelOrderId(order.id);
+                    setCancelPinError('');
+                    setShowCancelPinModal(true);
                   }}
                   className="text-xs px-3 py-1 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition"
                 >
@@ -519,6 +538,20 @@ function TradeContent() {
           setPinError('');
         }}
         error={pinError}
+      />
+
+      {/* PIN Modal for cancel signing */}
+      <PinModal
+        isOpen={showCancelPinModal}
+        title={t('trade.pinTitle')}
+        subtitle={t('trade.pinSubtitle')}
+        onConfirm={handleCancelExecute}
+        onCancel={() => {
+          setShowCancelPinModal(false);
+          setPendingCancelOrderId(null);
+          setCancelPinError('');
+        }}
+        error={cancelPinError}
       />
     </main>
   );

@@ -1,6 +1,4 @@
-import { MANIFEST } from '@solwallet/config';
-
-const MANIFEST_BASE = MANIFEST.baseUrl;
+import { apiFetch } from '@/lib/api/client';
 
 export interface OrderbookEntry {
   price: number;
@@ -14,19 +12,15 @@ export interface OrderbookResponse {
 }
 
 /**
- * Manifest 오더북 조회 (공개 API — 브라우저에서 직접 호출)
+ * Manifest 오더북 조회 — 서버 프록시 경유
+ *
+ * Manifest HTTP API에는 퍼블릭 orderbook 엔드포인트가 없으므로
+ * 서버가 공식 SDK(@cks-systems/manifest-sdk)로 온체인 마켓 PDA에서
+ * bids/asks를 읽어 반환합니다.
  */
 export async function fetchOrderbook(tokenMint: string): Promise<OrderbookResponse> {
-  const market = `${tokenMint}-So11111111111111111111111111111111111111112`;
-
   try {
-    const res = await fetch(`${MANIFEST_BASE}/orders?market=${market}`);
-
-    if (!res.ok) {
-      return { bids: [], asks: [], spread: 0 };
-    }
-
-    return await res.json();
+    return await apiFetch<OrderbookResponse>(`/orders/orderbook/${tokenMint}`);
   } catch {
     return { bids: [], asks: [], spread: 0 };
   }

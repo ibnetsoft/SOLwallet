@@ -64,7 +64,7 @@ interface TradeState {
 
   // Order actions
   createAndSubmitOrder: (pin: string) => Promise<{ txSignature?: string }>;
-  cancelOrder: (orderId: string) => Promise<void>;
+  cancelOrder: (orderId: string, pin: string) => Promise<{ txSignature?: string }>;
 }
 
 export const useTradeStore = create<TradeState>((set, get) => ({
@@ -111,10 +111,10 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     try {
       const tokens = await tokensApi.getTokens();
       set({ tokens });
-      // 기본 토큰 선택 (USDT 제외)
-      const nonUsdt = tokens.find((t) => t.symbol !== 'USDT');
-      if (!get().selectedToken && nonUsdt) {
-        set({ selectedToken: nonUsdt });
+      // 기본 토큰 선택 (USDC 제외 — 기축 통화)
+      const nonUsdc = tokens.find((t) => t.symbol !== 'USDC');
+      if (!get().selectedToken && nonUsdc) {
+        set({ selectedToken: nonUsdc });
       }
     } catch {
       // 무시
@@ -231,9 +231,49 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     }
   },
 
-  cancelOrder: async (orderId) => {
-    await ordersApi.cancelOrder(orderId);
-    await get().fetchActiveOrders();
+  cancelOrder: async (orderId, pin) => {
+    const wallets = useWalletStore.getState().wallets;
+    const activeWallet = wallets.find((w) => w.isActive) || wallets[0];
+    if (!activeWallet) {
+      throw new Error(getMsg('error.noActiveWallet'));
+    }
+
+    // 지갑 잠금 해제
+    await useWalletStore.getState().unlockWallet(activeWallet.id, pin);
+
+    const secretKey = useWalletStore.getState().wallets.find((w) => w.id === activeWallet.id)?.secretKey;
+    if (!secretKey) {
+      useWalletStore.getState().lockWallets();
+      throw new Error(getMsg('error.walletUnlockFailed'));
+    }
+
+    try {
+      // 1. Manifest에서 unsigned cancel tx 획득
+      const { unsignedTx } = await ordersApi.cancelOrder(orderId);
+
+      if (!unsignedTx) {
+        useWalletStore.getState().lockWallets();
+        throw new Error(getMsg('error.txBuildFailed'));
+      }
+
+      // 2. 온디바이스 서명
+      const { signTransaction } = await import('@/lib/wallet');
+      const signedTx = signTransaction(unsignedTx, secretKey);
+
+      // 3. 서명된 cancel tx 제출
+      const result = await ordersApi.submitCancelOrder(orderId, signedTx);
+
+      // 4. 활성 주문 새로고침
+      get().fetchActiveOrders();
+
+      // 5. 메모리에서 키 해제
+      useWalletStore.getState().lockWallets();
+
+      return result;
+    } catch (err) {
+      useWalletStore.getState().lockWallets();
+      throw err;
+    }
   },
 }));
 
