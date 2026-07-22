@@ -31,7 +31,6 @@ function TradeContent() {
     fetchOrderbook,
     fetchCurrentPrice,
     fetchActiveOrders,
-    applyQuickRatio,
     applyCurrentPrice,
     createAndSubmitOrder,
     cancelOrder,
@@ -321,38 +320,57 @@ function TradeContent() {
             className="bg-transparent w-full outline-none text-white placeholder-gray-500 mb-3"
           />
 
-          {/* 수량 슬라이더 — 드래그로 수량 선택 (maxBalance 기준) */}
+          {/* 수량 슬라이더 — 드래그로 수량 선택 (maxBalance 기준, 25% 단위 스냅) */}
           {maxBalance > 0 && (
-            <input
-              type="range"
-              min={0}
-              max={maxBalance}
-              step={maxBalance / 1000}
-              value={Math.min(Number(quantity) || 0, maxBalance)}
-              onChange={(e) => {
-                const val = Number(e.target.value);
-                // 유효 자릿수로 반올림하여 표시 (불필요한 소수점 방지)
-                const decimals = selectedToken?.decimals || 6;
-                const rounded = Number(val.toFixed(decimals));
-                setQuantity(String(rounded));
-              }}
-              className="slider-primary mb-3 cursor-pointer"
-              aria-label={t('trade.amountSlider')}
-            />
+            <div className="mb-3 relative py-3">
+              {/* 25% 단위 굵직한 마커 — 트랙 중앙에 배치, 클릭 시 해당 비율로 이동 */}
+              <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-4 pointer-events-auto z-20">
+                {QUICK_AMOUNT_RATIOS.map((ratio) => {
+                  const isActive = (Number(quantity) || 0) >= maxBalance * ratio - maxBalance * 0.01;
+                  return (
+                    <button
+                      key={ratio}
+                      type="button"
+                      onClick={() => {
+                        const decimals = selectedToken?.decimals || 6;
+                        const val = Number((maxBalance * ratio).toFixed(decimals));
+                        setQuantity(String(val));
+                      }}
+                      className={`absolute -translate-x-1/2 -translate-y-1/2 block w-4 h-4 rounded-full border-2 border-gray-800 shadow-md transition-colors cursor-pointer ${
+                        isActive ? 'bg-primary-500' : 'bg-gray-500 hover:bg-gray-400'
+                      }`}
+                      style={{ left: `${ratio * 100}%`, top: '50%' }}
+                      aria-label={`${Math.round(ratio * 100)}%`}
+                    />
+                  );
+                })}
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={maxBalance}
+                step={maxBalance / 4}
+                value={Math.min(Number(quantity) || 0, maxBalance)}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  // 유효 자릿수로 반올림하여 표시 (불필요한 소수점 방지)
+                  const decimals = selectedToken?.decimals || 6;
+                  const rounded = Number(val.toFixed(decimals));
+                  setQuantity(String(rounded));
+                }}
+                className="slider-markers relative z-10 cursor-pointer"
+                aria-label={t('trade.amountSlider')}
+              />
+              {/* 텍스트 라벨 (25% 간격) */}
+              <div className="flex justify-between mt-2 px-1">
+                {[0, 0.25, 0.5, 0.75, 1].map((ratio) => (
+                  <span key={ratio} className="text-[10px] text-gray-500">
+                    {Math.round(ratio * 100)}%
+                  </span>
+                ))}
+              </div>
+            </div>
           )}
-
-          <div className="flex gap-2">
-            {QUICK_AMOUNT_RATIOS.map((ratio) => (
-              <button
-                key={ratio}
-                onClick={() => applyQuickRatio(ratio, maxBalance)}
-                disabled={maxBalance <= 0}
-                className="flex-1 bg-gray-700 text-xs py-1.5 rounded-lg text-gray-300 hover:bg-gray-600 transition disabled:opacity-30"
-              >
-                {Math.round(ratio * 100)}%
-              </button>
-            ))}
-          </div>
         </div>
       </section>
 
