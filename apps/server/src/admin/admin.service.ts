@@ -3,6 +3,19 @@ import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
 import type { AdminStats } from '@solwallet/shared-types';
 
+// 내부 트리 노드 타입 (buildTree/getReferralTree에서 사용)
+export interface TreeNodeShape {
+  id: string;
+  username: string | null;
+  firstName: string;
+  telegramUid: number;
+  referralCode: string | null;
+  depth: number;
+  createdAt: string;
+  childrenCount: number;
+  children: TreeNodeShape[];
+}
+
 @Injectable()
 export class AdminService {
   private readonly logger = new Logger(AdminService.name);
@@ -418,7 +431,7 @@ export class AdminService {
   // 추천 조직도 트리
   // ========================================
 
-  async getReferralTree(userId, maxDepth = 5) {
+  async getReferralTree(userId: string, maxDepth = 5) {
     const { data: subtree, error: treeError } = await this.client
       .rpc('get_referral_subtree', { root_user_id: userId, max_depth: maxDepth });
     if (treeError) {
@@ -427,13 +440,18 @@ export class AdminService {
     }
     const { data: ancestorsRaw, error: ancError } = await this.client
       .rpc('get_referral_ancestors', { user_id: userId });
-    const nodes = (subtree || []).map((r) => ({
-      id: r.user_id, username: r.username, firstName: r.first_name,
-      telegramUid: r.telegram_uid, referralCode: r.referral_code,
-      depth: r.depth, createdAt: r.created_at,
-      childrenCount: 0, children: [],
+    const nodes = ((subtree || []) as Record<string, unknown>[]).map((r) => ({
+      id: r.user_id as string,
+      username: r.username as string | null,
+      firstName: r.first_name as string,
+      telegramUid: r.telegram_uid as number,
+      referralCode: r.referral_code as string | null,
+      depth: r.depth as number,
+      createdAt: r.created_at as string,
+      childrenCount: 0,
+      children: [] as TreeNodeShape[],
     }));
-    const countMap = {};
+    const countMap: Record<string, number> = {};
     for (let i = 1; i < nodes.length; i++) {
       for (let j = i - 1; j >= 0; j--) {
         if (nodes[j].depth === nodes[i].depth - 1) {
@@ -444,11 +462,14 @@ export class AdminService {
     }
     for (const node of nodes) node.childrenCount = countMap[node.id] || 0;
     const tree = this.buildTree(nodes);
-    const ancestors = ((ancError ? [] : ancestorsRaw) || []).map((r) => ({
-      id: r.user_id, username: r.username, firstName: r.first_name,
-      referralCode: r.referral_code, depth: r.depth,
+    const ancestors = (((ancError ? [] : ancestorsRaw) || []) as Record<string, unknown>[]).map((r) => ({
+      id: r.user_id as string,
+      username: r.username as string | null,
+      firstName: r.first_name as string,
+      referralCode: r.referral_code as string | null,
+      depth: r.depth as number,
     }));
-    const perLevelCounts = {};
+    const perLevelCounts: Record<number, number> = {};
     let maxD = 0;
     for (const node of nodes) {
       perLevelCounts[node.depth] = (perLevelCounts[node.depth] || 0) + 1;
@@ -457,9 +478,9 @@ export class AdminService {
     return { tree, ancestors, stats: { totalNodes: nodes.length, maxDepth: maxD, perLevelCounts } };
   }
 
-  buildTree(nodes) {
+  private buildTree(nodes: TreeNodeShape[]): TreeNodeShape | null {
     if (nodes.length === 0) return null;
-    const depthStack = [-1];
+    const depthStack: number[] = [-1];
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
       if (node.depth === 0) { depthStack[0] = i; }
@@ -478,10 +499,14 @@ export class AdminService {
       this.logger.error('Failed to get referral roots: ' + error.message);
       throw error;
     }
-    return (data || []).map((r) => ({
-      id: r.user_id, username: r.username, firstName: r.first_name,
-      telegramUid: r.telegram_uid, referralCode: r.referral_code,
-      directCount: r.direct_count, createdAt: r.created_at,
+    return ((data || []) as Record<string, unknown>[]).map((r) => ({
+      id: r.user_id as string,
+      username: r.username as string | null,
+      firstName: r.first_name as string,
+      telegramUid: r.telegram_uid as number,
+      referralCode: r.referral_code as string | null,
+      directCount: r.direct_count as number,
+      createdAt: r.created_at as string,
     }));
   }
 
