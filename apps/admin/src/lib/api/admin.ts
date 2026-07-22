@@ -44,6 +44,16 @@ export function getReferralStats(): Promise<ReferralStat[]> {
   return apiFetch('/admin/referrals/stats');
 }
 
+// ─── 추천 조직도 ───
+
+export function getReferralTree(userId: string, maxDepth = 5) {
+  return apiFetch(`/admin/referrals/tree?userId=${userId}&maxDepth=${maxDepth}`);
+}
+
+export function getReferralRoots() {
+  return apiFetch('/admin/referrals/roots');
+}
+
 // ─── 토큰 관리 ───
 
 export function getTokens(): Promise<AdminTokenDetail[]> {

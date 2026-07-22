@@ -126,6 +126,24 @@ export class AdminController {
     return { success: true, data: result };
   }
 
+  // ─── 추천 조직도 ───
+
+  @Get('referrals/tree')
+  async getReferralTree(
+    @Query('userId') userId: string,
+    @Query('maxDepth', new DefaultValuePipe(5), ParseIntPipe) maxDepth: number,
+  ) {
+    if (!userId) throw new BadRequestException('userId is required');
+    const result = await this.adminService.getReferralTree(userId, maxDepth);
+    return { success: true, data: result };
+  }
+
+  @Get('referrals/roots')
+  async getReferralRoots() {
+    const roots = await this.adminService.getReferralRoots();
+    return { success: true, data: roots };
+  }
+
   // ─── 수수료 대장 ───
 
   @Get('revenue')

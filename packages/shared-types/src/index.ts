@@ -190,3 +190,47 @@ export interface PaginatedResponse<T> {
   page: number;
   pageSize: number;
 }
+
+// ========================================
+// Referral Tree Types
+// ========================================
+
+export interface ReferralTreeNode {
+  id: string;
+  username: string | null;
+  firstName: string;
+  telegramUid: number;
+  referralCode: string | null;
+  depth: number;
+  createdAt: string;
+  childrenCount: number;
+  children: ReferralTreeNode[];
+}
+
+export interface ReferralAncestor {
+  id: string;
+  username: string | null;
+  firstName: string;
+  referralCode: string | null;
+  depth: number;
+}
+
+export interface ReferralRoot {
+  id: string;
+  username: string | null;
+  firstName: string;
+  telegramUid: number;
+  referralCode: string | null;
+  directCount: number;
+  createdAt: string;
+}
+
+export interface ReferralTreeResponse {
+  tree: ReferralTreeNode;
+  ancestors: ReferralAncestor[];
+  stats: {
+    totalNodes: number;
+    maxDepth: number;
+    perLevelCounts: Record<number, number>;
+  };
+}

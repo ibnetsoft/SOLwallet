@@ -90,7 +90,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Quick Links */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         <Link
           href="/users"
           className="bg-gray-800/50 rounded-xl p-6 border border-gray-700/50 hover:border-gray-600 transition group"
@@ -117,6 +117,15 @@ export default function AdminDashboard() {
             📋 트랜잭션
           </h2>
           <p className="text-gray-400 text-sm">거래 내역 및 Tx Hash 모니터링</p>
+        </Link>
+        <Link
+          href="/referral-tree"
+          className="bg-gray-800/50 rounded-xl p-6 border border-gray-700/50 hover:border-gray-600 transition group"
+        >
+          <h2 className="text-lg font-bold mb-2 group-hover:text-primary-400 transition">
+            🌳 추천 조직도
+          </h2>
+          <p className="text-gray-400 text-sm">다단계 추천 조직 트리 조회</p>
         </Link>
       </div>
     </div>

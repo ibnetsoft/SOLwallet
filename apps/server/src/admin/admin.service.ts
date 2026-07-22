@@ -413,4 +413,76 @@ export class AdminService {
 
     return { ledger, total: count || 0, totalRevenue };
   }
+
+  // ========================================
+  // 추천 조직도 트리
+  // ========================================
+
+  async getReferralTree(userId, maxDepth = 5) {
+    const { data: subtree, error: treeError } = await this.client
+      .rpc('get_referral_subtree', { root_user_id: userId, max_depth: maxDepth });
+    if (treeError) {
+      this.logger.error('Failed to get referral tree: ' + treeError.message);
+      throw treeError;
+    }
+    const { data: ancestorsRaw, error: ancError } = await this.client
+      .rpc('get_referral_ancestors', { user_id: userId });
+    const nodes = (subtree || []).map((r) => ({
+      id: r.user_id, username: r.username, firstName: r.first_name,
+      telegramUid: r.telegram_uid, referralCode: r.referral_code,
+      depth: r.depth, createdAt: r.created_at,
+      childrenCount: 0, children: [],
+    }));
+    const countMap = {};
+    for (let i = 1; i < nodes.length; i++) {
+      for (let j = i - 1; j >= 0; j--) {
+        if (nodes[j].depth === nodes[i].depth - 1) {
+          countMap[nodes[j].id] = (countMap[nodes[j].id] || 0) + 1;
+          break;
+        }
+      }
+    }
+    for (const node of nodes) node.childrenCount = countMap[node.id] || 0;
+    const tree = this.buildTree(nodes);
+    const ancestors = ((ancError ? [] : ancestorsRaw) || []).map((r) => ({
+      id: r.user_id, username: r.username, firstName: r.first_name,
+      referralCode: r.referral_code, depth: r.depth,
+    }));
+    const perLevelCounts = {};
+    let maxD = 0;
+    for (const node of nodes) {
+      perLevelCounts[node.depth] = (perLevelCounts[node.depth] || 0) + 1;
+      if (node.depth > maxD) maxD = node.depth;
+    }
+    return { tree, ancestors, stats: { totalNodes: nodes.length, maxDepth: maxD, perLevelCounts } };
+  }
+
+  buildTree(nodes) {
+    if (nodes.length === 0) return null;
+    const depthStack = [-1];
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      if (node.depth === 0) { depthStack[0] = i; }
+      else {
+        const parentIdx = depthStack[node.depth - 1];
+        if (parentIdx >= 0) nodes[parentIdx].children.push(node);
+        depthStack[node.depth] = i;
+      }
+    }
+    return nodes[0];
+  }
+
+  async getReferralRoots() {
+    const { data, error } = await this.client.rpc('get_referral_roots');
+    if (error) {
+      this.logger.error('Failed to get referral roots: ' + error.message);
+      throw error;
+    }
+    return (data || []).map((r) => ({
+      id: r.user_id, username: r.username, firstName: r.first_name,
+      telegramUid: r.telegram_uid, referralCode: r.referral_code,
+      directCount: r.direct_count, createdAt: r.created_at,
+    }));
+  }
+
 }
