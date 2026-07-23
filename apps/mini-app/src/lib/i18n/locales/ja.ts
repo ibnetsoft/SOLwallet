@@ -20,11 +20,9 @@ const ja: Record<string, string> = {
   'nav.settings': '設定',
 
   // ─── Login ───
-  'login.subtitle': 'Solana 指値取引',
   'login.checking': '確認中...',
   'login.telegramAuth': 'Telegram 認証中...',
   'login.devTitle': '🔐 開発ログイン',
-  'login.devDesc': 'ブラウザテスト用ログイン',
   'login.usernamePlaceholder': 'ユーザー名（任意、デフォルト：dev_user）',
   'login.loggingIn': 'ログイン中...',
   'login.loginBtn': 'ログイン',

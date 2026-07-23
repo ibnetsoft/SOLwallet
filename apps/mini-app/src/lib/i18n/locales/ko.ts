@@ -20,11 +20,9 @@ const ko: Record<string, string> = {
   'nav.settings': '설정',
 
   // ─── Login ───
-  'login.subtitle': '솔라나 지정가 거래',
   'login.checking': '확인 중...',
   'login.telegramAuth': 'Telegram 인증 중...',
   'login.devTitle': '🔐 개발용 로그인',
-  'login.devDesc': '브라우저에서 테스트용으로 로그인합니다',
   'login.usernamePlaceholder': '사용자명 (선택, 기본: dev_user)',
   'login.loggingIn': '로그인 중...',
   'login.loginBtn': '로그인하기',

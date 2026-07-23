@@ -103,8 +103,7 @@ export default function LoginPage() {
     <main className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold mb-2">🔥 DEX MINER</h1>
-          <p className="text-sm text-gray-400">{t('login.subtitle')}</p>
+          <h1 className="text-3xl font-bold">🔥 DEX MINER</h1>
         </div>
 
         {/* 체크 중 */}
@@ -125,10 +124,7 @@ export default function LoginPage() {
         {status === 'dev' && (
           <>
             <form onSubmit={handleDevLogin} className="bg-gray-800/50 rounded-xl p-6 border border-gray-700/50">
-              <h2 className="text-lg font-bold mb-1">{t('login.devTitle')}</h2>
-              <p className="text-xs text-gray-400 mb-4">
-                {t('login.devDesc')}
-              </p>
+              <h2 className="text-lg font-bold mb-4">{t('login.devTitle')}</h2>
 
               <input
                 type="text"

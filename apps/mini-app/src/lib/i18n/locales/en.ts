@@ -22,11 +22,9 @@ const en: Record<TranslationKey, string> = {
   'nav.settings': 'Settings',
 
   // ─── Login ───
-  'login.subtitle': 'Solana Limit Trading',
   'login.checking': 'Checking...',
   'login.telegramAuth': 'Telegram Authentication...',
   'login.devTitle': '🔐 Dev Login',
-  'login.devDesc': 'Login for browser testing',
   'login.usernamePlaceholder': 'Username (optional, default: dev_user)',
   'login.loggingIn': 'Logging in...',
   'login.loginBtn': 'Login',

@@ -20,11 +20,9 @@ const zh: Record<string, string> = {
   'nav.settings': '设置',
 
   // ─── Login ───
-  'login.subtitle': 'Solana 限价交易',
   'login.checking': '验证中...',
   'login.telegramAuth': 'Telegram 认证中...',
   'login.devTitle': '🔐 开发登录',
-  'login.devDesc': '浏览器测试用登录',
   'login.usernamePlaceholder': '用户名（可选，默认：dev_user）',
   'login.loggingIn': '登录中...',
   'login.loginBtn': '登录',
