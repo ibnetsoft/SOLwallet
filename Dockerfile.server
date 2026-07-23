@@ -30,9 +30,10 @@ WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY tsconfig.base.json ./
 
-# Copy shared packages (production only)
+# Copy all package.json files so pnpm can resolve workspace deps
 COPY packages/config/package.json packages/config/
 COPY packages/shared-types/package.json packages/shared-types/
+COPY apps/server/package.json apps/server/
 
 # Install production dependencies
 RUN pnpm install --frozen-lockfile --prod
@@ -43,8 +44,9 @@ COPY --from=builder /app/packages/shared-types/dist/ packages/shared-types/dist/
 
 # Copy built server
 COPY --from=builder /app/apps/server/dist/ apps/server/dist/
-COPY --from=builder /app/apps/server/package.json apps/server/
-COPY --from=builder /app/apps/server/node_modules/ apps/server/node_modules/
+
+ENV NODE_ENV=production
+ENV SERVER_PORT=3000
 
 ENV NODE_ENV=production
 ENV SERVER_PORT=3000
