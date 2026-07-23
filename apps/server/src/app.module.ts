@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { SupabaseModule } from './supabase/supabase.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { AuthModule } from './auth/auth.module';
@@ -11,6 +12,7 @@ import { BalanceModule } from './balance/balance.module';
 import { TokensModule } from './tokens/tokens.module';
 import { AdminModule } from './admin/admin.module';
 import { WithdrawModule } from './withdraw/withdraw.module';
+import { SettingsModule } from './settings/settings.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -27,6 +29,7 @@ import { HealthController } from './health.controller';
       },
     ]),
     SupabaseModule,
+    ScheduleModule.forRoot(),
     TelegramModule,
     AuthModule,
     UserModule,
@@ -36,6 +39,7 @@ import { HealthController } from './health.controller';
     TokensModule,
     AdminModule,
     WithdrawModule,
+    SettingsModule,
   ],
   controllers: [HealthController],
 })

@@ -3,6 +3,7 @@ import * as ordersApi from '@/lib/api/orders';
 import * as balanceApi from '@/lib/api/balance';
 import * as tokensApi from '@/lib/api/tokens';
 import * as manifestClient from '@/lib/manifest/client';
+import { getFeeRate } from '@/lib/api/settings';
 import { FEE_RATE, QUICK_AMOUNT_RATIOS } from '@solwallet/config';
 import { useWalletStore } from './useWalletStore';
 import type { Token } from '@/lib/api/tokens';
@@ -37,6 +38,7 @@ interface TradeState {
   orderbook: { bids: OrderbookEntry[]; asks: OrderbookEntry[] };
   currentPrice: number;
   tokens: Token[];
+  feeRate: number;
 
   // Orders
   activeOrders: OrderInfo[];
@@ -60,6 +62,7 @@ interface TradeState {
 
   // Data fetching
   fetchTokens: () => Promise<void>;
+  fetchFeeRate: () => Promise<void>;
   fetchOrderbook: () => Promise<void>;
   fetchCurrentPrice: () => Promise<void>;
   fetchActiveOrders: () => Promise<void>;
@@ -80,6 +83,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
   orderbook: { bids: [], asks: [] },
   currentPrice: 0,
   tokens: [],
+  feeRate: FEE_RATE,
   activeOrders: [],
   orderHistory: [],
   historyHasMore: false,
@@ -125,6 +129,15 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       }
     } catch {
       // 무시
+    }
+  },
+
+  fetchFeeRate: async () => {
+    try {
+      const rate = await getFeeRate();
+      set({ feeRate: rate });
+    } catch {
+      // 무시 — 기본값 유지
     }
   },
 

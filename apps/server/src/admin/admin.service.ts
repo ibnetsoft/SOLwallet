@@ -46,11 +46,11 @@ export class AdminService {
       .select('*', { count: 'exact', head: true })
       .gte('created_at', today.toISOString());
 
-    // 총 수수료 수익 (filled + submitted 상태만)
+    // 총 수수료 수익 (체결 완료된 주문만 — 실제 발생한 수익)
     const { data: feeData } = await this.client
       .from('orders')
       .select('fee')
-      .in('status', ['filled', 'submitted']);
+      .eq('status', 'filled');
 
     const totalFeeRevenue = (feeData || []).reduce(
       (sum, o) => sum + Number(o.fee || 0),
@@ -395,32 +395,41 @@ export class AdminService {
     const { data, count } = await this.client
       .from('orders')
       .select(`
-        id, fee, fee_rate, side, price, quantity, status, created_at,
-        users!inner(username),
+        id, fee, fee_rate, side, price, quantity, status, tx_signature, created_at,
+        users!inner(username, telegram_uid),
         tokens!inner(symbol)
       `, { count: 'exact' })
       .gt('fee', 0)
       .order('created_at', { ascending: false })
       .range(from, to);
 
-    const ledger = (data || []).map((o) => ({
-      orderId: o.id,
-      fee: o.fee,
-      feeRate: o.fee_rate,
-      side: o.side,
-      price: o.price,
-      quantity: o.quantity,
-      status: o.status,
-      createdAt: o.created_at,
-      username: (o.users as { username?: string })?.username || '—',
-      tokenSymbol: (o.tokens as { symbol?: string })?.symbol || '—',
-    }));
+    const ledger = (data || []).map((o) => {
+      const price = Number(o.price) || 0;
+      const quantity = Number(o.quantity) || 0;
+      const tradeAmount = price * quantity;
+      const user = o.users as { username?: string; telegram_uid?: number } | null;
+      return {
+        orderId: o.id,
+        fee: o.fee,
+        feeRate: o.fee_rate,
+        side: o.side,
+        price: o.price,
+        quantity: o.quantity,
+        tradeAmount,
+        txSignature: o.tx_signature,
+        status: o.status,
+        createdAt: o.created_at,
+        username: user?.username || '—',
+        telegramUid: user?.telegram_uid,
+        tokenSymbol: (o.tokens as { symbol?: string })?.symbol || '—',
+      };
+    });
 
     // 총계
     const { data: totalData } = await this.client
       .from('orders')
       .select('fee')
-      .in('status', ['filled', 'submitted']);
+      .eq('status', 'filled');
 
     const totalRevenue = (totalData || []).reduce((sum, o) => sum + Number(o.fee || 0), 0);
 
@@ -508,6 +517,53 @@ export class AdminService {
       directCount: r.direct_count as number,
       createdAt: r.created_at as string,
     }));
+  }
+
+  // ========================================
+  // 설정 관리 (수수료율 등)
+  // ========================================
+
+  /**
+   * 설정값 조회 (문자열)
+   */
+  async getSetting(key: string): Promise<string | null> {
+    const { data, error } = await this.client
+      .from('settings')
+      .select('value')
+      .eq('key', key)
+      .single();
+
+    if (error || !data) return null;
+    return data.value;
+  }
+
+  /**
+   * 수수료율 조회 (number, 기본값 0.01)
+   */
+  async getFeeRate(): Promise<number> {
+    const value = await this.getSetting('fee_rate');
+    const rate = value ? Number(value) : NaN;
+    return Number.isFinite(rate) ? rate : 0.01;
+  }
+
+  /**
+   * 수수료율 수정 (검증: 0 ~ 0.5 범위)
+   */
+  async updateFeeRate(rate: number): Promise<{ feeRate: number }> {
+    if (!Number.isFinite(rate) || rate < 0 || rate > 0.5) {
+      throw new BadRequestException('수수료율은 0~50% 범위여야 합니다.');
+    }
+
+    const { error } = await this.client
+      .from('settings')
+      .upsert({ key: 'fee_rate', value: String(rate), updated_at: new Date().toISOString() });
+
+    if (error) {
+      this.logger.error('Failed to update fee rate: ' + error.message);
+      throw error;
+    }
+
+    return { feeRate: rate };
   }
 
 }

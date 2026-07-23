@@ -2,7 +2,8 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from '@nes
 import { SupabaseService } from '../supabase/supabase.service';
 import { ConfigService } from '@nestjs/config';
 import { Connection, PublicKey } from '@solana/web3.js';
-import { FEE_RATE, MANIFEST, USDT_MINT } from '@solwallet/config';
+import { MANIFEST, USDT_MINT } from '@solwallet/config';
+import { SettingsService } from '../settings/settings.service';
 import type { CreateOrderDto } from '../common/dto/order.dto';
 
 /** Manifest POST /orders 응답 */
@@ -33,6 +34,7 @@ export class OrdersService {
   constructor(
     private readonly supabaseService: SupabaseService,
     private readonly configService: ConfigService,
+    private readonly settingsService: SettingsService,
   ) {
     this.manifestBaseUrl = MANIFEST.baseUrl;
     this.rpcUrl = this.configService.get<string>('SOLANA_RPC_URL') || '';
@@ -98,9 +100,10 @@ export class OrdersService {
       throw new BadRequestException('유효하지 않은 토큰입니다.');
     }
 
-    // 수수료 계산
+    // 수수료 계산 — DB에서 동적 수수료율 조회 (실패 시 기본값 1%)
+    const feeRate = await this.settingsService.getFeeRate();
     const total = dto.price * dto.quantity;
-    const fee = total * FEE_RATE;
+    const fee = total * feeRate;
 
     const clientOrderId = this.generateClientOrderId();
 
@@ -116,7 +119,7 @@ export class OrdersService {
         price: dto.price,
         quantity: dto.quantity,
         fee: fee.toFixed(6),
-        fee_rate: FEE_RATE,
+        fee_rate: feeRate,
         status: 'pending',
         manifest_client_order_id: clientOrderId,
       })

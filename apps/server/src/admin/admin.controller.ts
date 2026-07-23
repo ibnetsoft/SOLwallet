@@ -154,4 +154,18 @@ export class AdminController {
     const result = await this.adminService.getRevenueLedger(page, pageSize);
     return { success: true, data: result };
   }
+
+  // ─── 설정 관리 ───
+
+  @Get('settings/fee-rate')
+  async getFeeRate() {
+    const feeRate = await this.adminService.getFeeRate();
+    return { success: true, data: { feeRate } };
+  }
+
+  @Patch('settings/fee-rate')
+  async updateFeeRate(@Body('feeRate') feeRate: number) {
+    const result = await this.adminService.updateFeeRate(Number(feeRate));
+    return { success: true, data: result };
+  }
 }

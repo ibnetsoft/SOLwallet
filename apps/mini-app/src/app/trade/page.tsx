@@ -9,7 +9,7 @@ import { useToast } from '@/components/Toast';
 import PinModal from '@/components/PinModal';
 import { BottomNav } from '@/components/BottomNav';
 import { SkeletonCard } from '@/components/Skeleton';
-import { FEE_RATE, QUICK_AMOUNT_RATIOS, USDT_MINT } from '@solwallet/config';
+import { QUICK_AMOUNT_RATIOS, USDT_MINT } from '@solwallet/config';
 import { getWalletBalance } from '@/lib/api/balance';
 import { isLoggedIn } from '@/lib/api/auth';
 import { useT } from '@/lib/i18n';
@@ -23,6 +23,7 @@ function TradeContent() {
     price, setPrice,
     quantity, setQuantity,
     currentPrice,
+    feeRate,
     orderbook,
     tokens,
     activeOrders,
@@ -32,6 +33,7 @@ function TradeContent() {
     isLoadingMoreHistory,
     isSubmitting,
     fetchTokens,
+    fetchFeeRate,
     fetchOrderbook,
     fetchCurrentPrice,
     fetchActiveOrders,
@@ -83,6 +85,7 @@ function TradeContent() {
       return;
     }
     fetchTokens();
+    fetchFeeRate();
     fetchActiveOrders();
     fetchOrderHistory();
 
@@ -213,7 +216,7 @@ function TradeContent() {
   const priceNum = Number(price) || 0;
   const qtyNum = Number(quantity) || 0;
   const totalAmount = priceNum * qtyNum;
-  const feeAmount = totalAmount * FEE_RATE;
+  const feeAmount = totalAmount * feeRate;
   const totalWithFee = totalAmount + feeAmount;
 
   return (
@@ -437,7 +440,7 @@ function TradeContent() {
             <span>${totalAmount.toFixed(2)}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-gray-400">{t('trade.fee')} ({FEE_RATE * 100}%)</span>
+            <span className="text-gray-400">{t('trade.fee')} ({feeRate * 100}%)</span>
             <span>${feeAmount.toFixed(2)}</span>
           </div>
           <hr className="border-gray-700" />

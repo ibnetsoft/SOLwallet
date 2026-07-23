@@ -9,7 +9,9 @@ const navItems = [
   { href: '/users', label: '👥 회원 관리' },
   { href: '/tokens', label: '🪙 토큰 관리' },
   { href: '/transactions', label: '📋 트랜잭션' },
+  { href: '/revenue', label: '💰 수수료 정산' },
   { href: '/referral-tree', label: '🌳 추천 조직도' },
+  { href: '/settings', label: '⚙️ 설정' },
 ];
 
 export default function AdminSidebar() {

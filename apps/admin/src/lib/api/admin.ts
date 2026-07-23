@@ -126,3 +126,38 @@ export function getOrders(options: { status?: string; tokenId?: string; page?: n
   if (options.pageSize) params.set('pageSize', String(options.pageSize));
   return apiFetch(`/admin/orders?${params.toString()}`);
 }
+
+// ─── 수수료 정산 대장 ───
+
+export interface RevenueEntry {
+  orderId: string;
+  fee: string | number;
+  feeRate: string | number;
+  side: string;
+  price: string | number;
+  quantity: string | number;
+  tradeAmount: number;
+  txSignature: string | null;
+  status: string;
+  createdAt: string;
+  username: string;
+  telegramUid?: number;
+  tokenSymbol: string;
+}
+
+export function getRevenue(page = 1, pageSize = 50): Promise<{ ledger: RevenueEntry[]; total: number; totalRevenue: number }> {
+  return apiFetch(`/admin/revenue?page=${page}&pageSize=${pageSize}`);
+}
+
+// ─── 설정 관리 ───
+
+export function getFeeRate(): Promise<{ feeRate: number }> {
+  return apiFetch('/admin/settings/fee-rate');
+}
+
+export function updateFeeRate(feeRate: number): Promise<{ feeRate: number }> {
+  return apiFetch('/admin/settings/fee-rate', {
+    method: 'PATCH',
+    body: JSON.stringify({ feeRate }),
+  });
+}
