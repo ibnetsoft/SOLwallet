@@ -17,6 +17,10 @@ RUN pnpm install --frozen-lockfile
 # Build shared packages first, then admin
 RUN cd packages/config && pnpm build
 RUN cd packages/shared-types && pnpm build
+
+# NEXT_PUBLIC_* 변수는 빌드 타임에 평가되므로 build arg로 전달
+ARG NEXT_PUBLIC_API_URL=/api
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN cd apps/admin && pnpm build
 
 # ─── Production stage ───
