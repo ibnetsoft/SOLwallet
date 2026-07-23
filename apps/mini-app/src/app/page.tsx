@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, Suspense } from 'react';
+import type { MouseEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -353,24 +354,6 @@ function HomePage() {
         </div>
       </section>
 
-      {/* ===== Trading Buttons ===== */}
-      <section className="mb-5">
-        <div className="flex gap-2 justify-center">
-          <Link
-            href="/trade?type=buy"
-            className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl text-sm font-bold transition text-center"
-          >
-            BUY
-          </Link>
-          <Link
-            href="/trade?type=sell"
-            className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-xl text-sm font-bold transition text-center"
-          >
-            SELL
-          </Link>
-        </div>
-      </section>
-
       {/* ===== Holdings (고정 구조 — 깜빡임 방지) ===== */}
       <section>
         <div className="flex items-center justify-between mb-3">
@@ -463,8 +446,23 @@ function AssetRow({
 
   const [imgError, setImgError] = useState(false);
 
+  // USDT는 기축통화라 거래 불가 → 행 클릭 비활성화
+  const isTradable = symbol !== 'USDT';
+  const tradeHref = `/trade?type=buy&symbol=${symbol}`;
+
   return (
-    <div className="bg-gray-800/50 rounded-xl p-3.5 flex items-center justify-between min-h-[64px]">
+    <Link
+      href={tradeHref}
+      onClick={(e: MouseEvent<HTMLAnchorElement>) => {
+        if (!isTradable) e.preventDefault();
+      }}
+      aria-disabled={!isTradable}
+      className={`bg-gray-800/50 rounded-xl p-3.5 flex items-center justify-between min-h-[64px] transition-colors ${
+        isTradable
+          ? 'hover:bg-gray-700/40 active:bg-gray-700/60 cursor-pointer'
+          : 'cursor-default'
+      }`}
+    >
       <div className="flex items-center gap-3">
         {/* 토큰 로고 — 이미지 우선, 실패 시 첫 글자 fallback */}
         <div className="w-9 h-9 rounded-full overflow-hidden bg-gray-700 flex items-center justify-center shrink-0">
@@ -515,7 +513,7 @@ function AssetRow({
           </p>
         )}
       </div>
-    </div>
+    </Link>
   );
 }
 

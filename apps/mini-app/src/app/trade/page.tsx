@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { RefreshCw } from 'lucide-react';
 import { useTradeStore } from '@/stores/useTradeStore';
 import { useWalletStore } from '@/stores/useWalletStore';
 import { useToast } from '@/components/Toast';
@@ -95,6 +96,21 @@ function TradeContent() {
       setSide(type);
     }
   }, [searchParams]);
+
+  // /trade?symbol=SOL → 해당 토큰 사전 선택 (개별 코인 행 딥링크)
+  const symbolParam = searchParams.get('symbol');
+  useEffect(() => {
+    if (!symbolParam || tokens.length === 0) return;
+    // 대소문자 무시 매칭 (USDT는 기축통화라 거래 불가 — 제외)
+    const matched = tokens.find(
+      (tok) =>
+        tok.symbol.toUpperCase() === symbolParam.toUpperCase() &&
+        tok.symbol !== 'USDT',
+    );
+    if (matched && matched.id !== selectedToken?.id) {
+      setSelectedToken(matched);
+    }
+  }, [symbolParam, tokens, selectedToken, setSelectedToken]);
 
   // 토큰 선택 시 오더북 + 현재가 + 잔액 조회
   useEffect(() => {
@@ -229,6 +245,44 @@ function TradeContent() {
         </h1>
       </header>
 
+      {/* Token Selection */}
+      <section className="mb-4 relative">
+        <button
+          onClick={() => setShowTokenDropdown(!showTokenDropdown)}
+          className="w-full bg-gray-800/50 rounded-xl p-4 flex items-center justify-between"
+        >
+          <div>
+            <p className="font-medium">{selectedToken ? selectedToken.symbol : t('trade.selectToken')}</p>
+            <p className="text-sm text-gray-400">
+              {selectedToken ? `${selectedToken.symbol}/USDT` : t('trade.baseCurrency')}
+            </p>
+          </div>
+          <span className="text-gray-400">▼</span>
+        </button>
+
+        {showTokenDropdown && (
+          <div className="absolute left-0 right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-xl z-10 max-h-48 overflow-y-auto">
+            {tokens
+              .filter((tok) => tok.symbol !== 'USDT')
+              .map((token) => (
+                <button
+                  key={token.id}
+                  onClick={() => {
+                    setSelectedToken(token);
+                    setShowTokenDropdown(false);
+                  }}
+                  className={`w-full px-4 py-3 text-left hover:bg-gray-700 flex justify-between ${
+                    selectedToken?.id === token.id ? 'bg-gray-700' : ''
+                  }`}
+                >
+                  <span className="font-medium">{token.symbol}</span>
+                  <span className="text-xs text-gray-400">{token.mint_address.slice(0, 4)}...</span>
+                </button>
+              ))}
+          </div>
+        )}
+      </section>
+
       {/* Buy/Sell Toggle */}
       <div className="flex bg-gray-800 rounded-xl p-1 mb-4">
         <button
@@ -265,45 +319,6 @@ function TradeContent() {
           </button>
         ))}
       </div>
-
-      {/* Token Selection */}
-      <section className="mb-4 relative">
-        <label className="text-sm text-gray-400 mb-1 block">{t('trade.tokenSelect')}</label>
-        <button
-          onClick={() => setShowTokenDropdown(!showTokenDropdown)}
-          className="w-full bg-gray-800/50 rounded-xl p-4 flex items-center justify-between"
-        >
-          <div>
-            <p className="font-medium">{selectedToken ? selectedToken.symbol : t('trade.selectToken')}</p>
-            <p className="text-sm text-gray-400">
-              {selectedToken ? `${selectedToken.symbol}/USDT` : t('trade.baseCurrency')}
-            </p>
-          </div>
-          <span className="text-gray-400">▼</span>
-        </button>
-
-        {showTokenDropdown && (
-          <div className="absolute left-0 right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-xl z-10 max-h-48 overflow-y-auto">
-            {tokens
-              .filter((tok) => tok.symbol !== 'USDT')
-              .map((token) => (
-                <button
-                  key={token.id}
-                  onClick={() => {
-                    setSelectedToken(token);
-                    setShowTokenDropdown(false);
-                  }}
-                  className={`w-full px-4 py-3 text-left hover:bg-gray-700 flex justify-between ${
-                    selectedToken?.id === token.id ? 'bg-gray-700' : ''
-                  }`}
-                >
-                  <span className="font-medium">{token.symbol}</span>
-                  <span className="text-xs text-gray-400">{token.mint_address.slice(0, 4)}...</span>
-                </button>
-              ))}
-          </div>
-        )}
-      </section>
 
       {/* Price Input — 지정가일 때만 표시 */}
       {orderType === 'limit' ? (
@@ -469,7 +484,7 @@ function TradeContent() {
       >
         {isSubmitting
           ? t('common.processing')
-          : t('trade.submitOrder', { side: side === 'buy' ? 'Buy' : 'Sell', type: orderType === 'limit' ? 'Limit' : 'Market' })}
+          : t('trade.submitOrder', { side: side === 'buy' ? 'Buy' : 'Sell', symbol: selectedToken?.symbol ?? '' })}
       </button>
 
       {/* Orders Tabs — Open Orders / History */}
@@ -487,7 +502,7 @@ function TradeContent() {
             >
               {t('trade.openOrders')}
               {activeOrders.length > 0 && (
-                <span className="ml-1.5 text-xs text-gray-500">{activeOrders.length}</span>
+                <span className="ml-1.5 text-gray-500">({activeOrders.length})</span>
               )}
             </button>
             <button
@@ -503,9 +518,10 @@ function TradeContent() {
           </div>
           <button
             onClick={() => activeTab === 'open' ? fetchActiveOrders() : fetchOrderHistory()}
-            className="text-xs text-gray-400 hover:text-white transition"
+            className="p-1 text-gray-400 hover:text-white transition"
+            aria-label={t('trade.refresh')}
           >
-            {t('trade.refresh')}
+            <RefreshCw className="w-4 h-4" />
           </button>
         </div>
 
