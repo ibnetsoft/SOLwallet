@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getUsers, getUserWallets, getReferralStats } from '@/lib/api/admin';
-import type { ReferralStat } from '@/lib/api/admin';
+import type { ReferralStat, AdminWalletDetail } from '@/lib/api/admin';
 import type { AdminUserDetail } from '@solwallet/shared-types';
 
 export default function UsersPage() {
@@ -19,7 +19,7 @@ export default function UsersPage() {
 
   // 유저 잔액 상세보기
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [wallets, setWallets] = useState<Array<Record<string, unknown>>>([]);
+  const [wallets, setWallets] = useState<AdminWalletDetail[]>([]);
   const [walletsLoading, setWalletsLoading] = useState(false);
 
   const pageSize = 20;
@@ -232,8 +232,7 @@ export default function UsersPage() {
             <p className="text-gray-400 text-sm">지갑이 없습니다.</p>
           ) : (
             <div className="space-y-3">
-              {wallets.map((w) => {
-                const wallet = w as { id: string; publicKey: string; walletIndex: number; label: string; isActive: boolean };
+              {wallets.map((wallet) => {
                 return (
                   <div key={wallet.id} className="bg-gray-900/50 rounded-lg p-4 flex items-center justify-between">
                     <div>
