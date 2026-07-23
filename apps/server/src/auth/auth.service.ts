@@ -58,14 +58,23 @@ export class AuthService {
       throw new UnauthorizedException('Invalid Telegram auth data.');
     }
 
-    const telegramUid = parseInt(params.get('user') || '0', 10);
-    const username = params.get('username') || '';
-    const firstName = params.get('first_name') || '';
-    const lastName = params.get('last_name') || '';
+    // user 파라미터는 Telegram 스펙상 JSON 문자열임
+    // 예: user={"id":123456789,"first_name":"홍길동","username":"gil","last_name":"..."}
+    let userObj: { id?: unknown; username?: string; first_name?: string; last_name?: string } = {};
+    try {
+      userObj = JSON.parse(params.get('user') || '{}');
+    } catch {
+      throw new UnauthorizedException('Invalid user data in init data.');
+    }
 
-    if (!telegramUid) {
+    const telegramUid = Number(userObj.id);
+    if (!telegramUid || !Number.isFinite(telegramUid)) {
       throw new UnauthorizedException('Invalid user id in init data.');
     }
+
+    const username = userObj.username || '';
+    const firstName = userObj.first_name || '';
+    const lastName = userObj.last_name || '';
 
     return { telegramUid, username, firstName, lastName };
   }
@@ -101,6 +110,24 @@ export class AuthService {
     try {
       const a = Buffer.from(secret);
       const b = Buffer.from(adminSecret);
+      if (a.length !== b.length) return false;
+      return timingSafeEqual(a, b);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Dev login secret 검증 — DEV_LOGIN_SECRET이 설정된 경우에만 dev-login 허용
+   * timing-safe comparison으로 타이밍 공격 방지
+   */
+  validateDevSecret(secret: string | undefined): boolean {
+    const devSecret = this.configService.get<string>('DEV_LOGIN_SECRET');
+    if (!devSecret) return false;
+
+    try {
+      const a = Buffer.from(secret || '');
+      const b = Buffer.from(devSecret);
       if (a.length !== b.length) return false;
       return timingSafeEqual(a, b);
     } catch {

@@ -11,6 +11,7 @@ export default function LoginPage() {
   const router = useRouter();
   const { showToast } = useToast();
   const [username, setUsername] = useState('');
+  const [devSecret, setDevSecret] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState<'checking' | 'telegram' | 'dev'>('checking');
 
@@ -83,7 +84,7 @@ export default function LoginPage() {
     e.preventDefault();
     setIsLoading(true);
     try {
-      const token = await devLogin(username.trim() || 'dev_user');
+      const token = await devLogin(username.trim() || 'dev_user', devSecret.trim());
       // 토큰 저장 확인
       if (token && isLoggedIn()) {
         showToast(t('login.success'));
@@ -131,6 +132,14 @@ export default function LoginPage() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder={t('login.usernamePlaceholder')}
+                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 outline-none focus:border-primary-500 transition mb-4"
+              />
+
+              <input
+                type="password"
+                value={devSecret}
+                onChange={(e) => setDevSecret(e.target.value)}
+                placeholder={t('login.devSecretPlaceholder')}
                 className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 outline-none focus:border-primary-500 transition mb-4"
               />
 

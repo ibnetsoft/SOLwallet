@@ -24,6 +24,7 @@ const ja: Record<string, string> = {
   'login.telegramAuth': 'Telegram 認証中...',
   'login.devTitle': '🔐 開発ログイン',
   'login.usernamePlaceholder': 'ユーザー名（任意、デフォルト：dev_user）',
+  'login.devSecretPlaceholder': '開発用シークレット',
   'login.loggingIn': 'ログイン中...',
   'login.loginBtn': 'ログイン',
   'login.telegramSuccess': 'Telegram ログイン成功',

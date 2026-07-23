@@ -24,6 +24,7 @@ const ko: Record<string, string> = {
   'login.telegramAuth': 'Telegram 인증 중...',
   'login.devTitle': '🔐 개발용 로그인',
   'login.usernamePlaceholder': '사용자명 (선택, 기본: dev_user)',
+  'login.devSecretPlaceholder': '개발용 시크릿',
   'login.loggingIn': '로그인 중...',
   'login.loginBtn': '로그인하기',
   'login.telegramSuccess': 'Telegram 로그인 성공',

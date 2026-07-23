@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, Headers, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { Throttle, SkipThrottle, ThrottlerGuard } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { UserService } from '../user/user.service';
@@ -85,13 +85,21 @@ export class AuthController {
   /**
    * POST /api/auth/dev
    * 개발용 bypass — Telegram 없이 테스트 유저로 로그인
-   * ⚠️ NODE_ENV=development에서만 작동 (프로덕션에서는 403)
+   * DEV_LOGIN_SECRET 환경변수가 설정된 경우에만 허용 (프로덕션에서도 안전)
+   * Header: x-dev-secret: <DEV_LOGIN_SECRET>
    */
   @Post('dev')
   @Throttle({ default: { limit: 20, ttl: 60000 } })
-  async devAuth(@Body() body: { telegramUid?: number; username?: string }) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new UnauthorizedException('개발 모드 전용 엔드포인트입니다.');
+  async devAuth(
+    @Body() body: { telegramUid?: number; username?: string },
+    @Headers('x-dev-secret') devSecret?: string,
+  ) {
+    // 개발 모드이거나 DEV_LOGIN_SECRET 검증 통과 시에만 허용
+    const isDevMode = process.env.NODE_ENV !== 'production';
+    const secretValid = this.authService.validateDevSecret(devSecret);
+
+    if (!isDevMode && !secretValid) {
+      throw new UnauthorizedException('유효한 개발용 시크릿이 필요합니다.');
     }
 
     // 테스트 유저 upsert (Telegram UID 999999999 = 개발용)

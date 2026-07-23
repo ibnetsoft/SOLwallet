@@ -24,6 +24,7 @@ const zh: Record<string, string> = {
   'login.telegramAuth': 'Telegram 认证中...',
   'login.devTitle': '🔐 开发登录',
   'login.usernamePlaceholder': '用户名（可选，默认：dev_user）',
+  'login.devSecretPlaceholder': '开发密钥',
   'login.loggingIn': '登录中...',
   'login.loginBtn': '登录',
   'login.telegramSuccess': 'Telegram 登录成功',

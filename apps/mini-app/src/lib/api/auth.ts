@@ -30,12 +30,15 @@ export async function telegramLogin(initData: string, referralCode?: string): Pr
 
 /**
  * 개발용 로그인 — Telegram 없이 테스트 유저로 로그인
- * ⚠️ 개발 모드 전용 (NODE_ENV !== production)
+ * DEV_LOGIN_SECRET이 서버에 설정된 경우 x-dev-secret 헤더로 전달
  */
-export async function devLogin(username?: string): Promise<string> {
+export async function devLogin(username?: string, devSecret?: string): Promise<string> {
   const res = await fetch(`${API_BASE}/auth/dev`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(devSecret ? { 'x-dev-secret': devSecret } : {}),
+    },
     body: JSON.stringify({ username }),
   });
 

@@ -26,6 +26,7 @@ const en: Record<TranslationKey, string> = {
   'login.telegramAuth': 'Telegram Authentication...',
   'login.devTitle': '🔐 Dev Login',
   'login.usernamePlaceholder': 'Username (optional, default: dev_user)',
+  'login.devSecretPlaceholder': 'Dev Secret',
   'login.loggingIn': 'Logging in...',
   'login.loginBtn': 'Login',
   'login.telegramSuccess': 'Telegram login successful',
