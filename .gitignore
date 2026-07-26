@@ -47,3 +47,12 @@ coverage/
 *.pem
 *.key
 secrets/
+
+# SSL / nginx runtime configs (도메인 값이 치환된 실제 파일)
+# 템플릿(.example)은 커밋, 실제 파일은 ignore
+nginx-ssl-applied.conf
+nginx-acme.conf
+nginx-ssl.conf
+
+# Let's Encrypt 인증서 (certbot 데이터)
+certbot/

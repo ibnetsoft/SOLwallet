@@ -185,7 +185,12 @@ docker run --rm \
     $DOMAIN_ARGS
 
 CERT_PATH="certbot/conf/live/${DOMAIN}"
-if [ ! -f "${CERT_PATH}/fullchain.pem" ]; then
+
+# certbot 컨테이너는 root 로 인증서를 생성하므로 호스트 ubuntu 사용자가
+# 디렉토리에 접근하지 못할 수 있다. sudo 로 가시성을 확보한다.
+CERT_EXISTS=$(sudo test -f "${CERT_PATH}/fullchain.pem" && echo "yes" || echo "no")
+
+if [ "$CERT_EXISTS" != "yes" ]; then
     echo -e "${RED}❌ 인증서 발급에 실패했습니다. 위 certbot 로그를 확인하세요.${NC}"
     echo -e "${YELLOW}   원인 의심:${NC}"
     echo -e "${YELLOW}   - DNS 전파 미완료 (dnschecker.org 에서 확인)${NC}"

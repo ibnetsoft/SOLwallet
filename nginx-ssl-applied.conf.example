@@ -1,0 +1,120 @@
+# ═══════════════════════════════════════════════════════════════
+# nginx-ssl-applied.conf.example
+# ═══════════════════════════════════════════════════════════════
+# SSL 이 적용된 nginx 설정 템플릿.
+#
+# 사용법:
+#   1. 도메인을 실제 값으로 치환:  sed -i 's/__DOMAIN__/aoiwallet.com/g' nginx-ssl-applied.conf.example
+#   2. 파일명 변경:                cp nginx-ssl-applied.conf.example nginx-ssl-applied.conf
+#   3. docker-compose.yml 의 nginx 볼륨이 nginx-ssl-applied.conf 를 가리키도록 변경
+#      (ssl-setup.sh 가 자동 처리함)
+#
+# 구성:
+#   - 443 HTTPS (apex + www 모두 수신, www는 apex로 301 리다이렉트)
+#   - HTTP 80 → HTTPS 301 리다이렉트 (ACME 검증 location 유지)
+# ═══════════════════════════════════════════════════════════════
+
+# ─── www → apex 301 리다이렉트 (HTTPS) ───
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name www.__DOMAIN__;
+
+    ssl_certificate /etc/letsencrypt/live/__DOMAIN__/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/__DOMAIN__/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    return 301 https://__DOMAIN__$request_uri;
+}
+
+# ─── HTTPS 메인 (apex) ───
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name __DOMAIN__;
+
+    ssl_certificate /etc/letsencrypt/live/__DOMAIN__/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/__DOMAIN__/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml text/javascript image/svg+xml;
+    client_max_body_size 10M;
+
+    location /api/ {
+        proxy_pass http://server:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        proxy_read_timeout 60s;
+    }
+
+    location /health {
+        proxy_pass http://server:3000;
+        proxy_set_header Host $host;
+    }
+
+    location /admin {
+        proxy_pass http://admin:3002;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location /_next/admin {
+        proxy_pass http://admin:3002;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+    }
+
+    location /_next {
+        proxy_pass http://mini-app:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        expires 365d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location / {
+        proxy_pass http://mini-app:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+# ─── HTTP 80 → HTTPS 301 리다이렉트 (ACME 검증 location 유지) ───
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __DOMAIN__ www.__DOMAIN__;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://__DOMAIN__$request_uri;
+    }
+}
