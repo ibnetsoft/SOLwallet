@@ -13,7 +13,7 @@ const en: Record<TranslationKey, string> = {
   'common.items': 'items',
 
   // ─── Layout ───
-  'layout.title': 'DEX MINER BOT',
+  'layout.title': 'AoiWallet',
   'layout.description': 'Solana Limit Order Trading Telegram Mini App',
 
   // ─── Bottom Nav ───
@@ -207,7 +207,7 @@ const en: Record<TranslationKey, string> = {
   'mnemonic.acknowledged': 'I have saved my seed phrase',
 
   // ─── Referral ───
-  'referral.shareTitle': '🔥 DEX MINER BOT Referral Link',
+  'referral.shareTitle': 'AoiWallet Referral Link',
   'referral.code': 'Code: {code}',
   'referral.telegram': 'Telegram: {link}',
   'referral.web': 'Web: {link}',

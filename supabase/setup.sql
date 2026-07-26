@@ -1,5 +1,5 @@
 -- =============================================
--- DEX MINER BOT — Full Database Setup
+-- AoiWallet — Full Database Setup
 -- =============================================
 -- Supabase Dashboard > SQL Editor 에 복사해서 실행하세요
 -- https://yvnxbalfktdxhlcbftax.supabase.co > SQL Editor (New query)

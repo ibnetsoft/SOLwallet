@@ -20,7 +20,7 @@ export default function AdminSidebar() {
   return (
     <aside className="w-64 bg-gray-900 min-h-screen flex flex-col">
       <div className="p-6 border-b border-gray-800">
-        <h1 className="text-lg font-bold">🔥 DEX MINER</h1>
+        <h1 className="text-lg font-bold">AoiWallet</h1>
         <p className="text-xs text-gray-400">Admin Dashboard</p>
       </div>
       <nav className="flex-1 p-4 space-y-1">

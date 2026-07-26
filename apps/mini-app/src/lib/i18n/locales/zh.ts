@@ -11,7 +11,7 @@ const zh: Record<string, string> = {
   'common.items': '项目',
 
   // ─── Layout ───
-  'layout.title': 'DEX MINER BOT',
+  'layout.title': 'AoiWallet',
   'layout.description': 'Solana 限价交易 Telegram 迷你应用',
 
   // ─── Bottom Nav ───
@@ -205,7 +205,7 @@ const zh: Record<string, string> = {
   'mnemonic.acknowledged': '我已保存助记词',
 
   // ─── Referral ───
-  'referral.shareTitle': '🔥 DEX MINER BOT 推荐链接',
+  'referral.shareTitle': 'AoiWallet 推荐链接',
   'referral.code': '推荐码：{code}',
   'referral.telegram': 'Telegram：{link}',
   'referral.web': '网页：{link}',

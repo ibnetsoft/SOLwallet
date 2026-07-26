@@ -1,4 +1,4 @@
-# 🔥 DEX MINER BOT — AWS 배포 가이드
+# 🔥 AoiWallet — AWS 배포 가이드
 
 ## 1. EC2 인스턴스 생성
 

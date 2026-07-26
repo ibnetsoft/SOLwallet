@@ -9,7 +9,6 @@ import {
   ArrowUpFromLine,
   History,
   Copy,
-  Pickaxe,
 } from 'lucide-react';
 import { useWalletStore } from '@/stores/useWalletStore';
 import { getPortfolio } from '@/lib/api/balance';
@@ -188,12 +187,12 @@ function HomePage() {
       <header className="mb-5">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            {/* DEX MINER BOT Logo */}
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-md">
-              <Pickaxe className="w-5 h-5 text-gray-900" strokeWidth={2.5} />
+            {/* AoiWallet Logo */}
+            <div className="w-8 h-8 rounded-lg bg-primary-600 flex items-center justify-center shadow-md">
+              <span className="text-white font-bold text-base leading-none">A</span>
             </div>
             <div>
-              <h1 className="text-lg font-bold tracking-tight">DEX MINER BOT</h1>
+              <h1 className="text-lg font-bold tracking-tight">AoiWallet</h1>
             </div>
           </div>
 

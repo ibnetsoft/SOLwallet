@@ -2,7 +2,7 @@
   "name": "solwallet",
   "version": "0.1.0",
   "private": true,
-  "description": "DEX MINER BOT — Solana 지정가 거래 텔레그램 미니앱",
+  "description": "AoiWallet — Solana 지정가 거래 텔레그램 미니앱",
   "scripts": {
     "dev": "turbo run dev",
     "dev:server": "turbo run dev --filter=server",

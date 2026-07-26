@@ -1,5 +1,5 @@
 -- =============================================
--- DEX MINER BOT — Initial Schema
+-- AoiWallet — Initial Schema
 -- Migration: 001_initial_schema.sql
 -- =============================================
 

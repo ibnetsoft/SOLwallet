@@ -1,5 +1,5 @@
 -- =============================================
--- DEX MINER BOT — Seed Data
+-- AoiWallet — Seed Data
 -- =============================================
 
 -- Initial tokens for the mini-app

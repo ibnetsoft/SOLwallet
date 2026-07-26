@@ -3,7 +3,7 @@ import './globals.css';
 import AdminAppShell from '@/components/AdminAppShell';
 
 export const metadata: Metadata = {
-  title: 'DEX MINER BOT — Admin',
+  title: 'AoiWallet — Admin',
   description: '관리자 대시보드',
 };
 

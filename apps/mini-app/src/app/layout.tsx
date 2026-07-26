@@ -4,8 +4,8 @@ import { ToastProvider } from '@/components/Toast';
 import { I18nProvider } from '@/lib/i18n';
 
 export const metadata: Metadata = {
-  title: 'DEX MINER BOT',
-  description: 'DEX MINER BOT — Solana Trading Telegram Mini App',
+  title: 'AoiWallet',
+  description: 'AoiWallet — Solana Trading Telegram Mini App',
 };
 
 export const viewport: Viewport = {

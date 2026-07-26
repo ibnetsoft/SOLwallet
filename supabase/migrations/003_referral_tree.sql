@@ -1,5 +1,5 @@
 -- =============================================
--- DEX MINER BOT — Referral Tree Functions
+-- AoiWallet — Referral Tree Functions
 -- Migration: 003_referral_tree.sql
 -- =============================================
 --

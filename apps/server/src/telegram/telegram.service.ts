@@ -48,7 +48,7 @@ export class TelegramService {
         const welcomeMessage = [
           `👋 환영합니다, ${firstName || username}!`,
           '',
-          '🔥 **DEX MINER BOT**에 오신 것을 환영합니다.',
+          '🔥 **AoiWallet**에 오신 것을 환영합니다.',
           '지정가 매수/매도로 솔라나 토큰을 거래하세요.',
           '',
           '🚀 *토큰 거래하러 가기* → 아래 버튼을 클릭하세요!',

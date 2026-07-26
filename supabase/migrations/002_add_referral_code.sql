@@ -1,5 +1,5 @@
 -- =============================================
--- DEX MINER BOT — Add referral_code column
+-- AoiWallet — Add referral_code column
 -- Migration: 002_add_referral_code.sql
 -- =============================================
 --

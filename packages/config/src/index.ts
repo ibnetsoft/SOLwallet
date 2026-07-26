@@ -1,5 +1,5 @@
 // ========================================
-// DEX MINER BOT — Shared Configuration
+// AoiWallet — Shared Configuration
 // ========================================
 
 /** 거래 수수료율 */

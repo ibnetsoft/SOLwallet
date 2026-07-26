@@ -35,7 +35,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold mb-2">🔥 DEX MINER</h1>
+          <h1 className="text-3xl font-bold mb-2">AoiWallet</h1>
           <p className="text-sm text-gray-400">관리자 대시보드</p>
         </div>
 

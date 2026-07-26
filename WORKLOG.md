@@ -1,6 +1,6 @@
-# 🔥 DEX MINER BOT — 전체 작업 내역
+# 🔥 AoiWallet — 전체 작업 내역
 
-> **프로젝트:** DEX MINER BOT (Solana 지정가 거래 텔레그램 미니앱)
+> **프로젝트:** AoiWallet (Solana 지정가 거래 텔레그램 미니앱)
 > **리포지토리:** https://github.com/ibnetsoft/SOLwallet
 > **작성일:** 2026-07-18
 > **작성자:** ibnetsoft <kimseddang@naver.com>
@@ -24,7 +24,7 @@
 
 ## 1. 프로젝트 개요
 
-**DEX MINER BOT**은 Solana 블록체인 기반 DEX(분산 거래소)에서 **지정가(Limit Order)** 및 **시장가(Market Order)** 거래를 지원하는 Telegram 미니앱입니다.
+**AoiWallet**은 Solana 블록체인 기반 DEX(분산 거래소)에서 **지정가(Limit Order)** 및 **시장가(Market Order)** 거래를 지원하는 Telegram 미니앱입니다.
 
 ### 핵심 기능
 
@@ -316,7 +316,7 @@ users ← users         (referred_by FK → users.id, 자기 추천 방지)
 - **자기 추천 방지**: referrer 조회 시 본인 ID 제외
 - **복사 형식**:
   ```
-  DEX MINER BOT 추천 링크
+  AoiWallet 추천 링크
   코드: K7M3X9PQ
   Telegram: https://t.me/<bot>?startapp=K7M3X9PQ
   웹: https://<miniapp>/?ref=K7M3X9PQ

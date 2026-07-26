@@ -1,5 +1,5 @@
 -- =============================================
--- DEX MINER BOT — Manifest 메타데이터 + 상태 확장
+-- AoiWallet — Manifest 메타데이터 + 상태 확장
 -- Migration: 002_manifest_metadata.sql
 -- =============================================
 

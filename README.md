@@ -1,4 +1,4 @@
-# 🔥 DEX MINER BOT
+# 🔥 AoiWallet
 
 > 솔라나 지정가 거래 전용 텔레그램 미니앱
 

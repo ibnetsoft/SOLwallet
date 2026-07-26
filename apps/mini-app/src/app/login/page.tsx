@@ -104,7 +104,7 @@ export default function LoginPage() {
     <main className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold">🔥 DEX MINER</h1>
+          <h1 className="text-3xl font-bold">AoiWallet</h1>
         </div>
 
         {/* 체크 중 */}
