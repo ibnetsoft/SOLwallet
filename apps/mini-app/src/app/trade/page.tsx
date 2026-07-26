@@ -380,7 +380,7 @@ function TradeContent() {
             placeholder={t('trade.amountPlaceholder')}
             min="0"
             step="any"
-            className="bg-transparent w-full outline-none text-white placeholder-gray-500 mb-3"
+            className="bg-transparent w-full outline-none text-white placeholder-gray-500 mb-12"
           />
 
           {/* 수량 슬라이더 — 드래그로 수량 선택 (maxBalance 기준, 25% 단위 스냅) */}
