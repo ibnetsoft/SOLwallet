@@ -36,14 +36,20 @@ function isTokenExpired(token: string): boolean {
 
 /**
  * 만료/무효 토큰 정리 후 로그인으로 이동
+ *
+ * 주의: admin app은 basePath='/admin' 로 설정되어 있으므로,
+ * next/navigation 의 router.push/replace 는 basePath를 자동으로 붙인다.
+ * 하지만 window.location.* 은 브라우저 네이티브 API라 basePath를 무시하므로
+ * 경로에 '/admin' 을 명시해야 한다. 그렇지 않으면 /login 이 nginx의
+ * 기본 location / (mini-app) 으로 라우팅되어 유저 지갑 화면이 렌더링된다.
  */
 function clearAndRedirect(replace = true) {
   if (typeof window === 'undefined') return;
   localStorage.removeItem('admin_auth_token');
   if (replace) {
-    window.location.replace('/login');
+    window.location.replace('/admin/login');
   } else {
-    window.location.href = '/login';
+    window.location.href = '/admin/login';
   }
 }
 

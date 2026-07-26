@@ -1,9 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { adminLogin } from '@/lib/api/auth';
 
 export default function LoginPage() {
+  const router = useRouter();
   const [secret, setSecret] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -17,7 +19,10 @@ export default function LoginPage() {
 
     try {
       await adminLogin(secret.trim());
-      window.location.href = '/';
+      // next/navigation 의 router 는 basePath('/admin')를 자동 적용하므로
+      // / 가 /admin/ 로 해석된다. window.location.* 은 basePath를 무시하므로
+      // 사용하면 안 됨 (mini-app 루트로 튕김).
+      router.replace('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : '로그인에 실패했습니다.');
     } finally {

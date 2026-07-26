@@ -30,9 +30,10 @@ export async function apiFetch<T>(
 
   if (res.status === 401) {
     // 토큰 만료 → 로그인 페이지로
+    // window.location 은 basePath('/admin')를 무시하므로 /admin/login 을 명시.
     if (typeof window !== 'undefined') {
       localStorage.removeItem('admin_auth_token');
-      window.location.href = '/login';
+      window.location.href = '/admin/login';
     }
     throw new Error('인증이 만료되었습니다. 다시 로그인해주세요.');
   }

@@ -99,7 +99,8 @@ export async function uploadTokenLogo(symbol: string, file: File): Promise<{ log
   if (res.status === 401) {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('admin_auth_token');
-      window.location.href = '/login';
+      // window.location 은 basePath('/admin')를 무시하므로 /admin/login 을 명시.
+      window.location.href = '/admin/login';
     }
     throw new Error('인증이 만료되었습니다.');
   }

@@ -28,11 +28,13 @@ export async function adminLogin(secret: string): Promise<void> {
 
 /**
  * Admin 토큰 삭제 (로그아웃)
+ *
+ * window.location 은 basePath('/admin')를 무시하므로 /admin/login 을 명시해야 한다.
  */
 export function adminLogout(): void {
   if (typeof window !== 'undefined') {
     localStorage.removeItem('admin_auth_token');
-    window.location.href = '/login';
+    window.location.href = '/admin/login';
   }
 }
 
