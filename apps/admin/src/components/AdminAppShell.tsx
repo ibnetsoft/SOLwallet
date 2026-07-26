@@ -12,12 +12,14 @@ function getAdminToken(): string | null {
 /**
  * JWT의 `exp` 클레임을 디코딩해서 만료 여부를 판별한다.
  * - 서명 검증은 서버에서 수행하므로 클라이언트는 exp만 확인한다.
- * - 토큰 포맷이 잘못된 경우 만료된 것으로 취급.
+ * - 토큰 포맷이 잘못된 경우(파싱 실패) 만료가 아닌 것으로 취급해 서버에 판단을 맡긴다.
+ *   이전에는 파싱 실패 시 true 를 반환해 토큰을 삭제했는데, 이게 정상 토큰에서도
+ *   잘못 발생하면 로그인 직후 바로 로그인 페이지로 튕기는 현상이 생긴다.
  */
 function isTokenExpired(token: string): boolean {
   try {
     const parts = token.split('.');
-    if (parts.length !== 3) return true;
+    if (parts.length !== 3) return false; // 포맷 이상 → 서버가 판단
     // JWT payload는 base64url. atob()를 위해 패딩을 맞춘다.
     const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
     const padded = base64 + '==='.slice((base64.length + 3) % 4);
@@ -30,7 +32,9 @@ function isTokenExpired(token: string): boolean {
     // exp는 초 단위. 30초 여유를 둔다.
     return Date.now() >= payload.exp * 1000 - 30_000;
   } catch {
-    return true;
+    // 디코딩 실패 → 토큰을 삭제하지 않고 서버 검증에 맡긴다.
+    // (API 요청 시 401 이면 client.ts 가 토큰을 정리함)
+    return false;
   }
 }
 

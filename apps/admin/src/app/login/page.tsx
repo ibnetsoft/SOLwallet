@@ -1,11 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { adminLogin } from '@/lib/api/auth';
 
 export default function LoginPage() {
-  const router = useRouter();
   const [secret, setSecret] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -19,10 +17,12 @@ export default function LoginPage() {
 
     try {
       await adminLogin(secret.trim());
-      // next/navigation 의 router 는 basePath('/admin')를 자동 적용하므로
-      // / 가 /admin/ 로 해석된다. window.location.* 은 basePath를 무시하므로
-      // 사용하면 안 됨 (mini-app 루트로 튕김).
-      router.replace('/');
+      // 토큰 저장이 localStorage에 확실히 반영된 뒤 페이지 전환.
+      // AdminAppShell 이 마운트될 때 토큰을 읽어 인증 상태를 판단하므로,
+      // 너무 빨리 router.replace 하면 토큰이 안 읽혀 다시 로그인으로 튕길 수 있다.
+      // window.location 은 basePath를 무시하므로 /admin/ 을 명시한다.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      window.location.replace('/admin/');
     } catch (err) {
       setError(err instanceof Error ? err.message : '로그인에 실패했습니다.');
     } finally {
