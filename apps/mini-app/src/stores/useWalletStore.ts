@@ -95,7 +95,12 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   isInitialized: false,
 
   /**
-   * 앱 초기화 — localStorage에서 지갑 목록 로드
+   * 앱 초기화 — localStorage에서 지갑 목록을 먼저 로드해 UI를 빠르게 그리고,
+   * 그 뒤 서버와 동기화(fetchWallets)한다.
+   *
+   * fetchWallets()를 여기서 호출하면 모든 진입 페이지(page.tsx, settings/page.tsx)가
+   * initialize() 한 번으로 서버 동기화까지 처리할 수 있어, 향후 페이지 추가 시
+   * 동기화 호출 누락을 방지한다.
    */
   initialize: () => {
     const stored = loadWallets();
@@ -124,6 +129,10 @@ export const useWalletStore = create<WalletState>((set, get) => ({
         }
       });
     }
+
+    // 서버 동기화 — 로컬 우선 렌더 후 백그라운드에서 진행 (fire and forget).
+    // 실패해도 로컬 상태는 유지된다.
+    void get().fetchWallets();
   },
 
   /**
@@ -264,35 +273,72 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
   /**
    * 서버에서 지갑 목록 동기화
+   *
+   * 서버가 지갑의 '진실의 원천(source of truth)'이다. 서버 데이터를 기준으로
+   * 메모리와 localStorage를 재구성한다. 단, 개인키(encrypted blob)와
+   * mnemonic은 서버에 저장되지 않으므로 기존 localStorage에서 보존해 병합한다.
+   *
+   * 사용 시나리오:
+   * - 다른 기기/브라우저에서 생성한 지갑이 서버에는 있고 로컬에는 없는 경우
+   * - 시크릿 모드/캐시 삭제 후 재접속한 경우
+   * - 활성 지갑이 다른 기기에서 변경된 경우
+   *
+   * 주의: 로컬에만 있고 서버에 없는 지갑(예: 서버 등록 실패 후 로컬만 남은 orphan)은
+   * 서버 삭제 API를 호출할 수 없으므로 여기서 정리한다. 단 encrypted blob이 있으면
+   * 사용자가 잠금 해제할 수 있으므로 보존한다.
    */
   fetchWallets: async () => {
     const token = loadAuthToken();
     if (!token) return;
 
-    const res = await apiFetch('/user/wallets');
+    let res: Response;
+    try {
+      res = await apiFetch('/user/wallets');
+    } catch {
+      // 네트워크 오류 — 로컬 상태 유지
+      return;
+    }
     if (!res.ok) return;
 
     const { data } = await res.json();
     const stored = loadWallets();
 
-    const serverWallets: WalletInfo[] = (data || []).map((w: Record<string, unknown>) => {
-      const local = stored.find((s) => s.id === w.id);
-      return {
+    // 서버 지갑(snake_case) → WalletInfo + StoredWallet 병합
+    const serverRows = (data || []) as Record<string, unknown>[];
+    const mergedStorage: StoredWallet[] = [];
+    const serverWallets: WalletInfo[] = serverRows.map((w) => {
+      const local = stored.find((s) => s.id === (w.id as string));
+      // 로컬에 encrypted blob이 있으면 보존 (개인키는 서버에 없음)
+      const storedWallet: StoredWallet = {
         id: w.id as string,
         publicKey: w.public_key as string,
-        label: w.label as string,
+        encrypted: local?.encrypted as StoredWallet['encrypted'],
+        mnemonic: local?.mnemonic,
+        label: (w.label as string) || local?.label || '',
         walletIndex: w.wallet_index as number,
         isActive: w.is_active as boolean,
         createdAt: w.created_at as string,
-        secretKey: local ? undefined : undefined, // 동기화 후에는 잠금 상태
+      };
+      mergedStorage.push(storedWallet);
+      return {
+        id: storedWallet.id,
+        publicKey: storedWallet.publicKey,
+        label: storedWallet.label,
+        walletIndex: storedWallet.walletIndex,
+        isActive: storedWallet.isActive,
+        createdAt: storedWallet.createdAt,
+        // 동기화 후에는 잠금 상태 — secretKey는 메모리에 두지 않음
       };
     });
+
+    // localStorage에 병합 결과 저장 (잠금 해제/삭제 시 일관성 유지)
+    saveWallets(mergedStorage);
 
     const activeWallet = serverWallets.find((w) => w.isActive);
 
     set({
       wallets: serverWallets,
-      activeWalletId: activeWallet?.id || null,
+      activeWalletId: activeWallet?.id || serverWallets[0]?.id || null,
       isLocked: true,
     });
   },
@@ -392,6 +438,11 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
     if (!target) {
       throw new Error(getMsg('error.walletNotFound'));
+    }
+
+    // 다른 기기에서 생성해 이 기기에는 개인키(encrypted)가 없는 경우
+    if (!target.encrypted) {
+      throw new Error(getMsg('error.walletKeyMissing'));
     }
 
     try {

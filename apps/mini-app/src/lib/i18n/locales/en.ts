@@ -231,6 +231,7 @@ const en: Record<TranslationKey, string> = {
   'error.walletSwitchFailed': 'Failed to switch wallet.',
   'error.walletDeleteFailed': 'Failed to delete wallet.',
   'error.walletNotFound': 'Wallet not found.',
+  'error.walletKeyMissing': 'This device does not have the wallet private key. Access it from the device where it was created, or import it via seed phrase.',
   'error.wrongPin': 'Incorrect PIN.',
   'error.walletUnlockFailed': 'Failed to unlock wallet.',
   'error.fillAllFields': 'Please enter token, price, and amount.',

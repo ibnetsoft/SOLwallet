@@ -229,6 +229,7 @@ const ja: Record<string, string> = {
   'error.walletSwitchFailed': 'ウォレットの切替に失敗しました。',
   'error.walletDeleteFailed': 'ウォレットの削除に失敗しました。',
   'error.walletNotFound': 'ウォレットが見つかりません。',
+  'error.walletKeyMissing': 'この端末にはウォレットの秘密鍵がありません。作成した端末からアクセスするか、シードフレーズでインポートしてください。',
   'error.wrongPin': 'PINが正しくありません。',
   'error.walletUnlockFailed': 'ウォレットのロック解除に失敗しました。',
   'error.fillAllFields': 'トークン、価格、数量をすべて入力してください。',

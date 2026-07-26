@@ -18,7 +18,13 @@ const KEYS = {
 export interface StoredWallet {
   id: string;             // 서버 UUID
   publicKey: string;
-  encrypted: EncryptedWallet; // 암호화된 secretKey
+  /**
+   * 암호화된 secretKey. 개인키는 서버에 저장되지 않고 클라이언트에만 보관되므로,
+   * 다른 기기에서 생성한 지갑을 서버 동기화로 가져온 경우 이 값이 없을 수 있다.
+   * encrypted 가 없는 지갑은 잠금 해제(거래/서명)가 불가능하며, 다른 기기에서
+   * 시드 구문으로 다시 임포트해야 한다.
+   */
+  encrypted?: EncryptedWallet;
   mnemonic?: string;      // 암호화된 시드 구문 (선택적)
   label: string;
   walletIndex: number;

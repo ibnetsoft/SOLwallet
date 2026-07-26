@@ -229,6 +229,7 @@ const ko: Record<string, string> = {
   'error.walletSwitchFailed': '지갑 전환에 실패했습니다.',
   'error.walletDeleteFailed': '지갑 삭제에 실패했습니다.',
   'error.walletNotFound': '지갑을 찾을 수 없습니다.',
+  'error.walletKeyMissing': '이 기기에 지갑 개인키가 없습니다. 지갑을 처음 만든 기기에서 접속하거나, 시드 구문으로 가져오세요.',
   'error.wrongPin': 'PIN이 올바르지 않습니다.',
   'error.walletUnlockFailed': '지갑 잠금 해제에 실패했습니다.',
   'error.fillAllFields': '토큰, 가격, 수량을 모두 입력해주세요.',
