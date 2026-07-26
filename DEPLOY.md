@@ -122,24 +122,85 @@ Supabase Dashboard → SQL Editor에서 아래 순서로 실행:
 
 ---
 
-## 6. SSL 설정 (선택, 도메인 필요)
+## 6. SSL 설정 (도메인 연결 후 필수)
 
-도메인이 있고 HTTPS가 필요한 경우:
+도메인을 EC2 와 연결한 뒤 HTTPS 를 적용하는 절차. `ssl-setup.sh` 가
+사전 점검(DNS 전파, 80포트) → 인증서 발급(apex + www) → nginx HTTPS 적용 →
+HTTP→HTTPS 리다이렉트, www→apex 리다이렉트까지 자동 처리한다.
+
+### 6-1. 사전 조건
+
+- [ ] GoDaddy(또는 구매처)에서 A 레코드 2개 설정 — apex(`@`)와 `www` 모두 EC2 퍼블릭 IP
+- [ ] DNS 전파 완료 — https://dnschecker.org 에서 apex/www 모두 EC2 IP로 조회되는지 확인
+- [ ] AWS 보안그룹 인바운드에 **443(HTTPS)** 추가 (0.0.0.0/0)
+- [ ] 먼저 `./deploy.sh` 로 HTTP 배포가 정상 동작 중인 상태 (`http://<IP>/health` 응답)
+
+### 6-2. SSL 스크립트 실행
 
 ```bash
-# 1. 도메인 DNS A 레코드 → EC2 IP 연결
-
-# 2. SSL 스크립트 실행
 chmod +x ssl-setup.sh
 ./ssl-setup.sh your-domain.com
+```
 
-# 3. 안내에 따라 docker-compose.yml nginx 볼륨 수정 후
-docker compose restart nginx
+스크립트가 수행하는 작업:
+1. 사전 점검 — EC2 IP, DNS A 레코드 일치 여부, 80포트 응답 확인
+2. certbot 디렉토리 생성
+3. ACME 검증용 nginx 설정 적용 (HTTP 80, `/.well-known/acme-challenge/` 검증 통과 보장)
+4. Let's Encrypt 실서비스용 인증서 발급 (apex + www, `--keep-until-expiring`)
+5. `nginx-ssl-applied.conf` 생성 (443 HTTPS + HTTP→HTTPS 리다이렉트 + www→apex 301 리다이렉트)
+6. `docker-compose.yml` nginx 볼륨 자동 전환 → nginx 재시작
+7. HTTPS 응답 및 리다이렉트 검증
 
-# 4. .env URL https로 변경
-#    MINI_APP_URL=https://your-domain.com
-#    ADMIN_APP_URL=https://your-domain.com
+> ⚠️ **Let's Encrypt rate limit**: 실서비스 인증서는 도메인당 하루 5회까지만 발급 가능.
+> 실패 시 로그를 확인하고 원인 해결 후 재시도. DNS 전파가 완료되지 않은 상태에서
+> 반복 시도하면 rate limit 에 걸릴 수 있음.
+
+### 6-3. `.env` URL https 로 변경 (필수)
+
+```bash
+nano .env
+```
+
+```env
+MINI_APP_URL=https://your-domain.com
+ADMIN_APP_URL=https://your-domain.com
+NODE_ENV=production
+```
+
+변경 후 컨테이너 재시작:
+
+```bash
 docker compose up -d
+```
+
+### 6-4. 검증
+
+```bash
+# HTTPS 정상 응답
+curl -I https://your-domain.com/health
+
+# HTTP → HTTPS 리다이렉트 (301)
+curl -I http://your-domain.com
+
+# www → apex 리다이렉트 (301)
+curl -I https://www.your-domain.com
+```
+
+브라우저에서 자물쇠 아이콘과 미니앱/어드민 페이지가 정상 로드되면 완료.
+
+### 6-5. 인증서 자동 갱신
+
+`docker-compose.yml` 의 `certbot` 서비스가 12시간마다 `certbot renew` 를 실행한다.
+nginx 는 파일 경로로 인증서를 참조하므로 갱신 후 reload 가 필요하다:
+
+```bash
+# 수동 갱신 적용 (필요 시)
+docker compose exec nginx nginx -s reload
+```
+
+```bash
+# 수동 갱신 적용 (필요 시)
+docker compose exec nginx nginx -s reload
 ```
 
 ---
