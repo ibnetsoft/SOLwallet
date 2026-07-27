@@ -137,8 +137,12 @@ function TradeContent() {
 
   // /trade?symbol=SOL → 해당 토큰 사전 선택 (개별 코인 행 딥링크)
   const symbolParam = searchParams.get('symbol');
+  const appliedSymbolRef = useRef<string | null>(null);
+  
   useEffect(() => {
     if (!symbolParam || tokens.length === 0) return;
+    if (appliedSymbolRef.current === symbolParam) return; // 이미 이 파라미터를 적용했으면 무시 (사용자 수동 변경 허용)
+    
     // 대소문자 무시 매칭 (USDT/USDC는 스테이블코인이라 거래 불가 — 제외)
     const matched = tokens.find(
       (tok) =>
@@ -146,10 +150,11 @@ function TradeContent() {
         tok.symbol !== 'USDT' &&
         tok.symbol !== 'USDC',
     );
-    if (matched && matched.id !== selectedToken?.id) {
+    if (matched) {
       setSelectedToken(matched);
+      appliedSymbolRef.current = symbolParam;
     }
-  }, [symbolParam, tokens, selectedToken, setSelectedToken]);
+  }, [symbolParam, tokens, setSelectedToken]);
 
   // 토큰 선택 시 오더북 + 현재가 + 잔액 조회
   useEffect(() => {
