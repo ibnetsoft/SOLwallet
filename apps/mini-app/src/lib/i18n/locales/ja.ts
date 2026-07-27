@@ -17,6 +17,7 @@ const ja: Record<string, string> = {
   // ─── Bottom Nav ───
   'nav.home': 'ホーム',
   'nav.trade': '取引',
+  'nav.swap': 'スワップ',
   'nav.settings': '設定',
 
   // ─── Login ───
@@ -49,6 +50,27 @@ const ja: Record<string, string> = {
   'home.withdraw': '出金',
   'home.history': '履歴',
   'home.holdings': '保有資産',
+  'home.editOrder': '並び替え',
+  'home.done': '完了',
+
+  // ─── Swap ───
+  'swap.title': 'スワップ',
+  'swap.from': '支払い通貨',
+  'swap.to': '受取通貨',
+  'swap.amount': '数量',
+  'swap.balance': '残高',
+  'swap.max': '最大',
+  'swap.expectedOutput': '想定受取量',
+  'swap.rate': 'レート',
+  'swap.slippage': 'スリッページ',
+  'swap.priceImpact': '価格影響',
+  'swap.execute': 'スワップ実行',
+  'swap.swapping': '処理中...',
+  'swap.success': 'スワップが完了しました。',
+  'swap.failed': 'スワップに失敗しました。再度お試しください。',
+  'swap.insufficientBalance': '残高が不足しています。',
+  'swap.enterAmount': '数量を入力してください。',
+  'swap.gettingQuote': '見積取得中...',
 
   // ─── Trade ───
   'trade.buyOrder': '買い注文',

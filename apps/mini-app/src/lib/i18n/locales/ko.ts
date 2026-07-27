@@ -17,6 +17,7 @@ const ko: Record<string, string> = {
   // ─── Bottom Nav ───
   'nav.home': '홈',
   'nav.trade': '거래',
+  'nav.swap': '스왑',
   'nav.settings': '설정',
 
   // ─── Login ───
@@ -49,6 +50,27 @@ const ko: Record<string, string> = {
   'home.withdraw': '출금',
   'home.history': '내역',
   'home.holdings': '보유 자산',
+  'home.editOrder': '순서 편집',
+  'home.done': '완료',
+
+  // ─── Swap ───
+  'swap.title': '스왑',
+  'swap.from': '보내는 토큰',
+  'swap.to': '받는 토큰',
+  'swap.amount': '수량',
+  'swap.balance': '잔액',
+  'swap.max': '최대',
+  'swap.expectedOutput': '예상 수량',
+  'swap.rate': '환율',
+  'swap.slippage': '슬리피지',
+  'swap.priceImpact': '가격 영향도',
+  'swap.execute': '스왑 실행',
+  'swap.swapping': '스왑 처리 중...',
+  'swap.success': '스왑이 완료되었습니다.',
+  'swap.failed': '스왑에 실패했습니다. 다시 시도해주세요.',
+  'swap.insufficientBalance': '잔액이 부족합니다.',
+  'swap.enterAmount': '수량을 입력해주세요.',
+  'swap.gettingQuote': '견적 조회 중...',
 
   // ─── Trade ───
   'trade.buyOrder': '매수 주문',

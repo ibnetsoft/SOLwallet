@@ -101,11 +101,12 @@ function TradeContent() {
   const symbolParam = searchParams.get('symbol');
   useEffect(() => {
     if (!symbolParam || tokens.length === 0) return;
-    // 대소문자 무시 매칭 (USDT는 기축통화라 거래 불가 — 제외)
+    // 대소문자 무시 매칭 (USDT/USDC는 스테이블코인이라 거래 불가 — 제외)
     const matched = tokens.find(
       (tok) =>
         tok.symbol.toUpperCase() === symbolParam.toUpperCase() &&
-        tok.symbol !== 'USDT',
+        tok.symbol !== 'USDT' &&
+        tok.symbol !== 'USDC',
     );
     if (matched && matched.id !== selectedToken?.id) {
       setSelectedToken(matched);
@@ -263,7 +264,9 @@ function TradeContent() {
         {showTokenDropdown && (
           <div className="absolute left-0 right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-xl z-10 max-h-48 overflow-y-auto">
             {tokens
-              .filter((tok) => tok.symbol !== 'USDT')
+              .filter(
+                (tok) => tok.symbol !== 'USDT' && tok.symbol !== 'USDC',
+              )
               .map((token) => (
                 <button
                   key={token.id}

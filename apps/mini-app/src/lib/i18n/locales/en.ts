@@ -19,6 +19,7 @@ const en: Record<TranslationKey, string> = {
   // ─── Bottom Nav ───
   'nav.home': 'Home',
   'nav.trade': 'Trade',
+  'nav.swap': 'Swap',
   'nav.settings': 'Settings',
 
   // ─── Login ───
@@ -51,6 +52,27 @@ const en: Record<TranslationKey, string> = {
   'home.withdraw': 'Withdraw',
   'home.history': 'History',
   'home.holdings': 'Holdings',
+  'home.editOrder': 'Reorder',
+  'home.done': 'Done',
+
+  // ─── Swap ───
+  'swap.title': 'Swap',
+  'swap.from': 'From',
+  'swap.to': 'To',
+  'swap.amount': 'Amount',
+  'swap.balance': 'Balance',
+  'swap.max': 'Max',
+  'swap.expectedOutput': 'Expected output',
+  'swap.rate': 'Rate',
+  'swap.slippage': 'Slippage',
+  'swap.priceImpact': 'Price impact',
+  'swap.execute': 'Execute swap',
+  'swap.swapping': 'Swapping...',
+  'swap.success': 'Swap completed.',
+  'swap.failed': 'Swap failed. Please try again.',
+  'swap.insufficientBalance': 'Insufficient balance.',
+  'swap.enterAmount': 'Enter an amount.',
+  'swap.gettingQuote': 'Getting quote...',
 
   // ─── Trade ───
   'trade.buyOrder': 'Buy Order',

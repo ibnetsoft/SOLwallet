@@ -14,6 +14,9 @@ export const BASE_CURRENCY = 'USDT';
 /** USDT mint (Manifest 메인넷 마켓의 quote 토큰 — USDT-quote 마켓 46개 존재 확인) */
 export const USDT_MINT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
 
+/** USDC mint (Circle — Solana 메인넷) */
+export const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+
 /** 랩드 SOL mint (Native SOL 래핑 — 출금 등에서만 사용, 거래 quote에는 사용 안 함) */
 export const WSOL_MINT = 'So11111111111111111111111111111111111111112';
 

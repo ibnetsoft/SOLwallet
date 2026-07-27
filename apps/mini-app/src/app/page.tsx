@@ -9,8 +9,13 @@ import {
   ArrowUpFromLine,
   History,
   Copy,
+  ChevronUp,
+  ChevronDown,
+  ArrowUpDown,
+  Check,
 } from 'lucide-react';
 import { useWalletStore } from '@/stores/useWalletStore';
+import { useTokenOrderStore, sortSymbolsByUserOrder } from '@/stores/useTokenOrderStore';
 import { getPortfolio } from '@/lib/api/balance';
 import { fetchSolPrice, type SolPriceData } from '@/lib/api/price';
 import { useRoi } from '@/lib/hooks/useRoi';
@@ -25,6 +30,7 @@ import { useT } from '@/lib/i18n';
 import type { Portfolio, WalletBalance } from '@/lib/api/balance';
 
 const USDT_MINT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
+const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
 interface DisplayToken {
   mint: string;
@@ -54,6 +60,10 @@ function HomePage() {
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [solPrice, setSolPrice] = useState<SolPriceData | null>(null);
+  const [isEditingOrder, setIsEditingOrder] = useState(false);
+
+  const moveUp = useTokenOrderStore((s) => s.moveUp);
+  const moveDown = useTokenOrderStore((s) => s.moveDown);
 
   useEffect(() => {
     if (!isLoggedIn()) {
@@ -143,6 +153,19 @@ function HomePage() {
     logoUrl: getTokenLogoUrl('USDT'),
   };
 
+  const usdcFromPortfolio =
+    rawTokens.find(
+      (tok) => tok.mint === USDC_MINT || tok.symbol?.toUpperCase() === 'USDC',
+    ) ?? null;
+  const usdcToken: DisplayToken = {
+    mint: usdcFromPortfolio?.mint ?? USDC_MINT,
+    symbol: 'USDC',
+    decimals: usdcFromPortfolio?.decimals ?? 6,
+    balance: usdcFromPortfolio?.balance ?? 0,
+    badge: 'Stable',
+    logoUrl: getTokenLogoUrl('USDC'),
+  };
+
   const solToken: DisplayToken = {
     mint: 'So11111111111111111111111111111111111111112',
     symbol: 'SOL',
@@ -158,6 +181,8 @@ function HomePage() {
       (tok) =>
         tok.mint !== USDT_MINT &&
         tok.symbol?.toUpperCase() !== 'USDT' &&
+        tok.mint !== USDC_MINT &&
+        tok.symbol?.toUpperCase() !== 'USDC' &&
         tok.symbol?.toUpperCase() !== 'SOL',
     )
     .map((tok) => ({
@@ -168,7 +193,16 @@ function HomePage() {
       logoUrl: tok.logoUrl || getTokenLogoUrl(tok.symbol),
     }));
 
-  const displayTokens: DisplayToken[] = [usdtToken, solToken, ...otherTokens];
+  const baseTokens: DisplayToken[] = [usdcToken, usdtToken, solToken];
+
+  // 사용자 정렬 순서 적용: order에 있는 심볼은 순서대로, 없는 심볼(otherTokens)은 뒤로
+  const tokenOrder = useTokenOrderStore((s) => s.order);
+  const baseSymbols = baseTokens.map((t) => t.symbol);
+  const otherSymbols = otherTokens.map((t) => t.symbol);
+  const sortedBase = sortSymbolsByUserOrder(baseSymbols, tokenOrder)
+    .map((sym) => baseTokens.find((t) => t.symbol === sym))
+    .filter((t): t is DisplayToken => Boolean(t));
+  const displayTokens: DisplayToken[] = [...sortedBase, ...otherTokens];
 
   const truncateAddr = (addr: string) =>
     `${addr.slice(0, 4)}...${addr.slice(-4)}`;
@@ -357,16 +391,41 @@ function HomePage() {
       <section>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-bold">{t('home.holdings')}</h2>
-          <span className="text-[10px] text-gray-500">{displayTokens.length} {t('common.items')}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-gray-500">{displayTokens.length} {t('common.items')}</span>
+            <button
+              onClick={() => setIsEditingOrder((v) => !v)}
+              className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg transition ${
+                isEditingOrder
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-gray-700/50 text-gray-300 hover:bg-gray-700'
+              }`}
+              aria-label={isEditingOrder ? t('home.done') : t('home.editOrder')}
+            >
+              {isEditingOrder ? (
+                <>
+                  <Check className="w-3 h-3" />
+                  <span>{t('home.done')}</span>
+                </>
+              ) : (
+                <>
+                  <ArrowUpDown className="w-3 h-3" />
+                  <span>{t('home.editOrder')}</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
         {/* displayTokens가 항상 렌더링되므로 로딩 상태와 무관하게 레이아웃 안정 */}
         <div className="space-y-2">
-          {displayTokens.map((tok) => {
+          {displayTokens.map((tok, idx) => {
             const isSol = tok.symbol === 'SOL';
             const isUsdt = tok.symbol === 'USDT';
+            const isUsdc = tok.symbol === 'USDC';
+            const isStable = isUsdt || isUsdc;
             const assetChangePct =
-              isUsdt
+              isStable
                 ? 0
                 : isSol
                   ? solBalance > 0
@@ -381,13 +440,19 @@ function HomePage() {
                 badge={tok.badge}
                 logoUrl={tok.logoUrl}
                 usdValue={
-                  isUsdt
+                  isStable
                     ? tok.balance
                     : isSol
                       ? solUsdValue
                       : tok.balance
                 }
                 changePct={assetChangePct}
+                editMode={isEditingOrder}
+                isFirst={idx === 0}
+                isLast={idx === displayTokens.length - 1}
+                onMoveUp={() => moveUp(tok.symbol)}
+                onMoveDown={() => moveDown(tok.symbol)}
+                swapHref={isStable ? '/swap' : undefined}
               />
             );
           })}
@@ -428,6 +493,12 @@ function AssetRow({
   logoUrl,
   usdValue,
   changePct,
+  editMode = false,
+  isFirst = false,
+  isLast = false,
+  onMoveUp,
+  onMoveDown,
+  swapHref,
 }: {
   symbol: string;
   balance: number;
@@ -435,6 +506,12 @@ function AssetRow({
   logoUrl?: string;
   usdValue: number;
   changePct?: number;
+  editMode?: boolean;
+  isFirst?: boolean;
+  isLast?: boolean;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  swapHref?: string;
 }) {
   const badgeStyle =
     badge === 'Stable'
@@ -445,19 +522,24 @@ function AssetRow({
 
   const [imgError, setImgError] = useState(false);
 
-  // USDT는 기축통화라 거래 불가 → 행 클릭 비활성화
-  const isTradable = symbol !== 'USDT';
-  const tradeHref = `/trade?type=buy&symbol=${symbol}`;
+  // USDT/USDC는 스테이블코인(기축통화)이라 거래 불가 → 스왑 페이지로 이동
+  const isStable = symbol === 'USDT' || symbol === 'USDC';
+  const isTradable = !isStable;
+  const tradeHref = swapHref ?? `/trade?type=buy&symbol=${symbol}`;
+
+  // 편집 모드에서는 내비게이션 비활성화
+  const effectiveHref = editMode ? '#' : tradeHref;
+  const effectiveClickable = editMode ? false : isTradable || !!swapHref;
 
   return (
     <Link
-      href={tradeHref}
+      href={effectiveHref}
       onClick={(e: MouseEvent<HTMLAnchorElement>) => {
-        if (!isTradable) e.preventDefault();
+        if (!effectiveClickable) e.preventDefault();
       }}
-      aria-disabled={!isTradable}
+      aria-disabled={!effectiveClickable}
       className={`bg-gray-800/50 rounded-xl p-3.5 flex items-center justify-between min-h-[64px] transition-colors ${
-        isTradable
+        effectiveClickable
           ? 'hover:bg-gray-700/40 active:bg-gray-700/60 cursor-pointer'
           : 'cursor-default'
       }`}
@@ -493,25 +575,66 @@ function AssetRow({
           </p>
         </div>
       </div>
-      <div className="text-right">
-        <p className="font-medium text-sm tabular-nums">
-          ${usdValue > 0 ? usdValue.toFixed(5) : '0.00000'}
-        </p>
-        {typeof changePct === 'number' && (
-          <p
-            className={`text-[10px] tabular-nums mt-0.5 ${
-              changePct > 0
-                ? 'text-green-400'
-                : changePct < 0
-                  ? 'text-red-400'
-                  : 'text-gray-500' // 0% — 회색
+
+      {/* 우측: 편집 모드일 때 화살표 버튼, 아닐 때 금액/변동률 */}
+      {editMode ? (
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={(e: MouseEvent) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (!isFirst) onMoveUp?.();
+            }}
+            disabled={isFirst}
+            aria-label="위로"
+            className={`p-1.5 rounded-lg transition ${
+              isFirst
+                ? 'text-gray-600 cursor-not-allowed'
+                : 'text-gray-300 hover:bg-gray-700 active:bg-gray-600'
             }`}
           >
-            {changePct > 0 ? '▲ ' : changePct < 0 ? '▼ ' : ''}
-            {Math.abs(changePct).toFixed(2)}%
+            <ChevronUp className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={(e: MouseEvent) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (!isLast) onMoveDown?.();
+            }}
+            disabled={isLast}
+            aria-label="아래로"
+            className={`p-1.5 rounded-lg transition ${
+              isLast
+                ? 'text-gray-600 cursor-not-allowed'
+                : 'text-gray-300 hover:bg-gray-700 active:bg-gray-600'
+            }`}
+          >
+            <ChevronDown className="w-4 h-4" />
+          </button>
+        </div>
+      ) : (
+        <div className="text-right">
+          <p className="font-medium text-sm tabular-nums">
+            ${usdValue > 0 ? usdValue.toFixed(5) : '0.00000'}
           </p>
-        )}
-      </div>
+          {typeof changePct === 'number' && (
+            <p
+              className={`text-[10px] tabular-nums mt-0.5 ${
+                changePct > 0
+                  ? 'text-green-400'
+                  : changePct < 0
+                    ? 'text-red-400'
+                    : 'text-gray-500' // 0% — 회색
+              }`}
+            >
+              {changePct > 0 ? '▲ ' : changePct < 0 ? '▼ ' : ''}
+              {Math.abs(changePct).toFixed(2)}%
+            </p>
+          )}
+        </div>
+      )}
     </Link>
   );
 }

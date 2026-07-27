@@ -17,6 +17,7 @@ const zh: Record<string, string> = {
   // ─── Bottom Nav ───
   'nav.home': '首页',
   'nav.trade': '交易',
+  'nav.swap': '兑换',
   'nav.settings': '设置',
 
   // ─── Login ───
@@ -49,6 +50,27 @@ const zh: Record<string, string> = {
   'home.withdraw': '提现',
   'home.history': '历史',
   'home.holdings': '持仓',
+  'home.editOrder': '排序',
+  'home.done': '完成',
+
+  // ─── Swap ───
+  'swap.title': '兑换',
+  'swap.from': '支付代币',
+  'swap.to': '接收代币',
+  'swap.amount': '数量',
+  'swap.balance': '余额',
+  'swap.max': '最大',
+  'swap.expectedOutput': '预期获得',
+  'swap.rate': '汇率',
+  'swap.slippage': '滑点',
+  'swap.priceImpact': '价格影响',
+  'swap.execute': '执行兑换',
+  'swap.swapping': '处理中...',
+  'swap.success': '兑换完成。',
+  'swap.failed': '兑换失败，请重试。',
+  'swap.insufficientBalance': '余额不足。',
+  'swap.enterAmount': '请输入数量。',
+  'swap.gettingQuote': '获取报价中...',
 
   // ─── Trade ───
   'trade.buyOrder': '买单',

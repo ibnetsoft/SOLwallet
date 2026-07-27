@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home as HomeIcon, BarChart3, Settings } from 'lucide-react';
+import { Home as HomeIcon, BarChart3, Settings, ArrowLeftRight } from 'lucide-react';
 import { useT } from '@/lib/i18n';
 
 /**
@@ -20,6 +20,7 @@ export function BottomNav() {
   const items = [
     { href: '/', label: t('nav.home'), Icon: HomeIcon },
     { href: '/trade', label: t('nav.trade'), Icon: BarChart3 },
+    { href: '/swap', label: t('nav.swap'), Icon: ArrowLeftRight },
     { href: '/settings', label: t('nav.settings'), Icon: Settings },
   ];
 
