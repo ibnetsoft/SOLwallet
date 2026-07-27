@@ -116,6 +116,11 @@ function TradeContent() {
       window.location.href = '/login';
       return;
     }
+
+    // 탭 이동 시 폼 백지상태(초기화)
+    setQuantity('');
+    setPrice('');
+
     fetchTokens();
     fetchFeeRate();
     fetchActiveOrders();
@@ -125,8 +130,10 @@ function TradeContent() {
     const type = searchParams.get('type');
     if (type === 'sell' || type === 'buy') {
       setSide(type);
+    } else {
+      setSide('buy');
     }
-  }, [searchParams]);
+  }, [searchParams, setQuantity, setPrice, setSide, fetchTokens, fetchFeeRate, fetchActiveOrders, fetchOrderHistory]);
 
   // /trade?symbol=SOL → 해당 토큰 사전 선택 (개별 코인 행 딥링크)
   const symbolParam = searchParams.get('symbol');
