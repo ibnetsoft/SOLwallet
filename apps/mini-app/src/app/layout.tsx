@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import Script from 'next/script';
 import './globals.css';
 import { ToastProvider } from '@/components/Toast';
 import { I18nProvider } from '@/lib/i18n';
@@ -22,13 +23,7 @@ export const viewport: Viewport = {
   themeColor: '#1a1a2e',
 };
 
-/**
- * Telegram WebApp SDK 로드 스크립트
- */
-const telegramScript = {
-  src: 'https://telegram.org/js/telegram-web-app.js',
-  async: true,
-};
+
 
 export default function RootLayout({
   children,
@@ -39,9 +34,18 @@ export default function RootLayout({
     <html lang="en">
       <head>
         {/* Telegram WebApp SDK */}
-        <script {...telegramScript} />
+        <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
       </head>
       <body className="min-h-screen">
+        <Script id="tg-theme" strategy="afterInteractive">
+          {\`
+            if (window.Telegram && window.Telegram.WebApp) {
+              window.Telegram.WebApp.ready();
+              window.Telegram.WebApp.setHeaderColor('#1a1a2e');
+              window.Telegram.WebApp.setBackgroundColor('#1a1a2e');
+            }
+          \`}
+        </Script>
         <I18nProvider>
           <ToastProvider>{children}</ToastProvider>
         </I18nProvider>
