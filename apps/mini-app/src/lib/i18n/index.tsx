@@ -10,7 +10,7 @@ import type { TranslationKey } from './locales/ko';
 export type Locale = 'en' | 'ko' | 'zh' | 'ja';
 
 const STORAGE_KEY = 'solwallet_language';
-const DEFAULT_LOCALE: Locale = 'en';
+const DEFAULT_LOCALE: Locale = 'ko';
 
 const translations: Record<Locale, Record<TranslationKey, string>> = { en, ko, zh, ja };
 
