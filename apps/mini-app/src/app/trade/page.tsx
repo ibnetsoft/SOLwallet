@@ -465,8 +465,16 @@ function TradeContent() {
                 {percentage}%
               </div>
 
-              {/* Slider Markers — 0% 포함 모든 마커 (z-40으로 올려서 클릭 가능하게) */}
-              <div className="absolute inset-x-0 inset-y-0 flex items-center z-40 pointer-events-auto">
+              {/* Custom Thumb for current value */}
+              <div
+                className="absolute top-1/2 w-5 h-5 bg-white rounded-full shadow-[0_0_10px_rgba(255,255,255,0.8),0_0_15px_rgba(99,102,241,0.8)] -translate-x-1/2 -translate-y-1/2 z-35 pointer-events-none"
+                style={{
+                  left: `${currentRatio * 100}%`,
+                }}
+              />
+
+              {/* Slider Markers — 0% 포함 모든 마커 (pointer-events-none으로 감싸고 버튼만 auto) */}
+              <div className="absolute inset-x-0 inset-y-0 flex items-center z-40 pointer-events-none">
                 {[0, ...QUICK_AMOUNT_RATIOS].map((ratio) => {
                   const isActive = (Number(quantity) || 0) >= effectiveMax * ratio - effectiveMax * 0.01;
                   return (
@@ -475,12 +483,11 @@ function TradeContent() {
                       type="button"
                       onClick={() => {
                         const decimals = selectedToken?.decimals || 6;
-                        // effectiveMax는 잔고가 0일 때 1이 되므로, 실제 잔고인 maxBalance를 곱해 정확히 입력되게 함
                         const actualMax = maxBalance > 0 ? maxBalance : 0;
                         const val = Number((actualMax * ratio).toFixed(decimals));
                         setQuantity(String(val));
                       }}
-                      className={`absolute -translate-x-1/2 block w-4 h-4 rounded-full border-2 border-gray-900 shadow-md transition-all duration-200 cursor-pointer ${
+                      className={`absolute -translate-x-1/2 block w-4 h-4 rounded-full border-2 border-gray-900 shadow-md transition-all duration-200 cursor-pointer pointer-events-auto ${
                         isActive
                           ? 'bg-white scale-110'
                           : 'bg-gray-400'
@@ -496,6 +503,8 @@ function TradeContent() {
                   );
                 })}
               </div>
+              
+              {/* Range Input: 투명하게 덮어서 전체 영역에서 드래그 가능하도록 함 */}
               <input
                 type="range"
                 min={0}
@@ -506,14 +515,12 @@ function TradeContent() {
                 onChange={(e) => {
                   const val = Number(e.target.value);
                   const decimals = selectedToken?.decimals || 6;
-                  // e.target.value는 0 ~ effectiveMax 사이의 값임
-                  // 잔고가 0일 경우 val은 무의미해지므로 실제 잔고로 비율을 계산해서 적용
                   const ratio = val / effectiveMax;
                   const actualMax = maxBalance > 0 ? maxBalance : 0;
                   const rounded = Number((actualMax * ratio).toFixed(decimals));
                   setQuantity(String(rounded));
                 }}
-                className="slider-markers absolute inset-0 w-full cursor-pointer z-30 opacity-0"
+                className="slider-markers absolute inset-0 w-full cursor-pointer z-50 opacity-0"
               />
             </div>
             {/* Min/Max Labels */}
