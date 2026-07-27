@@ -144,7 +144,7 @@ export interface AdminUserDetail {
   firstName: string;
   lastName: string;
   referredBy: string | null;
-  referrerUid?: string | null;
+  referrerCode?: string | null;
   referralCount?: number;
   walletCount: number;
   createdAt: string;

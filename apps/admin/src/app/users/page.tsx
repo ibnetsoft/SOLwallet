@@ -52,7 +52,7 @@ function UserRow({
         </div>
       </td>
       <td className="py-3 px-6 text-gray-400 font-mono text-xs">{user.telegramUid}</td>
-      <td className="py-3 px-6 text-gray-400 font-mono text-xs">{user.referrerUid || '—'}</td>
+      <td className="py-3 px-6 text-gray-400 font-mono text-xs">{user.referrerCode || '—'}</td>
       <td className="py-3 px-6 text-center text-gray-400 font-mono text-xs">{user.referralCount || 0}</td>
       {tokens.map((t) => (
         <td key={t.id} className="py-3 px-6 text-right text-gray-400 font-mono text-xs">
@@ -229,7 +229,7 @@ export default function UsersPage() {
                 <th className="text-center py-3 px-6 text-gray-400 font-medium">가입일</th>
                 <th className="text-left py-3 px-6 text-gray-400 font-medium">유저</th>
                 <th className="text-left py-3 px-6 text-gray-400 font-medium">Telegram UID</th>
-                <th className="text-left py-3 px-6 text-gray-400 font-medium">스폰서(UID)</th>
+                <th className="text-left py-3 px-6 text-gray-400 font-medium">스폰서(추천코드)</th>
                 <th className="text-center py-3 px-6 text-gray-400 font-medium">추천인원</th>
                 {tokens.map(t => (
                   <th key={t.id} className="text-right py-3 px-6 text-gray-400 font-medium">{t.symbol}</th>

@@ -107,15 +107,15 @@ export class AdminService {
         walletCounts[w.user_id] = (walletCounts[w.user_id] || 0) + 1;
       });
 
-      // 2. 추천인 UID (telegram_uid)
+      // 2. 추천인 코드 (referral_code)
       const referrerIds = Array.from(new Set((data || []).map((u) => u.referred_by).filter(Boolean)));
       if (referrerIds.length > 0) {
         const { data: referrers } = await this.client
           .from('users')
-          .select('id, telegram_uid')
+          .select('id, referral_code')
           .in('id', referrerIds);
         (referrers || []).forEach(r => {
-          referrerMap[r.id] = String(r.telegram_uid);
+          referrerMap[r.id] = r.referral_code ? String(r.referral_code) : '';
         });
       }
 
@@ -131,7 +131,7 @@ export class AdminService {
 
     const users = (data || []).map((u) => ({
       ...u,
-      referrerUid: u.referred_by ? (referrerMap[u.referred_by] || null) : null,
+      referrerCode: u.referred_by ? (referrerMap[u.referred_by] || null) : null,
       referralCount: referralCounts[u.id] || 0,
       walletCount: walletCounts[u.id] || 0,
     }));
