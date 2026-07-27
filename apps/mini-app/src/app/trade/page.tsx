@@ -546,7 +546,7 @@ function TradeContent() {
           }
           setShowPinModal(true);
         }}
-        disabled={isSubmitting || !activeWallet || !!validationError}
+        disabled={isSubmitting || !activeWallet}
         className={`w-full py-4 rounded-xl font-bold text-lg transition disabled:opacity-50 ${
           side === 'buy'
             ? 'bg-green-600 hover:bg-green-700 text-white'
