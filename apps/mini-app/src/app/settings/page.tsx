@@ -12,7 +12,7 @@ import MnemonicDisplay from '@/components/MnemonicDisplay';
 import { MAX_WALLETS } from '@solwallet/config';
 import { getUserProfile } from '@/lib/api/user';
 import type { UserProfile } from '@/lib/api/user';
-import { buildShareText } from '@/lib/referral';
+import { getTelegramDeepLink } from '@/lib/referral';
 import { isLoggedIn } from '@/lib/api/auth';
 import { useT } from '@/lib/i18n';
 
@@ -54,6 +54,15 @@ export default function SettingsPage() {
     }
     // 프로필 조회
     getUserProfile().then(setProfile).catch(() => {});
+
+    // 신규 유저 자동 지갑 생성 유도
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('create') === 'true') {
+        setShowCreatePin(true);
+        window.history.replaceState(null, '', '/settings');
+      }
+    }
   }, [isInitialized, initialize]);
 
   const getNextWalletLabel = () => {
@@ -295,11 +304,11 @@ export default function SettingsPage() {
               <button
                 onClick={() => {
                   if (profile.referralCode) {
-                    // 코드 + 링크 함께 복사
-                    const shareText = buildShareText(profile.referralCode);
+                    // 텔레그램 딥링크만 복사
+                    const shareText = getTelegramDeepLink(profile.referralCode);
                     navigator.clipboard.writeText(shareText).then(
-                      () => showToast(t('settings.copied')),
-                      () => showToast(t('settings.copyFailed')),
+                      () => showToast(t('settings.copySuccess')),
+                      () => showToast(t('settings.copyFailed'))
                     );
                   }
                 }}

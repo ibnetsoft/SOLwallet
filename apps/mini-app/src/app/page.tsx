@@ -73,8 +73,11 @@ function HomePage() {
     setAuthChecked(true);
     if (!isInitialized) {
       initialize();
+    } else if (wallets.length === 0) {
+      // 지갑이 없는 신규 유저의 경우 바로 설정(지갑 생성) 페이지로 이동
+      router.replace('/settings?create=true');
     }
-  }, [isInitialized, initialize, router]);
+  }, [isInitialized, initialize, router, wallets.length]);
 
   const fetchPortfolio = useCallback(async (silent = false) => {
     if (!activeWalletId) return;

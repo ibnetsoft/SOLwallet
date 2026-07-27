@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { devLogin, telegramLogin, isLoggedIn } from '@/lib/api/auth';
+import { telegramLogin, isLoggedIn } from '@/lib/api/auth';
 import { useToast } from '@/components/Toast';
 import { useT } from '@/lib/i18n';
 
@@ -10,10 +10,8 @@ export default function LoginPage() {
   const { t } = useT();
   const router = useRouter();
   const { showToast } = useToast();
-  const [username, setUsername] = useState('');
-  const [devSecret, setDevSecret] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [status, setStatus] = useState<'checking' | 'telegram' | 'dev'>('checking');
+  const [status, setStatus] = useState<'checking' | 'telegram' | 'error'>('checking');
+  const [errorMessage, setErrorMessage] = useState('');
 
   // 초기 확인 — Telegram 환경인지, 이미 로그인되었는지
   useEffect(() => {
@@ -57,7 +55,8 @@ export default function LoginPage() {
                 setTimeout(() => router.replace('/'), 300);
               })
               .catch((err) => {
-                setStatus('dev');
+                setStatus('error');
+                setErrorMessage(err instanceof Error ? err.message : t('login.telegramFailed'));
                 showToast(err instanceof Error ? err.message : t('login.telegramFailed'));
               });
             return true;
@@ -70,7 +69,8 @@ export default function LoginPage() {
       if (!checkTelegram()) {
         setTimeout(() => {
           if (!checkTelegram()) {
-            setStatus('dev');
+            setStatus('error');
+            setErrorMessage('Please open this app inside Telegram.');
           }
         }, 500);
       }
@@ -78,27 +78,6 @@ export default function LoginPage() {
 
     init();
   }, [router, showToast, t]);
-
-  // 개발용 로그인
-  const handleDevLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    try {
-      const token = await devLogin(username.trim() || 'dev_user', devSecret.trim());
-      // 토큰 저장 확인
-      if (token && isLoggedIn()) {
-        showToast(t('login.success'));
-        // 약간 대기 후 이동 (localStorage 동기화 보장)
-        setTimeout(() => router.replace('/'), 500);
-      } else {
-        showToast(t('login.tokenSaveFailed'));
-      }
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : t('login.failed'));
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   return (
     <main className="min-h-screen flex items-center justify-center p-4">
@@ -124,48 +103,11 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* 개발용 로그인 폼 */}
-        {status === 'dev' && (
-          <>
-            <form onSubmit={handleDevLogin} className="bg-gray-800/50 rounded-xl p-6 border border-gray-700/50">
-              <h2 className="text-lg font-bold mb-4">{t('login.devTitle')}</h2>
-
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder={t('login.usernamePlaceholder')}
-                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 outline-none focus:border-primary-500 transition mb-4"
-              />
-
-              <input
-                type="password"
-                value={devSecret}
-                onChange={(e) => setDevSecret(e.target.value)}
-                placeholder={t('login.devSecretPlaceholder')}
-                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 outline-none focus:border-primary-500 transition mb-4"
-              />
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full bg-primary-600 hover:bg-primary-700 text-white py-3 rounded-lg font-medium transition disabled:opacity-50"
-              >
-                {isLoading ? t('login.loggingIn') : t('login.loginBtn')}
-              </button>
-            </form>
-
-            <button
-              onClick={() => {
-                localStorage.clear();
-                showToast(t('login.cacheCleared'));
-                setStatus('dev');
-              }}
-              className="w-full mt-3 text-xs text-gray-500 hover:text-gray-400 py-2"
-            >
-              {t('login.clearCache')}
-            </button>
-          </>
+        {/* 에러 발생 (Telegram 환경 아님 혹은 인증 실패) */}
+        {status === 'error' && (
+          <div className="bg-gray-800/50 rounded-xl p-6 border border-red-500/30 text-center">
+            <p className="text-sm text-red-400 mb-2">{errorMessage}</p>
+          </div>
         )}
       </div>
     </main>
