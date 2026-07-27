@@ -139,8 +139,8 @@ function HomePage() {
   const solChangePct = solPrice?.change24hPct;
 
   const computedTotal = solUsdPrice > 0 ? totalUsdt + solUsdValue : totalUsdt;
-
-  const roi = useRoi(computedTotal);
+  
+  const roi = useRoi(activeWallet?.id, computedTotal);
   const sparkData = roi.history.length >= 2 ? roi.history.map((p) => p.v) : [computedTotal, computedTotal];
 
   const usdtFromPortfolio =

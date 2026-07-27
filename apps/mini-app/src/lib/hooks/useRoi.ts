@@ -14,8 +14,8 @@ import { useEffect, useState, useCallback } from 'react';
  * 수익률 = (현재잔고 - 최초잔고) / 최초잔고 * 100
  */
 
-const STORAGE_KEY_INITIAL = 'solwallet:roi:initial';
-const STORAGE_KEY_HISTORY = 'solwallet:roi:history';
+const getInitialKey = (id: string) => `solwallet:roi:initial:${id}`;
+const getHistoryKey = (id: string) => `solwallet:roi:history:${id}`;
 const MAX_POINTS = 30;
 const MIN_INTERVAL_MS = 30 * 60 * 1000; // 최소 30분 간격
 
@@ -33,32 +33,41 @@ export interface RoiData {
   reset: () => void;
 }
 
-export function useRoi(currentTotal: number): RoiData {
+export function useRoi(walletId: string | undefined, currentTotal: number): RoiData {
   const [initialBalance, setInitialBalance] = useState<number>(0);
   const [history, setHistory] = useState<RoiHistoryPoint[]>([]);
 
   // 초기 로드
   useEffect(() => {
-    try {
-      const init = localStorage.getItem(STORAGE_KEY_INITIAL);
-      const hist = localStorage.getItem(STORAGE_KEY_HISTORY);
-      if (init) setInitialBalance(parseFloat(init));
-      if (hist) setHistory(JSON.parse(hist));
-    } catch {
-      // 무시
+    if (!walletId) {
+      setInitialBalance(0);
+      setHistory([]);
+      return;
     }
-  }, []);
+    try {
+      const init = localStorage.getItem(getInitialKey(walletId));
+      const hist = localStorage.getItem(getHistoryKey(walletId));
+      if (init) setInitialBalance(parseFloat(init));
+      else setInitialBalance(0);
+      
+      if (hist) setHistory(JSON.parse(hist));
+      else setHistory([]);
+    } catch {
+      setInitialBalance(0);
+      setHistory([]);
+    }
+  }, [walletId]);
 
   // 스냅샷 기록
   const recordSnapshot = useCallback(
     (totalUsdt: number) => {
-      if (totalUsdt <= 0) return;
+      if (!walletId || totalUsdt <= 0) return;
 
       try {
         // 최초 잔고 설정 (아직 없으면)
         setInitialBalance((prev) => {
           if (prev > 0) return prev;
-          localStorage.setItem(STORAGE_KEY_INITIAL, String(totalUsdt));
+          localStorage.setItem(getInitialKey(walletId), String(totalUsdt));
           return totalUsdt;
         });
 
@@ -85,29 +94,30 @@ export function useRoi(currentTotal: number): RoiData {
             next = next.slice(next.length - MAX_POINTS);
           }
 
-          localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(next));
+          localStorage.setItem(getHistoryKey(walletId), JSON.stringify(next));
           return next;
         });
       } catch {
         // 무시
       }
     },
-    [],
+    [walletId],
   );
 
   // 현재 잔고가 변하면 자동 기록
   useEffect(() => {
-    if (currentTotal > 0) {
+    if (walletId && currentTotal > 0) {
       recordSnapshot(currentTotal);
     }
-  }, [currentTotal, recordSnapshot]);
+  }, [walletId, currentTotal, recordSnapshot]);
 
   const reset = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY_INITIAL);
-    localStorage.removeItem(STORAGE_KEY_HISTORY);
+    if (!walletId) return;
+    localStorage.removeItem(getInitialKey(walletId));
+    localStorage.removeItem(getHistoryKey(walletId));
     setInitialBalance(0);
     setHistory([]);
-  }, []);
+  }, [walletId]);
 
   const totalProfit = currentTotal - initialBalance;
   const roiPct = initialBalance > 0 ? (totalProfit / initialBalance) * 100 : 0;
