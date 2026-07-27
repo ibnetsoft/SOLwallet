@@ -13,6 +13,7 @@ import { TokensModule } from './tokens/tokens.module';
 import { AdminModule } from './admin/admin.module';
 import { WithdrawModule } from './withdraw/withdraw.module';
 import { SwapModule } from './swap/swap.module';
+import { PriceModule } from './price/price.module';
 import { SettingsModule } from './settings/settings.module';
 import { HealthController } from './health.controller';
 
@@ -41,6 +42,7 @@ import { HealthController } from './health.controller';
     AdminModule,
     WithdrawModule,
     SwapModule,
+    PriceModule,
     SettingsModule,
   ],
   controllers: [HealthController],

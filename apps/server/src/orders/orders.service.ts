@@ -474,16 +474,16 @@ export class OrdersService {
    * Manifest HTTP API에는 퍼블릭 orderbook 엔드포인트가 없으므로
    * 공식 SDK(@cks-systems/manifest-sdk)로 마켓 PDA에서 직접 조회합니다.
    */
-  async getOrderbook(tokenMint: string) {
+  async getOrderbook(tokenMint: string, quoteMint: string = USDT_MINT) {
     try {
       // 동적 import — SDK가 서버 시작 시 무거운 초기화를 하지 않도록 lazy 로드
       const { Market } = await import('@cks-systems/manifest-sdk');
 
       const baseMint = new PublicKey(tokenMint);
-      const quoteMint = new PublicKey(USDT_MINT);
+      const quoteMintKey = new PublicKey(quoteMint);
 
       // base/quote 쌍의 마켓 조회
-      const markets = await Market.findByMints(this.connection, baseMint, quoteMint);
+      const markets = await Market.findByMints(this.connection, baseMint, quoteMintKey);
 
       if (!markets || markets.length === 0) {
         return { bids: [], asks: [], spread: 0 };

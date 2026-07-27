@@ -1,21 +1,24 @@
+import { apiFetch } from './client';
+
 /**
- * SOL/USDT 시세 조회 — Jupiter Price API V3 (공개, 무료, 변동율 포함)
- * 응답 예:
- * {
- *   "So11111111111111111111111111111111111111112": {
- *     "usdPrice": 175.32,
- *     "priceChange24h": 2.34,
- *     ...
- *   }
- * }
+ * SOL 시세 조회 — 백엔드 /api/price/sol 프록시
+ *
+ * 백엔드가 Manifest SOL/USDC 오더북 중간가를 우선 사용하고,
+ * 오더북이 비어있거나 에러 시 Jupiter Price API V3로 폴백합니다.
+ * 이 엔드포인트는 인증 없이 퍼블릭 접근 가능합니다.
  */
 
 export interface SolPriceData {
+  /** SOL의 USD 환산 가격 */
   usdPrice: number;
+  /** 24시간 변동률 (%) */
   change24hPct: number;
+  /** 가격 출처 — 'manifest' (SOL/USDC 오더북) 또는 'jupiter' (폴백) */
+  source?: 'manifest' | 'jupiter';
+  bestBid?: number;
+  bestAsk?: number;
+  spread?: number;
 }
-
-const SOL_MINT = 'So11111111111111111111111111111111111111112';
 
 /**
  * SOL 현재가 + 24시간 변동율
@@ -23,19 +26,15 @@ const SOL_MINT = 'So11111111111111111111111111111111111111112';
  */
 export async function fetchSolPrice(): Promise<SolPriceData | null> {
   try {
-    const res = await fetch(
-      `https://lite-api.jup.ag/price/v3?ids=${SOL_MINT}`,
-      { cache: 'no-store' },
-    );
-    if (!res.ok) return null;
-
-    const data = await res.json();
-    const entry = data?.[SOL_MINT];
-    if (!entry || typeof entry.usdPrice !== 'number') return null;
-
+    const data = await apiFetch<SolPriceData>('/price/sol');
+    if (!data || typeof data.usdPrice !== 'number') return null;
     return {
-      usdPrice: entry.usdPrice,
-      change24hPct: typeof entry.priceChange24h === 'number' ? entry.priceChange24h : 0,
+      usdPrice: data.usdPrice,
+      change24hPct: typeof data.change24hPct === 'number' ? data.change24hPct : 0,
+      source: data.source,
+      bestBid: data.bestBid,
+      bestAsk: data.bestAsk,
+      spread: data.spread,
     };
   } catch {
     return null;

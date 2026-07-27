@@ -108,7 +108,7 @@ function HomePage() {
       if (!cancelled && p) setSolPrice(p);
     };
     load();
-    const interval = setInterval(load, 60_000);
+    const interval = setInterval(load, 10_000);
     return () => {
       cancelled = true;
       clearInterval(interval);
@@ -250,7 +250,7 @@ function HomePage() {
               SOL
             </span>
             <span className="text-sm font-medium tabular-nums">
-              ${solUsdPrice > 0 ? solUsdPrice.toFixed(2) : '0.00'}
+              ${solUsdPrice > 0 ? solUsdPrice.toFixed(4) : '0.0000'}
             </span>
             {typeof solChangePct === 'number' && solUsdPrice > 0 && (
               <span
