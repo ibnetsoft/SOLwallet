@@ -221,12 +221,12 @@ function HomePage() {
       <header className="mb-5">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            {/* AoiWallet Logo */}
-            <div className="w-8 h-8 rounded-lg bg-primary-600 flex items-center justify-center shadow-md">
-              <span className="text-white font-bold text-base leading-none">A</span>
+            {/* Site Logo */}
+            <div className="w-8 h-8 rounded-lg overflow-hidden shadow-md flex items-center justify-center bg-gray-900">
+              <img src="/icons/icon-192x192.png" alt="Logo" className="w-full h-full object-cover" />
             </div>
             <div>
-              <h1 className="text-lg font-bold tracking-tight">AoiWallet</h1>
+              <h1 className="text-lg font-bold tracking-tight">SOLWallet</h1>
             </div>
           </div>
 

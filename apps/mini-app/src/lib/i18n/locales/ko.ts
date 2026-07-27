@@ -11,7 +11,7 @@ const ko: Record<string, string> = {
   'common.items': '종목',
 
   // ─── Layout ───
-  'layout.title': 'AoiWallet',
+  'layout.title': 'SOL Wallet',
   'layout.description': '솔라나 지정가 거래 텔레그램 미니앱',
 
   // ─── Bottom Nav ───
@@ -232,7 +232,7 @@ const ko: Record<string, string> = {
   'mnemonic.acknowledged': '확인했습니다',
 
   // ─── Referral ───
-  'referral.shareTitle': 'AoiWallet 추천 링크',
+  'referral.shareTitle': 'SOL Wallet 추천 링크',
   'referral.code': '추천코드: {code}',
   'referral.telegram': 'Telegram: {link}',
   'referral.web': '웹: {link}',
