@@ -10,7 +10,7 @@ import { useToast } from '@/components/Toast';
 import PinModal from '@/components/PinModal';
 import { BottomNav } from '@/components/BottomNav';
 import { SkeletonCard } from '@/components/Skeleton';
-import { QUICK_AMOUNT_RATIOS, USDT_MINT } from '@solwallet/config';
+import { QUICK_AMOUNT_RATIOS, USDT_MINT, USDC_MINT } from '@solwallet/config';
 import { getWalletBalance } from '@/lib/api/balance';
 import { isLoggedIn } from '@/lib/api/auth';
 import { useT } from '@/lib/i18n';
@@ -75,9 +75,18 @@ function TradeContent() {
     return () => observer.disconnect();
   }, [activeTab, historyHasMore, historyCursor, fetchMoreHistory]);
 
-  // 잔액 기반 최대 수량
+  // 잔액 기반 최대 수량 및 표기용 잔액
   const [maxBalance, setMaxBalance] = useState(0);
+  const [quoteBalance, setQuoteBalance] = useState(0);
+  const [tokenBalance, setTokenBalance] = useState(0);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
+
+  // 가격이 없고 currentPrice가 로드되었을 때 지정가 자동 채우기
+  useEffect(() => {
+    if (orderType === 'limit' && currentPrice > 0 && !price) {
+      setPrice(currentPrice.toString());
+    }
+  }, [currentPrice, orderType]);
 
   // 초기화 + URL ?type= 파라미터 처리
   useEffect(() => {
@@ -134,6 +143,11 @@ function TradeContent() {
   // 활성 지갑 잔액 조회 (최대 수량 계산용)
   const activeWallet = wallets.find((w) => w.isActive) || wallets[0];
 
+  // 현재 선택된 토큰의 Quote 통화 결정 (SOL은 USDC, 나머지는 USDT로 임시 매핑. 추후 토큰 속성에 따라 변경 가능)
+  const isUsdcQuote = selectedToken?.symbol === 'SOL';
+  const quoteMint = isUsdcQuote ? USDC_MINT : USDT_MINT;
+  const quoteSymbol = isUsdcQuote ? 'USDC' : 'USDT';
+
   useEffect(() => {
     if (!activeWallet) return;
 
@@ -141,19 +155,24 @@ function TradeContent() {
       setIsLoadingBalance(true);
       try {
         const bal = await getWalletBalance(activeWallet.publicKey);
+        
+        const qBal = bal.tokens.find((tok) => tok.mint === quoteMint);
+        const quoteAmt = qBal?.balance ?? 0;
+        setQuoteBalance(quoteAmt);
+        
+        let tokBal = 0;
+        if (selectedToken) {
+          const tokenBal = bal.tokens.find((tok) => tok.mint === selectedToken.mint_address);
+          tokBal = tokenBal?.balance ?? 0;
+        }
+        setTokenBalance(tokBal);
+
         if (side === 'buy') {
-          // 매수 시: 보유 USDT 잔액 → 구매 가능한 토큰 수량
-          const usdtBal = bal.tokens.find((tok) => tok.mint === USDT_MINT);
-          const usdt = usdtBal?.balance ?? 0;
-          setMaxBalance(usdt > 0 && Number(price) > 0 ? usdt / Number(price) : 0);
+          // 매수 시: 보유 Quote(USDT/USDC) 잔액 → 구매 가능한 토큰 수량
+          setMaxBalance(quoteAmt > 0 && Number(price) > 0 ? quoteAmt / Number(price) : 0);
         } else {
           // 매도 시: 보유 토큰 수량
-          if (selectedToken) {
-            const tokenBal = bal.tokens.find((tok) => tok.mint === selectedToken.mint_address);
-            setMaxBalance(tokenBal?.balance ?? 0);
-          } else {
-            setMaxBalance(0);
-          }
+          setMaxBalance(tokBal);
         }
       } catch {
         setMaxBalance(0);
@@ -163,7 +182,7 @@ function TradeContent() {
     };
 
     fetchMaxBalance();
-  }, [activeWallet, side, selectedToken, price]);
+  }, [activeWallet, side, selectedToken, price, quoteMint]);
 
   // 주문 실행 → PIN 입력 → 서명 + 제출
   const handleExecute = async (pin: string) => {
@@ -255,7 +274,7 @@ function TradeContent() {
           <div>
             <p className="font-medium">{selectedToken ? selectedToken.symbol : t('trade.selectToken')}</p>
             <p className="text-sm text-gray-400">
-              {selectedToken ? `${selectedToken.symbol}/USDT` : t('trade.baseCurrency')}
+              {selectedToken ? `${selectedToken.symbol}/${quoteSymbol}` : t('trade.baseCurrency')}
             </p>
           </div>
           <span className="text-gray-400">▼</span>
@@ -326,7 +345,7 @@ function TradeContent() {
       {/* Price Input — 지정가일 때만 표시 */}
       {orderType === 'limit' ? (
         <section className="mb-4">
-          <label className="text-sm text-gray-400 mb-1 block">{t('trade.limitPrice')}</label>
+          <label className="text-sm text-gray-400 mb-1 block">Price</label>
           <div className="bg-gray-800/50 rounded-xl p-4 flex items-center gap-2">
             <input
               type="number"
@@ -337,17 +356,7 @@ function TradeContent() {
               step="any"
               className="bg-transparent flex-1 outline-none text-white placeholder-gray-500"
             />
-            <button
-              onClick={applyCurrentPrice}
-              disabled={currentPrice === 0}
-              className="bg-gray-700 text-xs px-2 py-1 rounded disabled:opacity-50 hover:bg-gray-600 transition"
-            >
-              {t('trade.currentPrice')}
-            </button>
           </div>
-          {currentPrice > 0 && (
-            <p className="text-xs text-gray-500 mt-1">{t('trade.currentPriceLabel')} {currentPrice.toFixed(4)} USDT</p>
-          )}
         </section>
       ) : (
         <section className="mb-4">
@@ -368,106 +377,115 @@ function TradeContent() {
       {/* Amount Input */}
       <section className="mb-4">
         <label className="text-sm text-gray-400 mb-1 block">
-          {t('trade.amount')}
-          {maxBalance > 0 && (
-            <span className="text-primary-400 ml-2">
-              {t('trade.holding')}: {maxBalance.toFixed(4)})
-            </span>
-          )}
+          Amount
         </label>
-        <div className="bg-gray-800/50 rounded-xl p-4">
+        <div className="bg-gray-800/50 rounded-xl p-4 mb-6 relative">
           <input
             type="number"
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
-            placeholder={t('trade.amountPlaceholder')}
+            placeholder="0"
             min="0"
             step="any"
-            className="bg-transparent w-full outline-none text-white placeholder-gray-500 mb-12"
+            className="bg-transparent w-full outline-none text-white placeholder-gray-500"
           />
+        </div>
 
-          {/* 수량 슬라이더 — 드래그로 수량 선택 (maxBalance 기준, 25% 단위 스냅) */}
-          {(() => {
-            // 잔고가 없어도 슬라이더는 표시. 잔고 0일 때는 1을 기준으로 표시만 하고 비활성화
-            const effectiveMax = maxBalance > 0 ? maxBalance : 1;
-            const disabled = maxBalance <= 0;
-            return (
-            <div className={`mb-3 ${disabled ? 'opacity-40 pointer-events-none' : ''}`}>
-              {/* 슬라이더 + 마커를 같은 박스에 겹쳐 배치 — 트랙 중앙에 마커 정렬 */}
-              <div className="relative" style={{ height: '22px' }}>
-                {/* 25% 단위 굵직한 마커 — 트랙 위에 겹침, 클릭 시 해당 비율로 이동 */}
-                <div className="absolute inset-x-0 inset-y-0 flex items-center z-20 pointer-events-auto">
-                  {QUICK_AMOUNT_RATIOS.map((ratio) => {
-                    const isActive = (Number(quantity) || 0) >= effectiveMax * ratio - effectiveMax * 0.01;
-                    return (
-                      <button
-                        key={ratio}
-                        type="button"
-                        onClick={() => {
-                          if (disabled) return;
-                          const decimals = selectedToken?.decimals || 6;
-                          const val = Number((effectiveMax * ratio).toFixed(decimals));
-                          setQuantity(String(val));
-                        }}
-                        className={`absolute -translate-x-1/2 block w-4 h-4 rounded-full border-2 border-gray-800 shadow-md transition-colors cursor-pointer ${
-                          isActive ? 'bg-primary-500' : 'bg-gray-500 hover:bg-gray-400'
-                        }`}
-                        style={{ left: `${ratio * 100}%` }}
-                        aria-label={`${Math.round(ratio * 100)}%`}
-                      />
-                    );
-                  })}
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={effectiveMax}
-                  step={effectiveMax / 4}
-                  value={Math.min(Number(quantity) || 0, effectiveMax)}
-                  disabled={disabled}
-                  onChange={(e) => {
-                    const val = Number(e.target.value);
-                    // 유효 자릿수로 반올림하여 표시 (불필요한 소수점 방지)
-                    const decimals = selectedToken?.decimals || 6;
-                    const rounded = Number(val.toFixed(decimals));
-                    setQuantity(String(rounded));
-                  }}
-                  className="slider-markers absolute inset-0 w-full cursor-pointer"
-                  aria-label={t('trade.amountSlider')}
-                />
+        {/* 수량 슬라이더 */}
+        {(() => {
+          const effectiveMax = maxBalance > 0 ? maxBalance : 1;
+          const disabled = maxBalance <= 0;
+          const currentRatio = Math.min((Number(quantity) || 0) / effectiveMax, 1);
+          const percentage = Math.round(currentRatio * 100);
+
+          return (
+          <div className={`mb-6 px-1 ${disabled ? 'opacity-40 pointer-events-none' : ''}`}>
+            <div className="relative" style={{ height: '22px' }}>
+              {/* Background Track */}
+              <div className="absolute top-1/2 left-0 right-0 h-1 bg-gray-700 -translate-y-1/2 rounded-full" />
+              {/* Fill Track */}
+              <div 
+                className="absolute top-1/2 left-0 h-1 bg-primary-500 -translate-y-1/2 rounded-full transition-all" 
+                style={{ width: `${currentRatio * 100}%` }} 
+              />
+              
+              {/* Tooltip for percentage */}
+              <div 
+                className="absolute -top-7 -translate-x-1/2 text-[10px] font-bold text-white bg-primary-500 px-1.5 py-0.5 rounded shadow-lg pointer-events-none transition-all z-40"
+                style={{ left: `${currentRatio * 100}%`, opacity: percentage > 0 ? 1 : 0 }}
+              >
+                {percentage}%
               </div>
-              {/* 텍스트 라벨 (25% 간격) */}
-              <div className="flex justify-between mt-2 px-1">
-                {[0, 0.25, 0.5, 0.75, 1].map((ratio) => (
-                  <span key={ratio} className="text-[10px] text-gray-500">
-                    {Math.round(ratio * 100)}%
-                  </span>
-                ))}
+
+              {/* Slider Markers */}
+              <div className="absolute inset-x-0 inset-y-0 flex items-center z-20 pointer-events-auto">
+                {QUICK_AMOUNT_RATIOS.map((ratio) => {
+                  const isActive = (Number(quantity) || 0) >= effectiveMax * ratio - effectiveMax * 0.01;
+                  return (
+                    <button
+                      key={ratio}
+                      type="button"
+                      onClick={() => {
+                        if (disabled) return;
+                        const decimals = selectedToken?.decimals || 6;
+                        const val = Number((effectiveMax * ratio).toFixed(decimals));
+                        setQuantity(String(val));
+                      }}
+                      className={`absolute -translate-x-1/2 block w-4 h-4 rounded-full border-2 border-gray-900 shadow-md transition-colors cursor-pointer ${
+                        isActive ? 'bg-primary-500' : 'bg-gray-300'
+                      }`}
+                      style={{ left: `${ratio * 100}%` }}
+                      aria-label={`${Math.round(ratio * 100)}%`}
+                    />
+                  );
+                })}
               </div>
+              <input
+                type="range"
+                min={0}
+                max={effectiveMax}
+                step={effectiveMax / 100}
+                value={Math.min(Number(quantity) || 0, effectiveMax)}
+                disabled={disabled}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  const decimals = selectedToken?.decimals || 6;
+                  const rounded = Number(val.toFixed(decimals));
+                  setQuantity(String(rounded));
+                }}
+                className="slider-markers absolute inset-0 w-full cursor-pointer z-30 opacity-0"
+              />
             </div>
-            );
-          })()}
+            {/* Min/Max Labels */}
+            <div className="flex justify-between mt-2">
+              <span className="text-[11px] text-gray-500 font-medium">0%</span>
+              <span className="text-[11px] text-gray-500 font-medium">100%</span>
+            </div>
+          </div>
+          );
+        })()}
+      </section>
+
+      {/* Total Section */}
+      <section className="mb-4">
+        <label className="text-sm text-gray-400 mb-1 block">Total</label>
+        <div className="bg-gray-800/50 rounded-xl p-4 flex justify-between items-center">
+          <span className="text-white">{totalAmount > 0 ? totalAmount.toFixed(4) : '0'}</span>
+          <span className="text-gray-400 text-sm">{quoteSymbol}</span>
         </div>
       </section>
 
-      {/* Order Summary */}
-      {priceNum > 0 && qtyNum > 0 && (
-        <section className="bg-gray-800/50 rounded-xl p-4 mb-6 space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-400">{t('trade.orderAmount')}</span>
-            <span>${totalAmount.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-400">{t('trade.fee')} ({feeRate * 100}%)</span>
-            <span>${feeAmount.toFixed(2)}</span>
-          </div>
-          <hr className="border-gray-700" />
-          <div className="flex justify-between font-medium">
-            <span>{t('trade.totalPay', { side: side === 'buy' ? t('trade.pay') : t('trade.receive') })}</span>
-            <span>${totalWithFee.toFixed(2)}</span>
-          </div>
-        </section>
-      )}
+      {/* Available & Max Buy */}
+      <section className="mb-6 space-y-2 px-1">
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-400">Available</span>
+          <span className="font-medium text-white">{side === 'buy' ? quoteBalance.toFixed(6) : tokenBalance.toFixed(6)} {side === 'buy' ? quoteSymbol : selectedToken?.symbol}</span>
+        </div>
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-400">Max {side === 'buy' ? 'Buy' : 'Sell'}</span>
+          <span className="font-medium text-white">{maxBalance > 0 ? maxBalance.toFixed(4) : '0.0000'} {selectedToken?.symbol}</span>
+        </div>
+      </section>
 
       {/* Execute Button */}
       <button
