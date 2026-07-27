@@ -5,64 +5,96 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowDownToLine, ArrowUpFromLine, Activity } from 'lucide-react';
 import { getOrderHistory } from '@/lib/api/orders';
+import { getTransferHistory } from '@/lib/api/transfers';
+import { useWalletStore } from '@/stores/useWalletStore';
 import { BottomNav } from '@/components/BottomNav';
 import { isLoggedIn } from '@/lib/api/auth';
 import { useT } from '@/lib/i18n';
 
-interface OrderItem {
+type TransactionType = 'buy' | 'sell' | 'deposit' | 'withdraw';
+
+interface UnifiedTx {
   id: string;
-  side: 'buy' | 'sell';
-  price: number;
-  quantity: number;
-  fee?: number;
+  type: TransactionType;
   status: string;
-  createdAt?: string;
-  tokenSymbol?: string;
+  createdAt: string;
+  tokenSymbol: string;
+  // Order specific
+  price?: number;
+  quantity?: number;
+  // Transfer specific
+  amount?: number;
 }
 
 export default function TransactionsPage() {
   const { t, locale } = useT();
   const router = useRouter();
-  const [orders, setOrders] = useState<OrderItem[]>([]);
+  const { activeWalletId, wallets } = useWalletStore();
+  const activeWallet = wallets.find((w) => w.id === activeWalletId);
+  
+  const [transactions, setTransactions] = useState<UnifiedTx[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'buy' | 'sell'>('all');
+  const [filter, setFilter] = useState<'all' | 'buy' | 'sell' | 'deposit' | 'withdraw'>('all');
 
   useEffect(() => {
     if (!isLoggedIn()) {
       router.replace('/login');
       return;
     }
-    loadOrders();
-  }, [router]);
+    loadData();
+  }, [router, activeWallet]);
 
-  const loadOrders = useCallback(async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getOrderHistory();
-      // 응답 형태 정규화 (OrderHistoryPage.items)
-      const rawItems = data.items ?? data;
-      const normalized: OrderItem[] = (rawItems as Record<string, unknown>[] || []).map((raw) => {
-        const r = raw as Record<string, unknown>;
-        return {
+      const allTx: UnifiedTx[] = [];
+
+      // 1. Fetch Orders from Backend
+      try {
+        const data = await getOrderHistory();
+        const rawItems = data.items ?? data;
+        const normalizedOrders: UnifiedTx[] = (rawItems as Record<string, unknown>[] || []).map((r) => ({
           id: String(r.id ?? ''),
-          side: (r.side as 'buy' | 'sell') ?? 'buy',
+          type: (r.side as 'buy' | 'sell') ?? 'buy',
           price: Number(r.price ?? 0),
           quantity: Number(r.quantity ?? 0),
-          fee: r.fee !== undefined ? Number(r.fee) : undefined,
           status: String(r.status ?? 'unknown'),
-          createdAt: r.created_at ? String(r.created_at) : r.createdAt ? String(r.createdAt) : undefined,
-          tokenSymbol: r.token_symbol ? String(r.token_symbol) : r.symbol ? String(r.symbol) : undefined,
-        };
-      });
-      setOrders(normalized);
-    } catch {
-      setOrders([]);
+          createdAt: r.created_at ? String(r.created_at) : r.createdAt ? String(r.createdAt) : new Date().toISOString(),
+          tokenSymbol: r.token_symbol ? String(r.token_symbol) : r.symbol ? String(r.symbol) : 'TOKEN',
+        }));
+        allTx.push(...normalizedOrders);
+      } catch (err) {
+        console.error('Failed to load orders', err);
+      }
+
+      // 2. Fetch Transfers from On-Chain (if wallet exists)
+      if (activeWallet?.publicKey) {
+        try {
+          const transfers = await getTransferHistory(activeWallet.publicKey, 20);
+          const normalizedTransfers: UnifiedTx[] = transfers.map((tr) => ({
+            id: tr.id,
+            type: tr.type,
+            amount: tr.amount,
+            status: tr.status,
+            createdAt: tr.createdAt,
+            tokenSymbol: tr.tokenSymbol,
+          }));
+          allTx.push(...normalizedTransfers);
+        } catch (err) {
+          console.error('Failed to load transfers', err);
+        }
+      }
+
+      // 3. Sort by date descending
+      allTx.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      
+      setTransactions(allTx);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeWallet]);
 
-  const filtered = filter === 'all' ? orders : orders.filter((o) => o.side === filter);
+  const filtered = filter === 'all' ? transactions : transactions.filter((o) => o.type === filter);
 
   const dateLocale = locale === 'ko' ? 'ko-KR' : 'en-US';
 
@@ -78,24 +110,27 @@ export default function TransactionsPage() {
           <ArrowLeft className="w-5 h-5" />
         </Link>
         <div>
-          <h1 className="text-lg font-bold">{t('tx.title')}</h1>
-          <p className="text-[10px] text-gray-500">{t('tx.subtitle')}</p>
+          <h1 className="text-lg font-bold">Transaction History</h1>
+          <p className="text-[10px] text-gray-500">History of your trades & transfers</p>
         </div>
       </header>
 
-      {/* Filter */}
-      <div className="flex gap-2 mb-4">
-        {(['all', 'buy', 'sell'] as const).map((f) => (
+      {/* Filter - Scrollable horizontally to fit new tabs */}
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-1 scrollbar-hide">
+        {(['all', 'buy', 'sell', 'deposit', 'withdraw'] as const).map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition whitespace-nowrap ${
               filter === f
                 ? 'bg-primary-600 text-white'
                 : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
             }`}
           >
-            {f === 'all' ? t('tx.all') : f === 'buy' ? t('tx.buy') : t('tx.sell')}
+            {f === 'all' ? t('tx.all') : 
+             f === 'buy' ? t('tx.buy') : 
+             f === 'sell' ? t('tx.sell') : 
+             f === 'deposit' ? 'Deposit' : 'Withdraw'}
           </button>
         ))}
       </div>
@@ -117,8 +152,15 @@ export default function TransactionsPage() {
       ) : (
         <div className="space-y-2">
           {filtered.map((o) => {
-            const isBuy = o.side === 'buy';
-            const total = o.price * o.quantity;
+            const isBuy = o.type === 'buy';
+            const isSell = o.type === 'sell';
+            const isDeposit = o.type === 'deposit';
+            const isWithdraw = o.type === 'withdraw';
+            
+            const isPositive = isBuy || isDeposit;
+            
+            const total = (o.price || 0) * (o.quantity || 0);
+
             return (
               <div
                 key={o.id}
@@ -127,18 +169,18 @@ export default function TransactionsPage() {
                 <div className="flex items-center gap-3">
                   <div
                     className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                      isBuy ? 'bg-green-500/15' : 'bg-red-500/15'
+                      isPositive ? 'bg-green-500/15' : 'bg-red-500/15'
                     }`}
                   >
-                    {isBuy ? (
+                    {isPositive ? (
                       <ArrowDownToLine className="w-4 h-4 text-green-400" strokeWidth={2} />
                     ) : (
                       <ArrowUpFromLine className="w-4 h-4 text-red-400" strokeWidth={2} />
                     )}
                   </div>
                   <div>
-                    <p className="text-sm font-medium">
-                      {isBuy ? t('tx.buy') : t('tx.sell')} · {o.tokenSymbol || 'TOKEN'}
+                    <p className="text-sm font-medium capitalize">
+                      {o.type === 'buy' ? t('tx.buy') : o.type === 'sell' ? t('tx.sell') : o.type} · {o.tokenSymbol}
                     </p>
                     <p className="text-[10px] text-gray-500 mt-0.5">
                       {o.createdAt
@@ -153,12 +195,20 @@ export default function TransactionsPage() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-medium tabular-nums">
-                    {o.quantity.toFixed(4)}
+                  <p className={`text-sm font-medium tabular-nums ${isPositive ? 'text-green-400' : ''}`}>
+                    {isPositive ? '+' : '-'}
+                    {isDeposit || isWithdraw ? o.amount?.toFixed(4) : o.quantity?.toFixed(4)}
                   </p>
-                  <p className="text-[10px] text-gray-500 tabular-nums mt-0.5">
-                    ${total.toFixed(2)}
-                  </p>
+                  {(isBuy || isSell) && (
+                    <p className="text-[10px] text-gray-500 tabular-nums mt-0.5">
+                      ${total.toFixed(2)}
+                    </p>
+                  )}
+                  {(isDeposit || isWithdraw) && (
+                    <p className="text-[10px] text-gray-500 mt-0.5 capitalize">
+                      {o.status}
+                    </p>
+                  )}
                 </div>
               </div>
             );
