@@ -71,6 +71,11 @@ const ko: Record<string, string> = {
   'swap.insufficientBalance': '잔액이 부족합니다.',
   'swap.enterAmount': '수량을 입력해주세요.',
   'swap.gettingQuote': '견적 조회 중...',
+  'swap.noticeTitle': '스왑 전 안내',
+  'swap.noticeSlippage': '체결 가격이 견적 대비 최대 0.5%(슬리피지)까지 변동될 수 있습니다.',
+  'swap.noticeVariableFee': 'Solana 네트워크 상황·Jupiter 라우팅 경로·DEX 수수료에 따라 실제 수수료와 환율이 변동됩니다.',
+  'swap.noticeDelayRisk': '네트워크 혼잡 시 체결에 수 초~수십 초가 소요될 수 있으며, 극단적 상황에서는 실패할 수 있습니다.',
+  'swap.noticeStablecoin': 'USDT(Tether)와 USDC(Circle)는 별도 발행사의 스테이블코인으로, 항상 1:1로 교환된다고 보장할 수 없습니다.',
 
   // ─── Trade ───
   'trade.buyOrder': '매수 주문',

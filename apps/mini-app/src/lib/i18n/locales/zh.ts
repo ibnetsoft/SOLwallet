@@ -71,6 +71,11 @@ const zh: Record<string, string> = {
   'swap.insufficientBalance': '余额不足。',
   'swap.enterAmount': '请输入数量。',
   'swap.gettingQuote': '获取报价中...',
+  'swap.noticeTitle': '兑换前须知',
+  'swap.noticeSlippage': '实际成交价可能较报价最多变动 0.5%（滑点）。',
+  'swap.noticeVariableFee': '实际费用与汇率会根据 Solana 网络状况、Jupiter 路由及 DEX 流动池费用而变化。',
+  'swap.noticeDelayRisk': '网络拥堵时成交可能需要数秒至数十秒，极端情况下可能失败。',
+  'swap.noticeStablecoin': 'USDT（Tether）与 USDC（Circle）为不同发行方的稳定币，不保证始终以 1:1 兑换。',
 
   // ─── Trade ───
   'trade.buyOrder': '买单',

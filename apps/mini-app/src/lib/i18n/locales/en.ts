@@ -73,6 +73,11 @@ const en: Record<TranslationKey, string> = {
   'swap.insufficientBalance': 'Insufficient balance.',
   'swap.enterAmount': 'Enter an amount.',
   'swap.gettingQuote': 'Getting quote...',
+  'swap.noticeTitle': 'Before you swap',
+  'swap.noticeSlippage': 'The executed price may shift by up to 0.5% (slippage) from the quoted price.',
+  'swap.noticeVariableFee': 'Actual fees and rates vary depending on Solana network conditions, Jupiter routing, and DEX pool fees.',
+  'swap.noticeDelayRisk': 'During network congestion, settlement may take several seconds to tens of seconds, and may fail in extreme cases.',
+  'swap.noticeStablecoin': 'USDT (Tether) and USDC (Circle) are stablecoins from separate issuers and are not guaranteed to trade at exactly 1:1.',
 
   // ─── Trade ───
   'trade.buyOrder': 'Buy Order',

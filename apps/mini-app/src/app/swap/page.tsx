@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowDownUp } from 'lucide-react';
+import { ArrowDownUp, Info } from 'lucide-react';
 import { useWalletStore } from '@/stores/useWalletStore';
 import { useSwapStore } from '@/stores/useSwapStore';
 import { getPortfolio } from '@/lib/api/balance';
@@ -237,6 +237,36 @@ export default function SwapPage() {
           {t('swap.insufficientBalance')}
         </p>
       )}
+
+      {/* ===== Swap Notice (고지 사항) ===== */}
+      <section className="mt-4 bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-3">
+        <div className="flex items-start gap-2">
+          <Info className="w-3.5 h-3.5 text-yellow-400 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] font-semibold text-yellow-300 mb-1.5">
+              {t('swap.noticeTitle')}
+            </p>
+            <ul className="space-y-1 text-[10px] leading-relaxed text-yellow-200/80">
+              <li className="flex gap-1.5">
+                <span className="text-yellow-400/60 shrink-0">•</span>
+                <span>{t('swap.noticeSlippage')}</span>
+              </li>
+              <li className="flex gap-1.5">
+                <span className="text-yellow-400/60 shrink-0">•</span>
+                <span>{t('swap.noticeVariableFee')}</span>
+              </li>
+              <li className="flex gap-1.5">
+                <span className="text-yellow-400/60 shrink-0">•</span>
+                <span>{t('swap.noticeDelayRisk')}</span>
+              </li>
+              <li className="flex gap-1.5">
+                <span className="text-yellow-400/60 shrink-0">•</span>
+                <span>{t('swap.noticeStablecoin')}</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
 
       {/* ===== Execute Button ===== */}
       <button

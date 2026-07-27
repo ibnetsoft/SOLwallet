@@ -71,6 +71,11 @@ const ja: Record<string, string> = {
   'swap.insufficientBalance': '残高が不足しています。',
   'swap.enterAmount': '数量を入力してください。',
   'swap.gettingQuote': '見積取得中...',
+  'swap.noticeTitle': 'スワップ前の確認事項',
+  'swap.noticeSlippage': '約定価格は見積価格から最大0.5%（スリッページ）変動する可能性があります。',
+  'swap.noticeVariableFee': 'Solanaネットワーク状況・Jupiterルーティング・DEX手数料により、実際の手数料とレートは変動します。',
+  'swap.noticeDelayRisk': 'ネットワーク混雑時は決済に数秒〜数十秒かかる場合があり、極端な状況では失敗することもあります。',
+  'swap.noticeStablecoin': 'USDT（Tether）とUSDC（Circle）は別々の発行体によるステーブルコインであり、常に1:1で交換されるとは限りません。',
 
   // ─── Trade ───
   'trade.buyOrder': '買い注文',
