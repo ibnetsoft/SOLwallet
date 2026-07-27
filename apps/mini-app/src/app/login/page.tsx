@@ -12,6 +12,44 @@ export default function LoginPage() {
   const { showToast } = useToast();
   const [status, setStatus] = useState<'checking' | 'telegram' | 'error'>('checking');
   const [errorMessage, setErrorMessage] = useState('');
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isIOS, setIsIOS] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
+  const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || 'aoiwallet_bot';
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    // PWA(Standalone) 모드 감지
+    const standalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
+    setIsStandalone(standalone);
+    
+    // iOS Safari 감지 (공유 -> 홈 화면에 추가 유도용)
+    const ua = window.navigator.userAgent;
+    const isIOSDevice = /iPad|iPhone|iPod/.test(ua) && !(window as any).MSStream;
+    setIsIOS(isIOSDevice);
+
+    // Android/Chrome PWA 설치 프롬프트 이벤트
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setDeferredPrompt(null);
+      }
+    }
+  };
 
   // 초기 확인 — Telegram 환경인지, 이미 로그인되었는지
   useEffect(() => {
@@ -105,8 +143,48 @@ export default function LoginPage() {
 
         {/* 에러 발생 (Telegram 환경 아님 혹은 인증 실패) */}
         {status === 'error' && (
-          <div className="bg-gray-800/50 rounded-xl p-6 border border-red-500/30 text-center">
-            <p className="text-sm text-red-400 mb-2">{errorMessage}</p>
+          <div className="flex flex-col gap-4">
+            <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700/50 text-center">
+              <p className="text-sm text-gray-300 mb-4">{errorMessage}</p>
+              <a
+                href={`https://t.me/${botUsername}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full bg-blue-500 hover:bg-blue-600 text-white rounded-xl py-3 px-4 font-medium flex items-center justify-center gap-2 transition"
+              >
+                Open in Telegram
+              </a>
+            </div>
+
+            {/* PWA 설치 유도 영역 (Standalone 모드가 아닐 때만 표시) */}
+            {!isStandalone && (
+              <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700/50 text-center">
+                <h3 className="font-semibold text-gray-200 mb-2">Install App</h3>
+                {isIOS ? (
+                  <div className="text-sm text-gray-400">
+                    <p>To install this app on your iPhone:</p>
+                    <ol className="list-decimal text-left pl-6 mt-2 space-y-1">
+                      <li>Tap the <strong>Share</strong> button at the bottom</li>
+                      <li>Scroll down and tap <strong>Add to Home Screen</strong></li>
+                    </ol>
+                  </div>
+                ) : deferredPrompt ? (
+                  <div>
+                    <p className="text-sm text-gray-400 mb-4">Install AOI Wallet on your device for quick access.</p>
+                    <button
+                      onClick={handleInstallClick}
+                      className="w-full bg-gray-700 hover:bg-gray-600 text-white rounded-xl py-3 px-4 font-medium transition"
+                    >
+                      Add to Home Screen
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">
+                    You can add this website to your Home Screen from your browser menu.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
