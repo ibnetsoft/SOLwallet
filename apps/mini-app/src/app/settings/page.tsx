@@ -56,13 +56,21 @@ export default function SettingsPage() {
     getUserProfile().then(setProfile).catch(() => {});
   }, [isInitialized, initialize]);
 
+  const getNextWalletLabel = () => {
+    const numbers = wallets.map(w => {
+      const match = w.label?.match(/^Wallet\s+(\d+)$/i);
+      return match ? parseInt(match[1], 10) : 0;
+    });
+    const maxNum = numbers.length > 0 ? Math.max(...numbers) : 0;
+    return `Wallet ${maxNum + 1}`;
+  };
+
   // 새 지갑 생성 → PIN 설정
   const handleCreateWallet = async (pin: string) => {
     setPinError('');
     setActionLoading('create');
     try {
-      const nextIndex = wallets.length;
-      const result = await createWallet(`Wallet ${nextIndex + 1}`, pin);
+      const result = await createWallet(getNextWalletLabel(), pin);
       setCreatedMnemonic(result.mnemonic);
       setShowCreatePin(false);
       setShowMnemonic(true);
@@ -84,8 +92,7 @@ export default function SettingsPage() {
     setPinError('');
     setActionLoading('import');
     try {
-      const nextIndex = wallets.length;
-      await importWallet(pendingMnemonic, `Wallet ${nextIndex + 1}`, pin);
+      await importWallet(pendingMnemonic, getNextWalletLabel(), pin);
       setShowImportPin(false);
       setPendingMnemonic('');
       showToast(t('settings.walletImported'));
