@@ -175,7 +175,7 @@ export default function UsersPage() {
               <thead>
                 <tr className="border-b border-gray-700">
                   <th className="text-center py-3 px-6 text-gray-400 font-medium w-16">순위</th>
-                  <th className="text-left py-3 px-6 text-gray-400 font-medium">방장 이름</th>
+                  <th className="text-left py-3 px-6 text-gray-400 font-medium">방장(추천코드)</th>
                   <th className="text-center py-3 px-6 text-gray-400 font-medium">7일 신규</th>
                   <th className="text-center py-3 px-6 text-gray-400 font-medium">총 하위 유저</th>
                 </tr>

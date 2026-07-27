@@ -174,7 +174,7 @@ export class AdminService {
         referrer_id,
         referee_id,
         created_at,
-        users!referrals_referrer_id_fkey(username, first_name),
+        users!referrals_referrer_id_fkey(username, first_name, referral_code),
         referee:users!referrals_referee_id_fkey(created_at)
       `)
       .gte('created_at', sevenDaysAgo.toISOString())
@@ -202,10 +202,10 @@ export class AdminService {
           .select('*', { count: 'exact', head: true })
           .eq('referrer_id', refId);
 
-        const referrerUser = ref.users as unknown as { username: string; first_name: string };
+        const referrerUser = ref.users as unknown as { username: string; first_name: string; referral_code: string };
         stats[refId] = {
           referrerId: refId,
-          referrerName: referrerUser?.username || referrerUser?.first_name || '—',
+          referrerName: referrerUser?.referral_code || referrerUser?.username || referrerUser?.first_name || '—',
           weeklyCount: 0,
           totalCount: totalCount || 0,
         };
