@@ -427,7 +427,7 @@ function TradeContent() {
           const percentage = Math.round(currentRatio * 100);
 
           return (
-          <div className={`mb-6 px-1 ${disabled ? 'opacity-40 pointer-events-none' : ''}`}>
+          <div className={`mb-6 px-1 ${disabled ? 'opacity-50' : ''}`}>
             <div className="relative" style={{ height: '22px' }}>
               {/* Background Track */}
               <div className="absolute top-1/2 left-0 right-0 h-1 bg-gray-700 -translate-y-1/2 rounded-full" />
@@ -449,8 +449,8 @@ function TradeContent() {
                 {percentage}%
               </div>
 
-              {/* Slider Markers — 0% 포함 모든 마커 */}
-              <div className="absolute inset-x-0 inset-y-0 flex items-center z-20 pointer-events-auto">
+              {/* Slider Markers — 0% 포함 모든 마커 (z-40으로 올려서 클릭 가능하게) */}
+              <div className="absolute inset-x-0 inset-y-0 flex items-center z-40 pointer-events-auto">
                 {[0, ...QUICK_AMOUNT_RATIOS].map((ratio) => {
                   const isActive = (Number(quantity) || 0) >= effectiveMax * ratio - effectiveMax * 0.01;
                   return (
@@ -458,9 +458,10 @@ function TradeContent() {
                       key={ratio}
                       type="button"
                       onClick={() => {
-                        if (disabled) return;
                         const decimals = selectedToken?.decimals || 6;
-                        const val = Number((effectiveMax * ratio).toFixed(decimals));
+                        // effectiveMax는 잔고가 0일 때 1이 되므로, 실제 잔고인 maxBalance를 곱해 정확히 입력되게 함
+                        const actualMax = maxBalance > 0 ? maxBalance : 0;
+                        const val = Number((actualMax * ratio).toFixed(decimals));
                         setQuantity(String(val));
                       }}
                       className={`absolute -translate-x-1/2 block w-4 h-4 rounded-full border-2 border-gray-900 shadow-md transition-all duration-200 cursor-pointer ${
@@ -489,7 +490,11 @@ function TradeContent() {
                 onChange={(e) => {
                   const val = Number(e.target.value);
                   const decimals = selectedToken?.decimals || 6;
-                  const rounded = Number(val.toFixed(decimals));
+                  // e.target.value는 0 ~ effectiveMax 사이의 값임
+                  // 잔고가 0일 경우 val은 무의미해지므로 실제 잔고로 비율을 계산해서 적용
+                  const ratio = val / effectiveMax;
+                  const actualMax = maxBalance > 0 ? maxBalance : 0;
+                  const rounded = Number((actualMax * ratio).toFixed(decimals));
                   setQuantity(String(rounded));
                 }}
                 className="slider-markers absolute inset-0 w-full cursor-pointer z-30 opacity-0"
