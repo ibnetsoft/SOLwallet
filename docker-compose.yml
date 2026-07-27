@@ -16,6 +16,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.mini-app
+      args:
+        NEXT_PUBLIC_API_URL: /api
+        NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+        NEXT_PUBLIC_MINI_APP_URL: ${MINI_APP_URL:-https://aoiwallet.com}
     container_name: solwallet-mini-app
     restart: unless-stopped
     env_file:
