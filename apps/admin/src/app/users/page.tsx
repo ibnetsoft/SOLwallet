@@ -1,12 +1,79 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getUsers, getUserWallets, getReferralStats } from '@/lib/api/admin';
+import { getUsers, getUserWallets, getReferralStats, getTokens, getUserBalance } from '@/lib/api/admin';
 import type { ReferralStat, AdminWalletDetail } from '@/lib/api/admin';
-import type { AdminUserDetail } from '@solwallet/shared-types';
+import type { AdminUserDetail, AdminTokenDetail } from '@solwallet/shared-types';
+
+function UserRow({
+  user,
+  tokens,
+  selectedUserId,
+  onViewWallets,
+}: {
+  user: AdminUserDetail;
+  tokens: AdminTokenDetail[];
+  selectedUserId: string | null;
+  onViewWallets: (id: string) => void;
+}) {
+  const [balances, setBalances] = useState<Record<string, number>>({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    getUserBalance(user.id)
+      .then((res) => {
+        if (!mounted) return;
+        const newBalances: Record<string, number> = {};
+        res.wallets.forEach((w) => {
+          w.tokens?.forEach((t: any) => {
+            newBalances[t.mint] = (newBalances[t.mint] || 0) + t.balance;
+          });
+        });
+        setBalances(newBalances);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [user.id]);
+
+  return (
+    <tr className="border-b border-gray-700/50 hover:bg-gray-700/30 transition">
+      <td className="py-3 px-6 text-center text-gray-400 text-xs whitespace-nowrap">
+        {new Date(user.createdAt).toLocaleDateString('ko-KR')}
+      </td>
+      <td className="py-3 px-6">
+        <div className="flex items-center gap-2">
+          <span className="font-medium">{user.username || user.firstName || '—'}</span>
+        </div>
+      </td>
+      <td className="py-3 px-6 text-gray-400 font-mono text-xs">{user.telegramUid}</td>
+      <td className="py-3 px-6 text-gray-400 font-mono text-xs">{user.referrerUid || '—'}</td>
+      <td className="py-3 px-6 text-center text-gray-400 font-mono text-xs">{user.referralCount || 0}</td>
+      {tokens.map((t) => (
+        <td key={t.id} className="py-3 px-6 text-right text-gray-400 font-mono text-xs">
+          {loading ? '...' : (balances[t.mintAddress] || 0).toFixed(4)}
+        </td>
+      ))}
+      <td className="py-3 px-6 text-right">
+        <button
+          onClick={() => onViewWallets(user.id)}
+          className="text-xs px-3 py-1.5 rounded-lg bg-primary-600/20 text-primary-400 hover:bg-primary-600/30 transition"
+        >
+          {selectedUserId === user.id ? '닫기' : '지갑보기'}
+        </button>
+      </td>
+    </tr>
+  );
+}
 
 export default function UsersPage() {
   const [users, setUsers] = useState<AdminUserDetail[]>([]);
+  const [tokens, setTokens] = useState<AdminTokenDetail[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
@@ -51,6 +118,12 @@ export default function UsersPage() {
       setReferralLoading(false);
     }
   };
+
+  useEffect(() => {
+    getTokens().then((res) => {
+      setTokens(res.filter(t => t.isActive));
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetchUsers(page);
@@ -153,45 +226,35 @@ export default function UsersPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-700">
+                <th className="text-center py-3 px-6 text-gray-400 font-medium">가입일</th>
                 <th className="text-left py-3 px-6 text-gray-400 font-medium">유저</th>
                 <th className="text-left py-3 px-6 text-gray-400 font-medium">Telegram UID</th>
-                <th className="text-center py-3 px-6 text-gray-400 font-medium">가입일</th>
+                <th className="text-left py-3 px-6 text-gray-400 font-medium">스폰서(UID)</th>
+                <th className="text-center py-3 px-6 text-gray-400 font-medium">추천인원</th>
+                {tokens.map(t => (
+                  <th key={t.id} className="text-right py-3 px-6 text-gray-400 font-medium">{t.symbol}</th>
+                ))}
                 <th className="text-right py-3 px-6 text-gray-400 font-medium">지갑</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={4} className="text-center py-8 text-gray-400">로딩 중...</td>
+                  <td colSpan={7 + tokens.length} className="text-center py-8 text-gray-400">로딩 중...</td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="text-center py-8 text-gray-400">데이터가 없습니다</td>
+                  <td colSpan={7 + tokens.length} className="text-center py-8 text-gray-400">데이터가 없습니다</td>
                 </tr>
               ) : (
                 users.map((user) => (
-                  <tr key={user.id} className="border-b border-gray-700/50 hover:bg-gray-700/30 transition">
-                    <td className="py-3 px-6">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{user.username || user.firstName || '—'}</span>
-                        {user.referredBy && (
-                          <span className="text-xs px-1.5 py-0.5 rounded bg-primary-600/20 text-primary-400">추천</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-3 px-6 text-gray-400 font-mono text-xs">{user.telegramUid}</td>
-                    <td className="py-3 px-6 text-center text-gray-400 text-xs">
-                      {new Date(user.createdAt).toLocaleDateString('ko-KR')}
-                    </td>
-                    <td className="py-3 px-6 text-right">
-                      <button
-                        onClick={() => handleViewWallets(user.id)}
-                        className="text-xs px-3 py-1.5 rounded-lg bg-primary-600/20 text-primary-400 hover:bg-primary-600/30 transition"
-                      >
-                        {selectedUserId === user.id ? '닫기' : '지갑보기'}
-                      </button>
-                    </td>
-                  </tr>
+                  <UserRow 
+                    key={user.id} 
+                    user={user} 
+                    tokens={tokens} 
+                    selectedUserId={selectedUserId} 
+                    onViewWallets={handleViewWallets} 
+                  />
                 ))
               )}
             </tbody>

@@ -27,6 +27,10 @@ export function getUserWallets(userId: string): Promise<AdminWalletDetail[]> {
   return apiFetch(`/admin/users/${userId}/wallets`);
 }
 
+export function getUserBalance(userId: string): Promise<{ wallets: any[]; totalUsdt: number }> {
+  return apiFetch(`/admin/users/${userId}/balance`);
+}
+
 // ─── 추천(방장) 통계 ───
 
 export interface ReferralStat {

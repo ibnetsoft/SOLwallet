@@ -94,7 +94,11 @@ export class AdminService {
     // 각 유저의 지갑 수 조회 (배치)
     const userIds = (data || []).map((u) => u.id);
     const walletCounts: Record<string, number> = {};
+    const referrerMap: Record<string, string> = {};
+    const referralCounts: Record<string, number> = {};
+
     if (userIds.length > 0) {
+      // 1. 지갑 수
       const { data: walletData } = await this.client
         .from('wallets')
         .select('user_id')
@@ -102,10 +106,33 @@ export class AdminService {
       (walletData || []).forEach((w) => {
         walletCounts[w.user_id] = (walletCounts[w.user_id] || 0) + 1;
       });
+
+      // 2. 추천인 UID (telegram_uid)
+      const referrerIds = Array.from(new Set((data || []).map((u) => u.referred_by).filter(Boolean)));
+      if (referrerIds.length > 0) {
+        const { data: referrers } = await this.client
+          .from('users')
+          .select('id, telegram_uid')
+          .in('id', referrerIds);
+        (referrers || []).forEach(r => {
+          referrerMap[r.id] = String(r.telegram_uid);
+        });
+      }
+
+      // 3. 각 유저가 추천한 회원 수 (referrals 테이블 기준)
+      const { data: referralData } = await this.client
+        .from('referrals')
+        .select('referrer_id')
+        .in('referrer_id', userIds);
+      (referralData || []).forEach(r => {
+        referralCounts[r.referrer_id] = (referralCounts[r.referrer_id] || 0) + 1;
+      });
     }
 
     const users = (data || []).map((u) => ({
       ...u,
+      referrerUid: u.referred_by ? (referrerMap[u.referred_by] || null) : null,
+      referralCount: referralCounts[u.id] || 0,
       walletCount: walletCounts[u.id] || 0,
     }));
 

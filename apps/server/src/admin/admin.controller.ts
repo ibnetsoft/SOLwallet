@@ -18,11 +18,15 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { AdminService } from './admin.service';
 import { AdminGuard } from './admin.guard';
 import { CreateTokenDto } from '../common/dto/token.dto';
+import { BalanceService } from '../balance/balance.service';
 
 @Controller('admin')
 @UseGuards(AdminGuard)
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly balanceService: BalanceService,
+  ) {}
 
   // ─── 대시보드 ───
 
@@ -47,6 +51,12 @@ export class AdminController {
   async getUserWallets(@Param('id') userId: string) {
     const wallets = await this.adminService.getUserWallets(userId);
     return { success: true, data: wallets };
+  }
+
+  @Get('users/:userId/balance')
+  async getUserBalance(@Param('userId') userId: string) {
+    const result = await this.balanceService.getPortfolio(userId);
+    return { success: true, data: result };
   }
 
   // ─── 추천인 통계 ───
