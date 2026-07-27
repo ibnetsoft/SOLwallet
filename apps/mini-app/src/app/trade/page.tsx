@@ -11,7 +11,7 @@ import PinModal from '@/components/PinModal';
 import { BottomNav } from '@/components/BottomNav';
 import { SkeletonCard } from '@/components/Skeleton';
 import { QUICK_AMOUNT_RATIOS, USDT_MINT, USDC_MINT } from '@solwallet/config';
-import { getWalletBalance } from '@/lib/api/balance';
+import { getWalletBalance, type WalletBalance } from '@/lib/api/balance';
 import { isLoggedIn } from '@/lib/api/auth';
 import { getTokenLogoUrl } from '@/lib/tokenLogo';
 import { useT } from '@/lib/i18n';
@@ -170,45 +170,57 @@ function TradeContent() {
   const quoteMint = isUsdcQuote ? USDC_MINT : USDT_MINT;
   const quoteSymbol = isUsdcQuote ? 'USDC' : 'USDT';
 
+  const [walletData, setWalletData] = useState<WalletBalance | null>(null);
+
   useEffect(() => {
     if (!activeWallet) return;
 
-    const fetchMaxBalance = async () => {
+    const fetchBalance = async () => {
       setIsLoadingBalance(true);
       try {
         const bal = await getWalletBalance(activeWallet.publicKey);
-        
-        const qBal = bal.tokens.find((tok) => tok.mint === quoteMint);
-        const quoteAmt = qBal?.balance ?? 0;
-        setQuoteBalance(quoteAmt);
-        
-        let tokBal = 0;
-        if (selectedToken) {
-          if (selectedToken.symbol === 'SOL') {
-            tokBal = bal.sol;
-          } else {
-            const tokenBal = bal.tokens.find((tok) => tok.mint === selectedToken.mint_address);
-            tokBal = tokenBal?.balance ?? 0;
-          }
-        }
-        setTokenBalance(tokBal);
-
-        if (side === 'buy') {
-          // 매수 시: 보유 Quote(USDT/USDC) 잔액 → 구매 가능한 토큰 수량
-          setMaxBalance(quoteAmt > 0 && Number(price) > 0 ? quoteAmt / Number(price) : 0);
-        } else {
-          // 매도 시: 보유 토큰 수량
-          setMaxBalance(tokBal);
-        }
+        setWalletData(bal);
       } catch {
-        setMaxBalance(0);
+        setWalletData(null);
       } finally {
         setIsLoadingBalance(false);
       }
     };
 
-    fetchMaxBalance();
-  }, [activeWallet, side, selectedToken, price, quoteMint]);
+    fetchBalance();
+  }, [activeWallet?.publicKey]);
+
+  useEffect(() => {
+    if (!walletData) {
+      setQuoteBalance(0);
+      setTokenBalance(0);
+      setMaxBalance(0);
+      return;
+    }
+
+    const qBal = walletData.tokens.find((tok) => tok.mint === quoteMint);
+    const quoteAmt = qBal?.balance ?? 0;
+    setQuoteBalance(quoteAmt);
+
+    let tokBal = 0;
+    if (selectedToken) {
+      if (selectedToken.symbol === 'SOL') {
+        tokBal = walletData.sol;
+      } else {
+        const tokenBal = walletData.tokens.find((tok) => tok.mint === selectedToken.mint_address);
+        tokBal = tokenBal?.balance ?? 0;
+      }
+    }
+    setTokenBalance(tokBal);
+
+    if (side === 'buy') {
+      // 매수 시: 보유 Quote(USDT/USDC) 잔액 → 구매 가능한 토큰 수량
+      setMaxBalance(quoteAmt > 0 && Number(price) > 0 ? quoteAmt / Number(price) : 0);
+    } else {
+      // 매도 시: 보유 토큰 수량
+      setMaxBalance(tokBal);
+    }
+  }, [walletData, side, selectedToken, price, quoteMint]);
 
   // 주문 실행 → PIN 입력 → 서명 + 제출
   const handleExecute = async (pin: string) => {

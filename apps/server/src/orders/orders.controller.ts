@@ -99,8 +99,11 @@ export class OrdersController {
    * GET /api/orders/orderbook/:tokenMint — 오더북 조회 (Manifest SDK 프록시)
    */
   @Get('orderbook/:tokenMint')
-  async getOrderbook(@Param('tokenMint') tokenMint: string) {
-    const orderbook = await this.ordersService.getOrderbook(tokenMint);
+  async getOrderbook(
+    @Param('tokenMint') tokenMint: string,
+    @Query('quoteMint') quoteMint?: string,
+  ) {
+    const orderbook = await this.ordersService.getOrderbook(tokenMint, quoteMint);
     return { success: true, data: orderbook };
   }
 }

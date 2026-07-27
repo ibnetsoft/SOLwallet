@@ -18,9 +18,10 @@ export interface OrderbookResponse {
  * 서버가 공식 SDK(@cks-systems/manifest-sdk)로 온체인 마켓 PDA에서
  * bids/asks를 읽어 반환합니다.
  */
-export async function fetchOrderbook(tokenMint: string): Promise<OrderbookResponse> {
+export async function fetchOrderbook(tokenMint: string, quoteMint?: string): Promise<OrderbookResponse> {
   try {
-    return await apiFetch<OrderbookResponse>(`/orders/orderbook/${tokenMint}`);
+    const query = quoteMint ? `?quoteMint=${quoteMint}` : '';
+    return await apiFetch<OrderbookResponse>(`/orders/orderbook/${tokenMint}${query}`);
   } catch {
     return { bids: [], asks: [], spread: 0 };
   }
@@ -29,8 +30,8 @@ export async function fetchOrderbook(tokenMint: string): Promise<OrderbookRespon
 /**
  * 현재가 (오더북 best bid/ask 중간가)
  */
-export async function fetchCurrentPrice(tokenMint: string): Promise<number> {
-  const orderbook = await fetchOrderbook(tokenMint);
+export async function fetchCurrentPrice(tokenMint: string, quoteMint?: string): Promise<number> {
+  const orderbook = await fetchOrderbook(tokenMint, quoteMint);
 
   if (orderbook.bids.length === 0 || orderbook.asks.length === 0) {
     return 0;

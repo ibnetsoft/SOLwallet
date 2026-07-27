@@ -2,7 +2,7 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from '@nes
 import { SupabaseService } from '../supabase/supabase.service';
 import { ConfigService } from '@nestjs/config';
 import { Connection, PublicKey } from '@solana/web3.js';
-import { MANIFEST, USDT_MINT } from '@solwallet/config';
+import { MANIFEST, USDT_MINT, USDC_MINT } from '@solwallet/config';
 import { SettingsService } from '../settings/settings.service';
 import type { CreateOrderDto } from '../common/dto/order.dto';
 
@@ -135,17 +135,24 @@ export class OrdersService {
     let unsignedTx = '';
     let requestId = '';
     try {
+      const quoteMint = token.symbol === 'SOL' ? USDC_MINT : USDT_MINT;
+      // Manifest API requires valid tick size and step size. 
+      // Ensure we don't pass excessive decimals that cause errors.
+      const formattedSize = Number(dto.quantity).toFixed(token.decimals);
+      // For price, quote token decimals (USDC/USDT is 6)
+      const formattedPrice = Number(dto.price).toFixed(6);
+
       const manifestRes = await fetch(`${this.manifestBaseUrl}/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           maker: walletPublicKey,
           baseMint: token.mint_address, // base = 토큰 (고정)
-          quoteMint: USDT_MINT, // quote = USDT (고정)
+          quoteMint: quoteMint,
           orders: [
             {
-              size: String(dto.quantity),
-              price: String(dto.price),
+              size: formattedSize,
+              price: formattedPrice,
               side: dto.side,
               orderType: 'limit',
               clientOrderId,
@@ -373,7 +380,7 @@ export class OrdersService {
         body: JSON.stringify({
           maker: wallet.public_key,
           baseMint: token.mint_address,
-          quoteMint: USDT_MINT,
+          quoteMint: token.symbol === 'SOL' ? USDC_MINT : USDT_MINT,
           orders: [
             sequenceNumber != null
               ? { sequenceNumber }
