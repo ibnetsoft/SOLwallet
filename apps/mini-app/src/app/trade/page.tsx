@@ -184,8 +184,12 @@ function TradeContent() {
         
         let tokBal = 0;
         if (selectedToken) {
-          const tokenBal = bal.tokens.find((tok) => tok.mint === selectedToken.mint_address);
-          tokBal = tokenBal?.balance ?? 0;
+          if (selectedToken.symbol === 'SOL') {
+            tokBal = bal.sol;
+          } else {
+            const tokenBal = bal.tokens.find((tok) => tok.mint === selectedToken.mint_address);
+            tokBal = tokenBal?.balance ?? 0;
+          }
         }
         setTokenBalance(tokBal);
 
@@ -525,10 +529,12 @@ function TradeContent() {
           <span className="text-gray-400">Available</span>
           <span className="font-medium text-white">{side === 'buy' ? quoteBalance.toFixed(6) : tokenBalance.toFixed(6)} {side === 'buy' ? quoteSymbol : selectedToken?.symbol}</span>
         </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-gray-400">Max {side === 'buy' ? 'Buy' : 'Sell'}</span>
-          <span className="font-medium text-white">{maxBalance > 0 ? maxBalance.toFixed(4) : '0.0000'} {selectedToken?.symbol}</span>
-        </div>
+        {side === 'buy' && (
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-400">Max Buy</span>
+            <span className="font-medium text-white">{maxBalance > 0 ? maxBalance.toFixed(4) : '0.0000'} {selectedToken?.symbol}</span>
+          </div>
+        )}
       </section>
 
       {/* Execute Button */}
