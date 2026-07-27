@@ -431,23 +431,27 @@ function TradeContent() {
             <div className="relative" style={{ height: '22px' }}>
               {/* Background Track */}
               <div className="absolute top-1/2 left-0 right-0 h-1 bg-gray-700 -translate-y-1/2 rounded-full" />
-              {/* Fill Track */}
-              <div 
-                className="absolute top-1/2 left-0 h-1 bg-primary-500 -translate-y-1/2 rounded-full transition-all" 
-                style={{ width: `${currentRatio * 100}%` }} 
+              {/* Fill Track — 드래그 정도에 따라 색상 그라데이션 (시안 → 보라) */}
+              <div
+                className="absolute top-1/2 left-0 h-1 -translate-y-1/2 rounded-full transition-all"
+                style={{
+                  width: `${currentRatio * 100}%`,
+                  background: `linear-gradient(to right, #06b6d4 ${Math.min(currentRatio * 133, 100)}%, #6366f1 100%)`,
+                  boxShadow: currentRatio > 0 ? '0 0 6px rgba(99, 102, 241, 0.5)' : 'none',
+                }}
               />
-              
+
               {/* Tooltip for percentage */}
-              <div 
+              <div
                 className="absolute -top-7 -translate-x-1/2 text-[10px] font-bold text-white bg-primary-500 px-1.5 py-0.5 rounded shadow-lg pointer-events-none transition-all z-40"
                 style={{ left: `${currentRatio * 100}%`, opacity: percentage > 0 ? 1 : 0 }}
               >
                 {percentage}%
               </div>
 
-              {/* Slider Markers */}
+              {/* Slider Markers — 0% 포함 모든 마커 */}
               <div className="absolute inset-x-0 inset-y-0 flex items-center z-20 pointer-events-auto">
-                {QUICK_AMOUNT_RATIOS.map((ratio) => {
+                {[0, ...QUICK_AMOUNT_RATIOS].map((ratio) => {
                   const isActive = (Number(quantity) || 0) >= effectiveMax * ratio - effectiveMax * 0.01;
                   return (
                     <button
@@ -459,10 +463,17 @@ function TradeContent() {
                         const val = Number((effectiveMax * ratio).toFixed(decimals));
                         setQuantity(String(val));
                       }}
-                      className={`absolute -translate-x-1/2 block w-4 h-4 rounded-full border-2 border-gray-900 shadow-md transition-colors cursor-pointer ${
-                        isActive ? 'bg-primary-500' : 'bg-gray-300'
+                      className={`absolute -translate-x-1/2 block w-4 h-4 rounded-full border-2 border-gray-900 shadow-md transition-all duration-200 cursor-pointer ${
+                        isActive
+                          ? 'bg-white scale-110'
+                          : 'bg-gray-400'
                       }`}
-                      style={{ left: `${ratio * 100}%` }}
+                      style={{
+                        left: `${ratio * 100}%`,
+                        boxShadow: isActive
+                          ? '0 0 8px rgba(255, 255, 255, 0.9), 0 0 14px rgba(99, 102, 241, 0.6)'
+                          : 'none',
+                      }}
                       aria-label={`${Math.round(ratio * 100)}%`}
                     />
                   );
