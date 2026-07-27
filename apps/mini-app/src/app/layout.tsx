@@ -38,13 +38,13 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen">
         <Script id="tg-theme" strategy="afterInteractive">
-          {\`
+          {`
             if (window.Telegram && window.Telegram.WebApp) {
               window.Telegram.WebApp.ready();
               window.Telegram.WebApp.setHeaderColor('#1a1a2e');
               window.Telegram.WebApp.setBackgroundColor('#1a1a2e');
             }
-          \`}
+          `}
         </Script>
         <I18nProvider>
           <ToastProvider>{children}</ToastProvider>
