@@ -341,6 +341,7 @@ export default function SettingsPage() {
       {/* 새 지갑 PIN 설정 */}
       <PinModal
         isOpen={showCreatePin}
+        mode="setup"
         title={t('settings.pinTitle')}
         subtitle={t('settings.pinSubtitleCreate')}
         onConfirm={handleCreateWallet}
@@ -358,6 +359,7 @@ export default function SettingsPage() {
       {/* 시드 임포트 — PIN 설정 */}
       <PinModal
         isOpen={showImportPin}
+        mode="setup"
         title={t('settings.pinTitle')}
         subtitle={t('settings.pinSubtitleImport')}
         onConfirm={handleImportWallet}

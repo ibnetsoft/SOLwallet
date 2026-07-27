@@ -8,6 +8,7 @@ interface PinModalProps {
   isOpen: boolean;
   title: string;
   subtitle?: string;
+  mode?: 'setup' | 'verify';
   onConfirm: (pin: string) => Promise<void>;
   onCancel: () => void;
   error?: string;
@@ -17,6 +18,7 @@ export default function PinModal({
   isOpen,
   title,
   subtitle,
+  mode = 'verify',
   onConfirm,
   onCancel,
   error,
@@ -29,36 +31,27 @@ export default function PinModal({
   const [localError, setLocalError] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handlePinChange = useCallback((value: string) => {
-    // 숫자만, 최대 6자리
-    const filtered = value.replace(/\D/g, '').slice(0, 6);
-    if (step === 'input') setPin(filtered);
-    else setConfirmPin(filtered);
-    setLocalError('');
-  }, [step]);
-
-  const handleNext = async () => {
-    if (pin.length < PIN_MIN_LENGTH) {
+  const handleNext = async (currentPin = pin) => {
+    if (currentPin.length < PIN_MIN_LENGTH) {
       setLocalError(t('pin.minDigits', { min: PIN_MIN_LENGTH }));
       return;
     }
 
-    if (step === 'input') {
+    if (mode === 'setup' && step === 'input') {
       setStep('confirm');
       setConfirmPin('');
       inputRef.current?.focus();
       return;
     }
 
-    // confirm 단계
-    if (confirmPin !== pin) {
+    if (mode === 'setup' && confirmPin !== currentPin) {
       setLocalError(t('pin.mismatch'));
       return;
     }
 
     setLoading(true);
     try {
-      await onConfirm(pin);
+      await onConfirm(currentPin);
       // 성공하면 모달 닫기
       setPin('');
       setConfirmPin('');
@@ -66,10 +59,29 @@ export default function PinModal({
       setLocalError('');
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : t('common.error'));
+      // 에러 시 PIN 초기화하여 다시 입력하게 함 (verify 모드일 때)
+      if (mode === 'verify') {
+        setPin('');
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  const handlePinChange = useCallback((value: string) => {
+    const filtered = value.replace(/\D/g, '').slice(0, 6);
+    if (step === 'input') setPin(filtered);
+    else setConfirmPin(filtered);
+    setLocalError('');
+    
+    // verify 모드일 때는 6자리가 되면 자동 제출
+    if (mode === 'verify' && filtered.length === PIN_MIN_LENGTH) {
+      // setTimeout을 주어 마지막 UI 업데이트(도트)가 반영된 후 제출되도록 함
+      setTimeout(() => {
+        handleNext(filtered);
+      }, 50);
+    }
+  }, [step, mode, handleNext]);
 
   const handleCancel = () => {
     setPin('');
@@ -106,7 +118,11 @@ export default function PinModal({
         )}
 
         <p className="text-sm text-gray-400 text-center mb-2">
-          {step === 'input' ? t('pin.setup', { min: PIN_MIN_LENGTH }) : t('pin.reenter')}
+          {mode === 'setup'
+            ? step === 'input'
+              ? t('pin.setup', { min: PIN_MIN_LENGTH })
+              : t('pin.reenter')
+            : t('pin.reenter')}
         </p>
 
         <input
@@ -162,11 +178,15 @@ export default function PinModal({
             {t('common.cancel')}
           </button>
           <button
-            onClick={handleNext}
-            disabled={loading || (step === 'input' ? pin.length < PIN_MIN_LENGTH : confirmPin.length < PIN_MIN_LENGTH)}
+            onClick={() => handleNext(mode === 'setup' && step === 'confirm' ? confirmPin : pin)}
+            disabled={loading || (mode === 'setup' && step === 'confirm' ? confirmPin.length < PIN_MIN_LENGTH : pin.length < PIN_MIN_LENGTH)}
             className="flex-1 py-3 rounded-xl bg-primary-600 text-white font-medium disabled:opacity-50"
           >
-            {loading ? t('common.processing') : step === 'input' ? t('common.next') : t('common.confirm')}
+            {loading
+              ? t('common.processing')
+              : mode === 'setup' && step === 'input'
+              ? t('common.next')
+              : t('common.confirm')}
           </button>
         </div>
       </div>
