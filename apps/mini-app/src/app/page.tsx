@@ -308,7 +308,8 @@ function HomePage() {
             </span>
             <span className="text-xs text-gray-500">USDT</span>
           </div>
-          <div className="shrink-0">
+          {/* Sparkline (temporarily hidden) */}
+          <div className="shrink-0 hidden">
             <Sparkline
               data={sparkData}
               width={140}
