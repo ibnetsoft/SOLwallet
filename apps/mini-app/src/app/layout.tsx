@@ -5,13 +5,13 @@ import { ToastProvider } from '@/components/Toast';
 import { I18nProvider } from '@/lib/i18n';
 
 export const metadata: Metadata = {
-  title: 'SOL Wallet',
-  description: 'SOL Wallet — Solana Trading Telegram Mini App',
+  title: 'AOI Wallet',
+  description: 'AOI Wallet — Solana Trading Telegram Mini App',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'SOL Wallet',
+    title: 'AOI Wallet',
   },
 };
 

@@ -226,7 +226,7 @@ function HomePage() {
               <img src="/icons/icon-192x192.png" alt="Logo" className="w-full h-full object-cover" />
             </div>
             <div>
-              <h1 className="text-lg font-bold tracking-tight">SOLWallet</h1>
+              <h1 className="text-lg font-bold tracking-tight">AOI Wallet</h1>
             </div>
           </div>
 

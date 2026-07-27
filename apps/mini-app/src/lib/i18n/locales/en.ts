@@ -13,7 +13,7 @@ const en: Record<TranslationKey, string> = {
   'common.items': 'items',
 
   // ─── Layout ───
-  'layout.title': 'SOL Wallet',
+  'layout.title': 'AOI Wallet',
   'layout.description': 'Solana Limit Order Trading Telegram Mini App',
 
   // ─── Bottom Nav ───
@@ -234,7 +234,7 @@ const en: Record<TranslationKey, string> = {
   'mnemonic.acknowledged': 'I have saved my seed phrase',
 
   // ─── Referral ───
-  'referral.shareTitle': 'SOL Wallet Referral Link',
+  'referral.shareTitle': 'AOI Wallet Referral Link',
   'referral.code': 'Code: {code}',
   'referral.telegram': 'Telegram: {link}',
   'referral.web': 'Web: {link}',

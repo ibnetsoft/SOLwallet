@@ -11,7 +11,7 @@ const zh: Record<string, string> = {
   'common.items': '项目',
 
   // ─── Layout ───
-  'layout.title': 'SOL Wallet',
+  'layout.title': 'AOI Wallet',
   'layout.description': 'Solana 限价交易 Telegram 迷你应用',
 
   // ─── Bottom Nav ───
@@ -232,7 +232,7 @@ const zh: Record<string, string> = {
   'mnemonic.acknowledged': '我已保存助记词',
 
   // ─── Referral ───
-  'referral.shareTitle': 'SOL Wallet 推荐链接',
+  'referral.shareTitle': 'AOI Wallet 推荐链接',
   'referral.code': '推荐码：{code}',
   'referral.telegram': 'Telegram：{link}',
   'referral.web': '网页：{link}',

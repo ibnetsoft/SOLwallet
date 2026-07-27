@@ -107,7 +107,7 @@ export default function LoginPage() {
           <div className="w-20 h-20 rounded-2xl overflow-hidden shadow-xl flex items-center justify-center bg-gray-900 mx-auto">
             <img src="/icons/icon-192x192.png" alt="Logo" className="w-full h-full object-cover" />
           </div>
-          <h1 className="text-3xl font-bold">SOL Wallet</h1>
+          <h1 className="text-3xl font-bold">AOI Wallet</h1>
         </div>
 
         {/* 체크 중 */}

@@ -11,7 +11,7 @@ const ja: Record<string, string> = {
   'common.items': '項目',
 
   // ─── Layout ───
-  'layout.title': 'SOL Wallet',
+  'layout.title': 'AOI Wallet',
   'layout.description': 'Solana 指値取引 Telegram ミニアプリ',
 
   // ─── Bottom Nav ───
@@ -232,7 +232,7 @@ const ja: Record<string, string> = {
   'mnemonic.acknowledged': 'シードフレーズを保存しました',
 
   // ─── Referral ───
-  'referral.shareTitle': 'SOL Wallet 紹介リンク',
+  'referral.shareTitle': 'AOI Wallet 紹介リンク',
   'referral.code': '紹介コード：{code}',
   'referral.telegram': 'Telegram：{link}',
   'referral.web': 'ウェブ：{link}',

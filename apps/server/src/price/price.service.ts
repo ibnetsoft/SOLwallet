@@ -53,10 +53,20 @@ export class PriceService {
         const spread = bestAsk - bestBid;
 
         if (midPrice > 0) {
+          // Manifest 오더북은 현재 호가창만 존재하므로 24h 내역이 없습니다.
+          // 유저에게 유의미한 변동율을 보여주기 위해 Jupiter의 24h 변동율을 가져와 합성합니다.
+          let change24hPct = 0;
+          try {
+            const jup = await this.getSolPriceFromJupiter();
+            change24hPct = jup.change24hPct;
+          } catch (e) {
+            this.logger.debug('Failed to fetch 24h pct from Jupiter for manifest fallback');
+          }
+
           return {
             price: midPrice,
             source: 'manifest',
-            change24hPct: 0, // Manifest 오더북엔 24h 변동률 없음
+            change24hPct,
             bestBid,
             bestAsk,
             spread,
