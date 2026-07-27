@@ -26,10 +26,11 @@ export interface SolPriceData {
  */
 export async function fetchSolPrice(): Promise<SolPriceData | null> {
   try {
-    const data = await apiFetch<SolPriceData>('/price/sol');
-    if (!data || typeof data.usdPrice !== 'number') return null;
+    // API returns { price, change24hPct, source, ... }
+    const data = await apiFetch<any>('/price/sol');
+    if (!data || typeof data.price !== 'number') return null;
     return {
-      usdPrice: data.usdPrice,
+      usdPrice: data.price,
       change24hPct: typeof data.change24hPct === 'number' ? data.change24hPct : 0,
       source: data.source,
       bestBid: data.bestBid,
