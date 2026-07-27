@@ -574,9 +574,20 @@ function AssetRow({
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-400 tabular-nums mt-0.5">
-            {balance.toFixed(4)} {symbol}
-          </p>
+          {typeof changePct === 'number' && (
+            <p
+              className={`text-[10px] tabular-nums mt-0.5 ${
+                changePct > 0
+                  ? 'text-green-400'
+                  : changePct < 0
+                    ? 'text-red-400'
+                    : 'text-gray-500' // 0% — 회색
+              }`}
+            >
+              {changePct > 0 ? '▲ ' : changePct < 0 ? '▼ ' : ''}
+              {Math.abs(changePct).toFixed(2)}%
+            </p>
+          )}
         </div>
       </div>
 
@@ -623,20 +634,9 @@ function AssetRow({
           <p className="font-medium text-sm tabular-nums">
             ${usdValue > 0 ? usdValue.toFixed(5) : '0.00000'}
           </p>
-          {typeof changePct === 'number' && (
-            <p
-              className={`text-[10px] tabular-nums mt-0.5 ${
-                changePct > 0
-                  ? 'text-green-400'
-                  : changePct < 0
-                    ? 'text-red-400'
-                    : 'text-gray-500' // 0% — 회색
-              }`}
-            >
-              {changePct > 0 ? '▲ ' : changePct < 0 ? '▼ ' : ''}
-              {Math.abs(changePct).toFixed(2)}%
-            </p>
-          )}
+          <p className="text-[10px] text-gray-400 tabular-nums mt-0.5">
+            {balance.toFixed(4)} {symbol}
+          </p>
         </div>
       )}
     </Link>
