@@ -13,7 +13,29 @@ import { SkeletonCard } from '@/components/Skeleton';
 import { QUICK_AMOUNT_RATIOS, USDT_MINT, USDC_MINT } from '@solwallet/config';
 import { getWalletBalance } from '@/lib/api/balance';
 import { isLoggedIn } from '@/lib/api/auth';
+import { getTokenLogoUrl } from '@/lib/tokenLogo';
 import { useT } from '@/lib/i18n';
+
+// ===== Token Logo (로고 이미지 + fallback) =====
+function TokenLogo({ symbol }: { symbol: string }) {
+  const [imgError, setImgError] = useState(false);
+  const logoUrl = getTokenLogoUrl(symbol);
+  return (
+    <div className="w-5 h-5 rounded-full overflow-hidden bg-gray-600 flex items-center justify-center shrink-0">
+      {!imgError ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={logoUrl}
+          alt={symbol}
+          className="w-full h-full object-cover"
+          onError={() => setImgError(true)}
+        />
+      ) : (
+        <span className="text-[9px] font-bold text-gray-300">{symbol.charAt(0)}</span>
+      )}
+    </div>
+  );
+}
 
 function TradeContent() {
   const { t } = useT();
@@ -269,15 +291,19 @@ function TradeContent() {
       <section className="mb-4 relative">
         <button
           onClick={() => setShowTokenDropdown(!showTokenDropdown)}
-          className="w-full bg-gray-800/50 rounded-xl p-4 flex items-center justify-between"
+          className="w-full bg-gray-800/50 rounded-xl px-3 py-2 flex items-center justify-between"
         >
-          <div>
-            <p className="font-medium">{selectedToken ? selectedToken.symbol : t('trade.selectToken')}</p>
-            <p className="text-sm text-gray-400">
-              {selectedToken ? `${selectedToken.symbol}/${quoteSymbol}` : t('trade.baseCurrency')}
-            </p>
-          </div>
-          <span className="text-gray-400">▼</span>
+          {selectedToken ? (
+            <div className="flex items-center gap-2">
+              <TokenLogo symbol={selectedToken.symbol} />
+              <span className="text-sm text-gray-300">
+                {selectedToken.symbol}/{quoteSymbol}
+              </span>
+            </div>
+          ) : (
+            <span className="text-sm text-gray-400">{t('trade.selectToken')}</span>
+          )}
+          <span className="text-xs text-gray-400">▼</span>
         </button>
 
         {showTokenDropdown && (
@@ -293,12 +319,14 @@ function TradeContent() {
                     setSelectedToken(token);
                     setShowTokenDropdown(false);
                   }}
-                  className={`w-full px-4 py-3 text-left hover:bg-gray-700 flex justify-between ${
+                  className={`w-full px-3 py-2 text-left hover:bg-gray-700 flex items-center gap-2 ${
                     selectedToken?.id === token.id ? 'bg-gray-700' : ''
                   }`}
                 >
-                  <span className="font-medium">{token.symbol}</span>
-                  <span className="text-xs text-gray-400">{token.mint_address.slice(0, 4)}...</span>
+                  <TokenLogo symbol={token.symbol} />
+                  <span className="text-sm text-gray-300">
+                    {token.symbol}/{quoteSymbol}
+                  </span>
                 </button>
               ))}
           </div>
