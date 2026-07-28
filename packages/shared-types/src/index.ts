@@ -181,6 +181,14 @@ export interface AdminOrderDetail {
 // API Response Types
 // ========================================
 
+export interface ToggleTokenDto {
+  isActive: boolean;
+}
+
+export interface ReorderTokensDto {
+  order: { [tokenId: string]: number };
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;

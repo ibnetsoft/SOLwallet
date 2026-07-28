@@ -19,7 +19,8 @@ export class TokensService {
       .from('tokens')
       .select('*')
       .eq('is_active', true)
-      .order('symbol', { ascending: true });
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: false });
 
     if (error) {
       this.logger.error(`Failed to get tokens: ${error.message}`);

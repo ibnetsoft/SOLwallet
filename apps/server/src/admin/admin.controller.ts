@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Patch,
   Delete,
   Param,
@@ -18,6 +19,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { AdminService } from './admin.service';
 import { AdminGuard } from './admin.guard';
 import { CreateTokenDto } from '../common/dto/token.dto';
+import type { ToggleTokenDto, UpdateFeeSettingsDto, ReorderTokensDto } from '@solwallet/shared-types';
 import { BalanceService } from '../balance/balance.service';
 
 @Controller('admin')
@@ -73,6 +75,15 @@ export class AdminController {
   async getTokens() {
     const tokens = await this.adminService.getTokens();
     return { success: true, data: tokens };
+  }
+
+  @Put('tokens/reorder')
+  async reorderTokens(@Body() dto: ReorderTokensDto) {
+    if (!dto || !dto.order) {
+      throw new BadRequestException('order 값이 필요합니다.');
+    }
+    await this.adminService.reorderTokens(dto.order);
+    return { success: true };
   }
 
   @Post('tokens')

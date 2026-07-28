@@ -244,6 +244,7 @@ export class AdminService {
     const { data } = await this.client
       .from('tokens')
       .select('*')
+      .order('sort_order', { ascending: true })
       .order('created_at', { ascending: false });
 
     // 로고 URL은 파일명 규칙으로 생성 (token-logos/{symbol-lowercase}.png)
@@ -565,6 +566,27 @@ export class AdminService {
       directCount: r.direct_count as number,
       createdAt: r.created_at as string,
     }));
+  }
+
+  /**
+   * 토큰 순서 변경 (Bulk update)
+   */
+  async reorderTokens(orderMap: { [tokenId: string]: number }) {
+    // Supabase JS client doesn't support bulk update natively in a single query easily without RPC,
+    // so we'll do it sequentially or in parallel since it's an admin operation.
+    const promises = Object.entries(orderMap).map(([id, sortOrder]) =>
+      this.client.from('tokens').update({ sort_order: sortOrder }).eq('id', id)
+    );
+
+    const results = await Promise.all(promises);
+    const errors = results.filter(r => r.error);
+    
+    if (errors.length > 0) {
+      this.logger.error(`Failed to reorder some tokens: ${errors[0].error?.message}`);
+      throw new Error('일부 토큰의 순서를 변경하지 못했습니다.');
+    }
+
+    return true;
   }
 
   // ========================================

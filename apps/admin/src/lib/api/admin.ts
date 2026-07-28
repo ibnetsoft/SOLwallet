@@ -64,6 +64,13 @@ export function getTokens(): Promise<AdminTokenDetail[]> {
   return apiFetch('/admin/tokens');
 }
 
+export function reorderTokens(order: { [tokenId: string]: number }): Promise<Record<string, unknown>> {
+  return apiFetch('/admin/tokens/reorder', {
+    method: 'PUT',
+    body: JSON.stringify({ order }),
+  });
+}
+
 export function createToken(dto: { mintAddress: string; symbol: string; decimals: number }): Promise<Record<string, unknown>> {
   return apiFetch('/admin/tokens', {
     method: 'POST',

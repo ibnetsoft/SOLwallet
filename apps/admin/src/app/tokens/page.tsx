@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { getTokens, createToken, toggleToken, deleteToken, uploadTokenLogo } from '@/lib/api/admin';
+import { getTokens, createToken, toggleToken, deleteToken, uploadTokenLogo, reorderTokens } from '@/lib/api/admin';
 import type { AdminTokenDetail } from '@solwallet/shared-types';
 
 // Solana base58 mint address (32~44자)
@@ -11,6 +11,9 @@ export default function TokensPage() {
   const [tokens, setTokens] = useState<AdminTokenDetail[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  
+  const [isOrderChanged, setIsOrderChanged] = useState(false);
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
 
   // 등록 폼
   const [mintAddress, setMintAddress] = useState('');
@@ -54,6 +57,7 @@ export default function TokensPage() {
     try {
       const data = await getTokens();
       setTokens(data);
+      setIsOrderChanged(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : '토큰 조회 실패');
     } finally {
@@ -137,6 +141,45 @@ export default function TokensPage() {
       setError(err instanceof Error ? err.message : '로고 업로드 실패');
     } finally {
       setUploadingSymbol(null);
+    }
+  };
+
+  const handleMoveUp = (index: number) => {
+    if (index === 0) return;
+    const newTokens = [...tokens];
+    const temp = newTokens[index - 1];
+    newTokens[index - 1] = newTokens[index];
+    newTokens[index] = temp;
+    setTokens(newTokens);
+    setIsOrderChanged(true);
+  };
+
+  const handleMoveDown = (index: number) => {
+    if (index === tokens.length - 1) return;
+    const newTokens = [...tokens];
+    const temp = newTokens[index + 1];
+    newTokens[index + 1] = newTokens[index];
+    newTokens[index] = temp;
+    setTokens(newTokens);
+    setIsOrderChanged(true);
+  };
+
+  const handleSaveOrder = async () => {
+    setIsSavingOrder(true);
+    setError('');
+    try {
+      const orderMap = tokens.reduce((acc, token, index) => {
+        acc[token.id] = index;
+        return acc;
+      }, {} as { [key: string]: number });
+      await reorderTokens(orderMap);
+      setIsOrderChanged(false);
+      alert('순서가 저장되었습니다.');
+      fetchTokens();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '순서 저장 실패');
+    } finally {
+      setIsSavingOrder(false);
     }
   };
 
@@ -232,11 +275,23 @@ export default function TokensPage() {
 
       {/* Token List */}
       <div className="bg-gray-800/50 rounded-xl border border-gray-700/50">
-        <h2 className="text-lg font-bold p-6 pb-0 mb-4">등록된 토큰</h2>
+        <div className="flex justify-between items-center p-6 pb-0 mb-4">
+          <h2 className="text-lg font-bold">등록된 토큰</h2>
+          {isOrderChanged && (
+            <button
+              onClick={handleSaveOrder}
+              disabled={isSavingOrder}
+              className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition disabled:opacity-50"
+            >
+              {isSavingOrder ? '저장 중...' : '순서 저장'}
+            </button>
+          )}
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-700">
+                <th className="text-center py-3 px-4 text-gray-400 font-medium">순서</th>
                 <th className="text-center py-3 px-6 text-gray-400 font-medium">로고</th>
                 <th className="text-left py-3 px-6 text-gray-400 font-medium">심볼</th>
                 <th className="text-left py-3 px-6 text-gray-400 font-medium">Mint Address</th>
@@ -255,8 +310,28 @@ export default function TokensPage() {
                   <td colSpan={6} className="text-center py-8 text-gray-400">데이터가 없습니다</td>
                 </tr>
               ) : (
-                tokens.map((token) => (
+                tokens.map((token, index) => (
                   <tr key={token.id} className="border-b border-gray-700/50 hover:bg-gray-700/30 transition">
+                    <td className="py-3 px-4">
+                      <div className="flex flex-col items-center gap-1">
+                        <button
+                          onClick={() => handleMoveUp(index)}
+                          disabled={index === 0}
+                          className="text-gray-400 hover:text-white disabled:opacity-30"
+                          title="위로"
+                        >
+                          ▲
+                        </button>
+                        <button
+                          onClick={() => handleMoveDown(index)}
+                          disabled={index === tokens.length - 1}
+                          className="text-gray-400 hover:text-white disabled:opacity-30"
+                          title="아래로"
+                        >
+                          ▼
+                        </button>
+                      </div>
+                    </td>
                     <td className="py-3 px-6">
                       <LogoCell
                         symbol={token.symbol}

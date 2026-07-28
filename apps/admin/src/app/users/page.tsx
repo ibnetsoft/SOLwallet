@@ -127,14 +127,6 @@ export default function UsersPage() {
   useEffect(() => {
     getTokens().then((res) => {
       const activeTokens = res.filter(t => t.isActive);
-      // USDT, USDC, SOL 순서 고정, 나머지는 이름순
-      const order: Record<string, number> = { 'USDT': 1, 'USDC': 2, 'SOL': 3 };
-      activeTokens.sort((a, b) => {
-        const aOrder = order[a.symbol] || 999;
-        const bOrder = order[b.symbol] || 999;
-        if (aOrder !== bOrder) return aOrder - bOrder;
-        return a.symbol.localeCompare(b.symbol);
-      });
       setTokens(activeTokens);
     }).catch(() => {});
   }, []);
