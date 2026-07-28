@@ -34,7 +34,7 @@ export class AdminGuard extends AuthGuard('jwt') {
     }
 
     // 2단계: role 검증 (try/catch 밖에서 별도 처리)
-    if (payload.role !== 'admin') {
+    if (!['admin', 'superadmin', 'subadmin'].includes(payload.role || '')) {
       this.logger.warn(`Non-admin token attempted admin access: sub=${payload.sub}`);
       throw new UnauthorizedException('관리자 권한이 없습니다.');
     }

@@ -2,15 +2,46 @@ import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { createHmac, timingSafeEqual } from 'crypto';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+  private readonly supabase: SupabaseClient;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly jwtService: JwtService,
-  ) {}
+  ) {
+    const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
+    const supabaseKey = this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY');
+    
+    if (supabaseUrl && supabaseKey) {
+      this.supabase = createClient(supabaseUrl, supabaseKey, {
+        auth: { persistSession: false },
+      });
+    }
+  }
+
+  async verifySubAdmin(username: string, password: string): Promise<{ id: string, username: string } | null> {
+    if (!this.supabase) return null;
+    
+    const { data, error } = await this.supabase
+      .from('sub_admins')
+      .select('id, username, password_hash')
+      .eq('username', username)
+      .single();
+
+    if (error || !data) {
+      return null;
+    }
+
+    const isMatch = await bcrypt.compare(password, data.password_hash);
+    if (!isMatch) return null;
+
+    return { id: data.id, username: data.username };
+  }
 
   /**
    * Telegram initData 검증
@@ -90,12 +121,23 @@ export class AuthService {
   }
 
   /**
-   * Admin JWT 토큰 생성 — role: 'admin' 포함
+   * Admin JWT 토큰 생성 — role: 'superadmin' 포함
    */
   generateAdminToken(): string {
     return this.jwtService.sign({
       sub: 'admin',
-      role: 'admin',
+      role: 'superadmin',
+    });
+  }
+
+  /**
+   * Sub-Admin JWT 토큰 생성 — role: 'subadmin' 포함
+   */
+  generateSubAdminToken(subAdminId: string, username: string): string {
+    return this.jwtService.sign({
+      sub: subAdminId,
+      username,
+      role: 'subadmin',
     });
   }
 

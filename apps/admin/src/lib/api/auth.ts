@@ -1,13 +1,18 @@
 import { API_BASE } from './client';
 
 /**
- * Admin 로그인 — secret 검증 → JWT 발급 → localStorage 저장
+ * Admin 로그인 — username/password 검증 → JWT 발급 → localStorage 저장
+ * username 없이 secret만 오면 이전 호환 방식으로 처리
  */
-export async function adminLogin(secret: string): Promise<void> {
+export async function adminLogin(usernameOrSecret: string, password?: string): Promise<void> {
+  const body = password
+    ? { username: usernameOrSecret, password }
+    : { secret: usernameOrSecret };
+
   const res = await fetch(`${API_BASE}/auth/admin`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ secret }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
@@ -28,8 +33,6 @@ export async function adminLogin(secret: string): Promise<void> {
 
 /**
  * Admin 토큰 삭제 (로그아웃)
- *
- * window.location 은 basePath('/admin')를 무시하므로 /admin/login 을 명시해야 한다.
  */
 export function adminLogout(): void {
   if (typeof window !== 'undefined') {
@@ -44,4 +47,23 @@ export function adminLogout(): void {
 export function getAdminToken(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem('admin_auth_token');
+}
+
+/**
+ * JWT payload에서 role을 읽어온다 (클라이언트 전용, 서명 검증 없음)
+ * 반환: 'superadmin' | 'subadmin' | 'admin' | null
+ */
+export function getAdminRole(): string | null {
+  const token = getAdminToken();
+  if (!token) return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '==='.slice((base64.length + 3) % 4);
+    const payload = JSON.parse(window.atob(padded)) as { role?: string };
+    return payload.role || null;
+  } catch {
+    return null;
+  }
 }

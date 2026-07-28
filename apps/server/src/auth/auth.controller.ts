@@ -64,22 +64,30 @@ export class AuthController {
    */
   @Post('admin')
   @Throttle({ default: { limit: 10, ttl: 60000 } })
-  async adminAuth(@Body() body: { secret: string }) {
-    if (!body.secret) {
-      throw new UnauthorizedException('Admin secret is required.');
+  async adminAuth(@Body() body: { secret?: string; username?: string; password?: string }) {
+    // 호환성을 위해 secret이 오면 username='admin', password=secret 으로 처리
+    const username = body.username || (body.secret ? 'admin' : null);
+    const password = body.password || body.secret;
+
+    if (!username || !password) {
+      throw new UnauthorizedException('아이디와 비밀번호를 입력해주세요.');
     }
 
-    const isValid = this.authService.validateAdminSecret(body.secret);
-    if (!isValid) {
-      throw new UnauthorizedException('유효하지 않은 관리자 비밀키입니다.');
+    if (username === 'admin') {
+      const isValid = this.authService.validateAdminSecret(password);
+      if (!isValid) {
+        throw new UnauthorizedException('유효하지 않은 관리자 비밀번호입니다.');
+      }
+      const token = this.authService.generateAdminToken();
+      return { success: true, data: { token } };
+    } else {
+      const subAdmin = await this.authService.verifySubAdmin(username, password);
+      if (!subAdmin) {
+        throw new UnauthorizedException('유효하지 않은 계정 정보입니다.');
+      }
+      const token = this.authService.generateSubAdminToken(subAdmin.id, subAdmin.username);
+      return { success: true, data: { token } };
     }
-
-    const token = this.authService.generateAdminToken();
-
-    return {
-      success: true,
-      data: { token },
-    };
   }
 
   /**

@@ -285,3 +285,13 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 ALTER TABLE tokens ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
+
+-- =============================================
+-- 서브어드민 (Sub Admins)
+-- =============================================
+CREATE TABLE IF NOT EXISTS sub_admins (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  username TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);

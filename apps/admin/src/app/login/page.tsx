@@ -4,23 +4,20 @@ import { useState } from 'react';
 import { adminLogin } from '@/lib/api/auth';
 
 export default function LoginPage() {
-  const [secret, setSecret] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!secret.trim()) return;
+    if (!username.trim() || !password.trim()) return;
 
     setIsLoading(true);
     setError('');
 
     try {
-      await adminLogin(secret.trim());
-      // 토큰 저장이 localStorage에 확실히 반영된 뒤 페이지 전환.
-      // AdminAppShell 이 마운트될 때 토큰을 읽어 인증 상태를 판단하므로,
-      // 너무 빨리 router.replace 하면 토큰이 안 읽혀 다시 로그인으로 튕길 수 있다.
-      // window.location 은 basePath를 무시하므로 /admin/ 을 명시한다.
+      await adminLogin(username.trim(), password.trim());
       await new Promise((resolve) => setTimeout(resolve, 100));
       window.location.replace('/admin/');
     } catch (err) {
@@ -35,23 +32,36 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold mb-2">AoiWallet</h1>
+          <h1 className="text-3xl font-bold mb-2">AOI Wallet</h1>
           <p className="text-sm text-gray-400">관리자 대시보드</p>
         </div>
 
         {/* Login Form */}
         <form onSubmit={handleSubmit} className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
-          <h2 className="text-lg font-bold text-center mb-4">관리자 로그인</h2>
+          <h2 className="text-lg font-bold text-center mb-5">관리자 로그인</h2>
 
           <div className="mb-4">
-            <label className="block text-sm text-gray-400 mb-2">Admin Secret</label>
+            <label className="block text-sm text-gray-400 mb-2">아이디</label>
             <input
-              type="password"
-              value={secret}
-              onChange={(e) => setSecret(e.target.value)}
-              placeholder="관리자 비밀키 입력"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="관리자 아이디 입력"
               className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 outline-none focus:border-primary-500 transition"
               autoFocus
+              autoComplete="username"
+            />
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm text-gray-400 mb-2">비밀번호</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="비밀번호 입력"
+              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 outline-none focus:border-primary-500 transition"
+              autoComplete="current-password"
             />
           </div>
 
@@ -61,7 +71,7 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={isLoading || !secret.trim()}
+            disabled={isLoading || !username.trim() || !password.trim()}
             className="w-full bg-primary-600 hover:bg-primary-700 text-white py-3 rounded-lg font-medium transition disabled:opacity-50"
           >
             {isLoading ? '인증 중...' : '로그인'}

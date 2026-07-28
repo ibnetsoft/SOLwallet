@@ -173,3 +173,26 @@ export function updateFeeRate(feeRate: number): Promise<{ feeRate: number }> {
     body: JSON.stringify({ feeRate }),
   });
 }
+
+// ─── 서브어드민 관리 ───
+
+export interface SubAdmin {
+  id: string;
+  username: string;
+  created_at: string;
+}
+
+export function getSubAdmins(): Promise<SubAdmin[]> {
+  return apiFetch('/admin/subadmins');
+}
+
+export function createSubAdmin(username: string, password: string): Promise<SubAdmin> {
+  return apiFetch('/admin/subadmins', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  });
+}
+
+export function deleteSubAdmin(id: string): Promise<{ success: boolean }> {
+  return apiFetch(`/admin/subadmins/${id}`, { method: 'DELETE' });
+}
