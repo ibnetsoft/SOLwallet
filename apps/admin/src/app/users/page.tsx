@@ -177,25 +177,31 @@ export default function UsersPage() {
           <h2 className="text-lg font-bold">🏆 방장 7일 실적</h2>
           <span className="text-sm text-gray-400">추천 리더보드</span>
         </div>
-        {referralError ? (
-          <div className="px-6 pb-6 text-danger text-sm">{referralError}</div>
-        ) : referralLoading ? (
-          <div className="px-6 pb-6 text-center py-4 text-gray-400">로딩 중...</div>
-        ) : referralStats.length === 0 ? (
-          <div className="px-6 pb-6 text-center py-4 text-gray-400">데이터가 없습니다</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-700">
-                  <th className="text-center py-3 px-6 text-gray-400 font-medium w-16">순위</th>
-                  <th className="text-left py-3 px-6 text-gray-400 font-medium">방장(추천코드)</th>
-                  <th className="text-center py-3 px-6 text-gray-400 font-medium">7일 신규</th>
-                  <th className="text-center py-3 px-6 text-gray-400 font-medium">총 하위 유저</th>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-700">
+                <th className="text-center py-3 px-6 text-gray-400 font-medium w-16">순위</th>
+                <th className="text-left py-3 px-6 text-gray-400 font-medium">방장(추천코드)</th>
+                <th className="text-center py-3 px-6 text-gray-400 font-medium">7일 신규</th>
+                <th className="text-center py-3 px-6 text-gray-400 font-medium">총 하위 유저</th>
+              </tr>
+            </thead>
+            <tbody>
+              {referralError ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-8 text-danger text-sm">{referralError}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {referralStats.map((stat, idx) => (
+              ) : referralLoading ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-8 text-gray-400">로딩 중...</td>
+                </tr>
+              ) : referralStats.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-8 text-gray-400">데이터가 없습니다</td>
+                </tr>
+              ) : (
+                referralStats.map((stat, idx) => (
                   <tr key={stat.referrerId} className="border-b border-gray-700/50 hover:bg-gray-700/30 transition">
                     <td className="py-3 px-6 text-center">
                       <span className={`text-xs px-2 py-1 rounded-full font-bold ${
@@ -222,11 +228,11 @@ export default function UsersPage() {
                       <span className="text-gray-400 text-xs">명</span>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* User Balance List */}
