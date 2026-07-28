@@ -139,15 +139,18 @@ export interface AdminStats {
 
 export interface AdminUserDetail {
   id: string;
-  telegramUid: string;
+  telegramUid: string | number;
   username: string;
   firstName: string;
   lastName: string;
-  referredBy: string | null;
-  referrerCode?: string | null;
-  referralCount?: number;
-  walletCount: number;
   createdAt: string;
+  lastLoginAt: string;
+  referralCode: string | null;
+  referrerCode: string | null;
+  sponsorTeleId: string | null;
+  level1Referrals: number;
+  totalReferrals: number;
+  walletCount: number;
 }
 
 export interface AdminTokenDetail {

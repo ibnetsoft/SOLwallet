@@ -93,8 +93,12 @@ export class UserService {
 
     if (existing) {
       // username, first_name, last_name 중 변경된 것이 있으면 업데이트
-      const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-      let needsUpdate = false;
+      // 로그인 시 항상 last_login_at 갱신
+      const updates: Record<string, unknown> = { 
+        updated_at: new Date().toISOString(),
+        last_login_at: new Date().toISOString()
+      };
+      let needsUpdate = true; // last_login_at 갱신으로 무조건 update 실행
 
       if (params.username !== undefined && params.username !== existing.username) {
         updates.username = params.username;
@@ -139,6 +143,7 @@ export class UserService {
       first_name: params.firstName,
       last_name: params.lastName,
       referral_code: await this.generateUniqueReferralCode(),
+      last_login_at: new Date().toISOString(),
     };
 
     // 추천인 코드 → referrer user id 변환 후 연결 (자기 자신 추천 방지)

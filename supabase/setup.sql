@@ -117,3 +117,31 @@ ON CONFLICT (mint_address) DO NOTHING;
 -- =============================================
 -- SELECT tablename FROM pg_tables WHERE schemaname = 'public';
 -- SELECT * FROM tokens;
+
+-- =============================================
+-- 2026-07 업데이트
+-- =============================================
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ DEFAULT NOW();
+
+-- 하위 전체 추천인 수(Total Referrals) 조회 RPC
+CREATE OR REPLACE FUNCTION get_total_referrals_count(root_user_id UUID)
+RETURNS INTEGER AS $$
+DECLARE
+  total_count INTEGER;
+BEGIN
+  WITH RECURSIVE ref_tree AS (
+    -- 1대 추천인
+    SELECT referee_id, 1 AS depth
+    FROM referrals
+    WHERE referrer_id = root_user_id
+    UNION
+    -- 2대 이상 추천인
+    SELECT r.referee_id, rt.depth + 1
+    FROM referrals r
+    JOIN ref_tree rt ON r.referrer_id = rt.referee_id
+  )
+  SELECT COUNT(*) INTO total_count FROM ref_tree;
+
+  RETURN total_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;

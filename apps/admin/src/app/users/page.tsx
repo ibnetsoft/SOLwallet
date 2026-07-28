@@ -43,26 +43,31 @@ function UserRow({
 
   return (
     <tr className="border-b border-gray-700/50 hover:bg-gray-700/30 transition">
-      <td className="py-3 px-6 text-center text-gray-400 text-xs whitespace-nowrap">
+      <td className="py-3 px-4 text-center text-gray-400 text-xs whitespace-nowrap">
         {new Date(user.createdAt).toLocaleDateString('ko-KR')}
       </td>
-      <td className="py-3 px-6">
+      <td className="py-3 px-4 text-center text-gray-400 text-xs whitespace-nowrap">
+        {user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleDateString('ko-KR') : '—'}
+      </td>
+      <td className="py-3 px-4">
         <div className="flex items-center gap-2">
-          <span className="font-medium">{user.username || user.firstName || '—'}</span>
+          <span className="font-medium text-sm">{user.username || user.firstName || user.telegramUid}</span>
         </div>
       </td>
-      <td className="py-3 px-6 text-gray-400 font-mono text-xs">{user.telegramUid}</td>
-      <td className="py-3 px-6 text-gray-400 font-mono text-xs">{user.referrerCode || '—'}</td>
-      <td className="py-3 px-6 text-center text-gray-400 font-mono text-xs">{user.referralCount || 0}</td>
+      <td className="py-3 px-4 text-gray-400 font-mono text-xs">{user.id.slice(0, 8)}...</td>
+      <td className="py-3 px-4 text-gray-400 font-mono text-xs text-center">{user.sponsorTeleId || '—'}</td>
+      <td className="py-3 px-4 text-gray-400 font-mono text-xs text-center">{user.referralCode || '—'}</td>
+      <td className="py-3 px-4 text-center text-gray-400 font-mono text-xs">{user.totalReferrals || 0}</td>
+      <td className="py-3 px-4 text-center text-gray-400 font-mono text-xs">{user.level1Referrals || 0}</td>
       {tokens.map((t) => (
-        <td key={t.id} className="py-3 px-6 text-right text-gray-400 font-mono text-xs">
+        <td key={t.id} className="py-3 px-4 text-right text-gray-400 font-mono text-xs">
           {loading ? '...' : (balances[t.mintAddress] || 0).toFixed(4)}
         </td>
       ))}
-      <td className="py-3 px-6 text-right">
+      <td className="py-3 px-4 text-right">
         <button
           onClick={() => onViewWallets(user.id)}
-          className="text-xs px-3 py-1.5 rounded-lg bg-primary-600/20 text-primary-400 hover:bg-primary-600/30 transition"
+          className="text-xs px-3 py-1.5 rounded-lg bg-primary-600/20 text-primary-400 hover:bg-primary-600/30 transition whitespace-nowrap"
         >
           {selectedUserId === user.id ? '닫기' : '지갑보기'}
         </button>
@@ -89,14 +94,14 @@ export default function UsersPage() {
   const [wallets, setWallets] = useState<AdminWalletDetail[]>([]);
   const [walletsLoading, setWalletsLoading] = useState(false);
 
-  const pageSize = 20;
+  const [pageSize, setPageSize] = useState(20);
   const totalPages = Math.ceil(total / pageSize);
 
-  const fetchUsers = async (p: number) => {
+  const fetchUsers = async (p: number, size: number) => {
     setIsLoading(true);
     setError('');
     try {
-      const data = await getUsers(p, pageSize);
+      const data = await getUsers(p, size);
       setUsers(data.users);
       setTotal(data.total);
     } catch (err) {
@@ -121,14 +126,23 @@ export default function UsersPage() {
 
   useEffect(() => {
     getTokens().then((res) => {
-      setTokens(res.filter(t => t.isActive));
+      const activeTokens = res.filter(t => t.isActive);
+      // USDT, USDC, SOL 순서 고정, 나머지는 이름순
+      const order: Record<string, number> = { 'USDT': 1, 'USDC': 2, 'SOL': 3 };
+      activeTokens.sort((a, b) => {
+        const aOrder = order[a.symbol] || 999;
+        const bOrder = order[b.symbol] || 999;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return a.symbol.localeCompare(b.symbol);
+      });
+      setTokens(activeTokens);
     }).catch(() => {});
   }, []);
 
   useEffect(() => {
-    fetchUsers(page);
+    fetchUsers(page, pageSize);
     fetchReferralStats();
-  }, [page]);
+  }, [page, pageSize]);
 
   const handleViewWallets = async (userId: string) => {
     setSelectedUserId(selectedUserId === userId ? null : userId);
@@ -219,32 +233,50 @@ export default function UsersPage() {
       <div className="bg-gray-800/50 rounded-xl border border-gray-700/50">
         <div className="p-6 pb-0 flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold">💰 유저 목록</h2>
-          <span className="text-sm text-gray-400">총 {total}명</span>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-gray-400">총 {total}명</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              className="bg-gray-700/50 border border-gray-600 rounded-lg text-sm px-2 py-1 text-gray-200 focus:outline-none focus:border-primary-500"
+            >
+              <option value={10}>10명씩 보기</option>
+              <option value={20}>20명씩 보기</option>
+              <option value={50}>50명씩 보기</option>
+              <option value={100}>100명씩 보기</option>
+            </select>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-700">
-                <th className="text-center py-3 px-6 text-gray-400 font-medium">가입일</th>
-                <th className="text-left py-3 px-6 text-gray-400 font-medium">유저</th>
-                <th className="text-left py-3 px-6 text-gray-400 font-medium">Telegram UID</th>
-                <th className="text-left py-3 px-6 text-gray-400 font-medium">스폰서(추천코드)</th>
-                <th className="text-center py-3 px-6 text-gray-400 font-medium">추천인원</th>
+                <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">가입일</th>
+                <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">마지막접속일</th>
+                <th className="text-left py-3 px-4 text-gray-400 font-medium whitespace-nowrap">Tele ID</th>
+                <th className="text-left py-3 px-4 text-gray-400 font-medium whitespace-nowrap">UID</th>
+                <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">스폰서</th>
+                <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">추천코드</th>
+                <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">총추천인원</th>
+                <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">1대추천인원</th>
                 {tokens.map(t => (
-                  <th key={t.id} className="text-right py-3 px-6 text-gray-400 font-medium">{t.symbol}</th>
+                  <th key={t.id} className="text-right py-3 px-4 text-gray-400 font-medium whitespace-nowrap">{t.symbol}</th>
                 ))}
-                <th className="text-right py-3 px-6 text-gray-400 font-medium">지갑</th>
+                <th className="text-right py-3 px-4 text-gray-400 font-medium whitespace-nowrap">지갑보기</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={7 + tokens.length} className="text-center py-8 text-gray-400">로딩 중...</td>
+                  <td colSpan={9 + tokens.length} className="text-center py-8 text-gray-400">로딩 중...</td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={7 + tokens.length} className="text-center py-8 text-gray-400">데이터가 없습니다</td>
+                  <td colSpan={9 + tokens.length} className="text-center py-8 text-gray-400">데이터가 없습니다</td>
                 </tr>
               ) : (
                 users.map((user) => (

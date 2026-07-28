@@ -91,11 +91,12 @@ export class AdminService {
       .order('created_at', { ascending: false })
       .range(from, to);
 
-    // 각 유저의 지갑 수 조회 (배치)
+    // 각 유저의 지갑 수 등 부가 정보 조회 (배치)
     const userIds = (data || []).map((u) => u.id);
     const walletCounts: Record<string, number> = {};
-    const referrerMap: Record<string, string> = {};
+    const referrerMap: Record<string, { code: string; teleId: string }> = {};
     const referralCounts: Record<string, number> = {};
+    const totalReferrals: Record<string, number> = {};
 
     if (userIds.length > 0) {
       // 1. 지갑 수
@@ -107,19 +108,22 @@ export class AdminService {
         walletCounts[w.user_id] = (walletCounts[w.user_id] || 0) + 1;
       });
 
-      // 2. 추천인 코드 (referral_code)
+      // 2. 추천인 정보 (referral_code, username, telegram_uid)
       const referrerIds = Array.from(new Set((data || []).map((u) => u.referred_by).filter(Boolean)));
       if (referrerIds.length > 0) {
         const { data: referrers } = await this.client
           .from('users')
-          .select('id, referral_code')
+          .select('id, referral_code, username, telegram_uid')
           .in('id', referrerIds);
         (referrers || []).forEach(r => {
-          referrerMap[r.id] = r.referral_code ? String(r.referral_code) : '';
+          referrerMap[r.id] = {
+            code: r.referral_code ? String(r.referral_code) : '',
+            teleId: r.username || String(r.telegram_uid)
+          };
         });
       }
 
-      // 3. 각 유저가 추천한 회원 수 (referrals 테이블 기준)
+      // 3. 각 유저가 추천한 회원 수 (1대 추천인, referrals 테이블 기준)
       const { data: referralData } = await this.client
         .from('referrals')
         .select('referrer_id')
@@ -127,12 +131,29 @@ export class AdminService {
       (referralData || []).forEach(r => {
         referralCounts[r.referrer_id] = (referralCounts[r.referrer_id] || 0) + 1;
       });
+
+      // 4. 총 추천인 수 (RPC 호출)
+      await Promise.all(
+        userIds.map(async (uid) => {
+          const { data: tCount } = await this.client.rpc('get_total_referrals_count', { root_user_id: uid });
+          totalReferrals[uid] = tCount || 0;
+        })
+      );
     }
 
     const users = (data || []).map((u) => ({
-      ...u,
-      referrerCode: u.referred_by ? (referrerMap[u.referred_by] || null) : null,
-      referralCount: referralCounts[u.id] || 0,
+      id: u.id,
+      telegramUid: u.telegram_uid,
+      username: u.username,
+      firstName: u.first_name,
+      lastName: u.last_name,
+      createdAt: u.created_at,
+      lastLoginAt: u.last_login_at || u.created_at, // 없으면 가입일로 폴백
+      referralCode: u.referral_code, // 본인의 추천코드
+      referrerCode: u.referred_by ? (referrerMap[u.referred_by]?.code || null) : null,
+      sponsorTeleId: u.referred_by ? (referrerMap[u.referred_by]?.teleId || null) : null,
+      level1Referrals: referralCounts[u.id] || 0,
+      totalReferrals: totalReferrals[u.id] || 0,
       walletCount: walletCounts[u.id] || 0,
     }));
 
