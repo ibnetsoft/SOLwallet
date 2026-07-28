@@ -53,6 +53,28 @@ export default function LoginPage() {
 
   // 초기 확인 — Telegram 환경인지, 이미 로그인되었는지
   useEffect(() => {
+    // ★ start_param을 가능한 빨리 sessionStorage에 저장 (타이밍 이슈 방지)
+    //    initDataUnsafe는 SDK 로드 직후부터 접근 가능
+    if (typeof window !== 'undefined') {
+      const tryStoreStartParam = () => {
+        const sp = (window as any).Telegram?.WebApp?.initDataUnsafe?.start_param;
+        if (sp && sp.length >= 4) {
+          sessionStorage.setItem('referral_start_param', sp);
+        }
+        // URL ?ref= 도 저장 (웹 환경 폴백)
+        const urlRef = new URLSearchParams(window.location.search).get('ref');
+        if (urlRef && urlRef.length >= 4) {
+          sessionStorage.setItem('referral_start_param', urlRef);
+        }
+      };
+      tryStoreStartParam();
+      // SDK가 늦게 로드될 수 있으므로 짧은 간격으로 재시도
+      const timer = setTimeout(tryStoreStartParam, 200);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  useEffect(() => {
     const init = async () => {
       // 1. 이미 로그인되어 있으면 홈으로
       if (isLoggedIn()) {
@@ -60,22 +82,21 @@ export default function LoginPage() {
         return;
       }
 
-      // 2. 추천인 코드 추출 — Telegram start_param 우선, URL ?ref= 폴백
+      // 2. 추천인 코드 추출 — sessionStorage → Telegram start_param → URL ?ref= 순서
       const extractReferralCode = (): string | undefined => {
-        // Telegram 미니앱 딥링크 ?startapp=<code>
+        // sessionStorage에 미리 저장된 값 우선
+        const stored = sessionStorage.getItem('referral_start_param');
+        if (stored && stored.length >= 4) return stored;
+        // Telegram 미니앱 딥링크 start_param
         const startParam = (window as any).Telegram?.WebApp?.initDataUnsafe?.start_param;
-        if (startParam && startParam.length >= 4) {
-          return startParam;
-        }
-        // 일반 웹 URL ?ref=<code>
+        if (startParam && startParam.length >= 4) return startParam;
+        // 일반 웹 URL ?ref=
         const urlRef = new URLSearchParams(window.location.search).get('ref');
-        if (urlRef && urlRef.length >= 4) {
-          return urlRef;
-        }
+        if (urlRef && urlRef.length >= 4) return urlRef;
         return undefined;
       };
 
-      // 3. Telegram WebApp 환경 확인 (SDK 로드 대기)
+      // 3. Telegram WebApp 환경 확인 + 로그인
       const checkTelegram = () => {
         if (typeof window !== 'undefined' && (window as any).Telegram?.WebApp) {
           const tg = (window as any).Telegram.WebApp;
@@ -84,12 +105,12 @@ export default function LoginPage() {
           const initData = tg.initData;
           if (initData && initData.length > 10) {
             setStatus('telegram');
-            // 자동 로그인 — 추천인 코드 함께 전달
             const referralCode = extractReferralCode();
             telegramLogin(initData, referralCode)
               .then(() => {
+                // 로그인 성공 후 저장된 referral param 삭제
+                sessionStorage.removeItem('referral_start_param');
                 showToast(t('login.telegramSuccess'));
-                // localStorage 저장 확인 후 이동
                 setTimeout(() => router.replace('/'), 300);
               })
               .catch((err) => {
@@ -103,19 +124,26 @@ export default function LoginPage() {
         return false;
       };
 
-      // SDK가 늦게 로드될 수 있으므로 잠시 대기
+      // SDK 로드 대기 — 최대 3회, 300ms 간격으로 재시도
       if (!checkTelegram()) {
-        setTimeout(() => {
-          if (!checkTelegram()) {
+        let retries = 0;
+        const retry = () => {
+          retries++;
+          if (checkTelegram()) return;
+          if (retries < 6) {
+            setTimeout(retry, 300);
+          } else {
             setStatus('error');
             setErrorMessage('Please open this app inside Telegram.');
           }
-        }, 500);
+        };
+        setTimeout(retry, 300);
       }
     };
 
     init();
   }, [router, showToast, t]);
+
 
   return (
     <main className="min-h-screen flex items-center justify-center p-4">
