@@ -4,12 +4,12 @@ import { useEffect, useState, useCallback } from 'react';
 import { getRevenue, type RevenueEntry } from '@/lib/api/admin';
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  active: { label: '활성', color: 'bg-blue-500/20 text-blue-400' },
-  submitted: { label: '제출됨', color: 'bg-yellow-500/20 text-yellow-400' },
-  filled: { label: '체결', color: 'bg-green-500/20 text-green-400' },
-  cancelled: { label: '취소', color: 'bg-red-500/20 text-red-400' },
-  expired: { label: '만료', color: 'bg-gray-600/20 text-gray-400' },
-  failed: { label: '실패', color: 'bg-red-700/20 text-red-500' },
+  active:    { label: '미체결',  color: 'bg-blue-500/20 text-blue-400' },
+  submitted: { label: '미확정',  color: 'bg-yellow-500/20 text-yellow-400' },
+  filled:    { label: '체결',    color: 'bg-green-500/20 text-green-400' },
+  cancelled: { label: '취소',    color: 'bg-red-500/20 text-red-400' },
+  expired:   { label: '만료',    color: 'bg-gray-600/20 text-gray-400' },
+  failed:    { label: '미확정',  color: 'bg-yellow-500/20 text-yellow-400' },
 };
 
 export default function RevenuePage() {
@@ -87,13 +87,14 @@ export default function RevenuePage() {
             <thead>
               <tr className="border-b border-gray-700 text-gray-400">
                 <th className="py-3 px-4 text-left font-medium">시간</th>
+                <th className="py-3 px-4 text-left font-medium">시간</th>
                 <th className="py-3 px-4 text-left font-medium">사용자</th>
                 <th className="py-3 px-4 text-left font-medium">거래</th>
                 <th className="py-3 px-4 text-right font-medium">거래금액</th>
                 <th className="py-3 px-4 text-right font-medium">수수료율</th>
                 <th className="py-3 px-4 text-right font-medium">수수료</th>
                 <th className="py-3 px-4 text-center font-medium">상태</th>
-                <th className="py-3 px-4 text-left font-medium">TX</th>
+                <th className="py-3 px-4 text-left font-medium min-w-[160px]">TX Hash</th>
               </tr>
             </thead>
             <tbody>
@@ -144,15 +145,16 @@ export default function RevenuePage() {
                           {status.label}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-xs">
+                      <td className="py-3 px-4 font-mono text-xs min-w-[160px]">
                         {entry.txSignature ? (
                           <a
                             href={`https://solscan.io/tx/${entry.txSignature}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-primary-400 hover:underline"
+                            className="text-primary-400 hover:text-primary-300 hover:underline transition"
+                            title={entry.txSignature}
                           >
-                            {entry.txSignature.slice(0, 8)}...
+                            {entry.txSignature.slice(0, 12)}...{entry.txSignature.slice(-6)}
                           </a>
                         ) : (
                           <span className="text-gray-600">—</span>
