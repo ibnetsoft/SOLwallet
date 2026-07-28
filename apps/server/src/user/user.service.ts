@@ -93,10 +93,10 @@ export class UserService {
 
     if (existing) {
       // username, first_name, last_name 중 변경된 것이 있으면 업데이트
-      // 로그인 시 항상 last_login_at 갱신
-      const updates: Record<string, unknown> = { 
+      // 로그인 시 항상 last_login_at 갱신 (컬럼 없으면 업데이트 생략)
+      const updates: Record<string, unknown> = {
         updated_at: new Date().toISOString(),
-        last_login_at: new Date().toISOString()
+        last_login_at: new Date().toISOString(),
       };
       let needsUpdate = true; // last_login_at 갱신으로 무조건 update 실행
 
@@ -128,6 +128,21 @@ export class UserService {
           .single();
 
         if (error) {
+          // last_login_at 컬럼이 없는 경우 → 제외 후 재시도
+          if (error.message.includes('last_login_at')) {
+            this.logger.warn(`last_login_at column missing, retrying without it`);
+            const { data: retryData, error: retryError } = await this.client
+              .from('users')
+              .update({ updated_at: updates.updated_at, username: updates.username, first_name: updates.first_name, last_name: updates.last_name, referral_code: updates.referral_code })
+              .eq('id', existing.id)
+              .select()
+              .single();
+            if (retryError) {
+              this.logger.error(`Failed to update user: ${retryError.message}`);
+              throw retryError;
+            }
+            return retryData;
+          }
           this.logger.error(`Failed to update user: ${error.message}`);
           throw error;
         }
@@ -146,6 +161,15 @@ export class UserService {
       last_login_at: new Date().toISOString(),
     };
 
+    // last_login_at 컬럼이 없는 DB를 위한 fallback insert data
+    const insertDataFallback: Record<string, unknown> = {
+      telegram_uid: params.telegramUid,
+      username: params.username || null,
+      first_name: params.firstName,
+      last_name: params.lastName,
+      referral_code: insertData.referral_code,
+    };
+
     // 추천인 코드 → referrer user id 변환 후 연결 (자기 자신 추천 방지)
     let referrerId: string | null = null;
     if (params.referralCode) {
@@ -157,13 +181,30 @@ export class UserService {
       }
     }
 
+    let insertPayload = insertData;
+
     const { data, error } = await this.client
       .from('users')
-      .insert(insertData)
+      .insert(insertPayload)
       .select()
       .single();
 
     if (error) {
+      // last_login_at 컬럼이 없는 경우 → 제외 후 재시도
+      if (error.message.includes('last_login_at') && insertPayload !== insertDataFallback) {
+        this.logger.warn(`last_login_at column missing on insert, retrying without it`);
+        if (referrerId) insertDataFallback.referred_by = referrerId;
+        const { data: retryData, error: retryError } = await this.client
+          .from('users')
+          .insert(insertDataFallback)
+          .select()
+          .single();
+        if (retryError) {
+          this.logger.error(`Failed to create user: ${retryError.message}`);
+          throw retryError;
+        }
+        return retryData;
+      }
       this.logger.error(`Failed to create user: ${error.message}`);
       throw error;
     }

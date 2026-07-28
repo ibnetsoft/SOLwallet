@@ -23,14 +23,13 @@ export class TelegramService {
         const username = ctx.from?.username || '';
         const firstName = ctx.from?.first_name || '';
         const lastName = ctx.from?.last_name || '';
-        const startPayload = ctx.startPayload || ''; // referral code if present
+        const startPayload = ctx.startPayload || '';
 
         this.logger.log(
           `/start received from user: ${username} (${telegramUid}), payload: ${startPayload}`,
         );
 
-        // 사용자 등록 (upsert — 기존 유저면 업데이트만)
-        // startPayload = 추천코드 (문자열) — user.service에서 referrer id로 변환
+        // 사용자 등록 (upsert) — 실패해도 환영 메시지는 전송
         try {
           await this.userService.upsertUser({
             telegramUid: Number(telegramUid),
@@ -40,33 +39,44 @@ export class TelegramService {
             referralCode: startPayload || undefined,
           });
         } catch (error) {
-          this.logger.error(`Failed to register user: ${error instanceof Error ? error.message : String(error)}`);
+          const msg = error && typeof error === 'object' && 'message' in error
+            ? (error as Error).message
+            : String(error);
+          this.logger.error(`Failed to register user: ${msg}`);
         }
 
-        const miniAppUrl = this.configService.get<string>('MINI_APP_URL') || 'http://localhost:3001';
+        // 환영 메시지 + 미니앱 버튼 전송 (차단된 유저도 에러 무시)
+        try {
+          const miniAppUrl = this.configService.get<string>('MINI_APP_URL') || 'https://aoiwallet.com';
 
-        const welcomeMessage = [
-          `👋 환영합니다, ${firstName || username}!`,
-          '',
-          '🔥 **AoiWallet**에 오신 것을 환영합니다.',
-          '지정가 매수/매도로 솔라나 토큰을 거래하세요.',
-          '',
-          '🚀 *토큰 거래하러 가기* → 아래 버튼을 클릭하세요!',
-        ].join('\n');
+          const welcomeMessage = [
+            `👋 환영합니다, ${firstName || username}!`,
+            '',
+            '🔥 **AoiWallet**에 오신 것을 환영합니다.',
+            '지정가 매수/매도로 솔라나 토큰을 거래하세요.',
+            '',
+            '🚀 *토큰 거래하러 가기* → 아래 버튼을 클릭하세요!',
+          ].join('\n');
 
-        await ctx.reply(welcomeMessage, {
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: '🚀 미니앱 열기',
-                  web_app: { url: miniAppUrl },
-                },
+          await ctx.reply(welcomeMessage, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: '🚀 미니앱 열기',
+                    web_app: { url: miniAppUrl },
+                  },
+                ],
               ],
-            ],
-          },
-        });
+            },
+          });
+        } catch (replyError) {
+          const msg = replyError && typeof replyError === 'object' && 'message' in replyError
+            ? (replyError as Error).message
+            : String(replyError);
+          this.logger.error(`Failed to send welcome message: ${msg}`);
+        }
       });
 
       // /help command

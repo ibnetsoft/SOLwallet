@@ -11,7 +11,7 @@
 import { getMsg } from '@/lib/i18n';
 
 const TELEGRAM_BOT_USERNAME =
-  process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || '';
+  (process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || '').replace(/^@/, '');
 const MINI_APP_URL =
   process.env.NEXT_PUBLIC_MINI_APP_URL || '';
 

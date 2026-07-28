@@ -15,7 +15,7 @@ export default function LoginPage() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isIOS, setIsIOS] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
-  const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || 'aoiwallet_bot';
+  const botUsername = (process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || 'aoiwallet_bot').replace(/^@/, '');
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
