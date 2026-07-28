@@ -19,7 +19,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { AdminService } from './admin.service';
 import { AdminGuard } from './admin.guard';
 import { CreateTokenDto } from '../common/dto/token.dto';
-import type { ToggleTokenDto, UpdateFeeSettingsDto, ReorderTokensDto } from '@solwallet/shared-types';
+import type { ToggleTokenDto, ReorderTokensDto } from '@solwallet/shared-types';
 import { BalanceService } from '../balance/balance.service';
 
 @Controller('admin')

@@ -8,7 +8,7 @@ import * as bcrypt from 'bcryptjs';
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
-  private readonly supabase: SupabaseClient;
+  private readonly supabase: SupabaseClient | null = null;
 
   constructor(
     private readonly configService: ConfigService,

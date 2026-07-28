@@ -349,7 +349,7 @@ export class OrdersService {
     // 토큰 정보 (base mint)
     const { data: token } = await this.client
       .from('tokens')
-      .select('mint_address')
+      .select('*')
       .eq('id', order.token_id)
       .single();
 
