@@ -10,7 +10,7 @@ export class SubAdminService {
 
   constructor(private readonly configService: ConfigService) {
     const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
-    const supabaseKey = this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY');
+    const supabaseKey = this.configService.get<string>('SUPABASE_SERVICE_KEY');
     
     if (!supabaseUrl || !supabaseKey) {
       throw new Error('Supabase configuration is missing for SubAdminService');

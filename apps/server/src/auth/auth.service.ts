@@ -15,7 +15,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
   ) {
     const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
-    const supabaseKey = this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY');
+    const supabaseKey = this.configService.get<string>('SUPABASE_SERVICE_KEY');
     
     if (supabaseUrl && supabaseKey) {
       this.supabase = createClient(supabaseUrl, supabaseKey, {
