@@ -105,6 +105,7 @@ export class TelegramService {
         });
 
         // Launch the bot
+        this.logger.log(`🔄 Telegram bot launch attempt ${attempt}/${retries}...`);
         await this.bot.launch({ dropPendingUpdates: true });
         this.logger.log('✅ Telegram bot launched successfully');
 
