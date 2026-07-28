@@ -321,12 +321,8 @@ export default function SettingsPage() {
               <span className="text-gray-400">{t('settings.friendsInvited')}</span>
               <span className="font-medium">{t('settings.friendsCount', { count: profile.referralCount })}</span>
             </div>
-            {profile.referrer && (
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">{t('settings.myReferrer')}</span>
-                <span>{profile.referrer.username || profile.referrer.first_name}</span>
-              </div>
-            )}
+
+
           </div>
         </section>
       )}

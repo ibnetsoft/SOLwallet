@@ -108,17 +108,18 @@ export class AdminService {
         walletCounts[w.user_id] = (walletCounts[w.user_id] || 0) + 1;
       });
 
-      // 2. 추천인 정보 (referral_code, username, telegram_uid)
+      // 2. 추천인 정보 (referral_code, username, first_name, telegram_uid)
       const referrerIds = Array.from(new Set((data || []).map((u) => u.referred_by).filter(Boolean)));
       if (referrerIds.length > 0) {
         const { data: referrers } = await this.client
           .from('users')
-          .select('id, referral_code, username, telegram_uid')
+          .select('id, referral_code, username, first_name, telegram_uid')
           .in('id', referrerIds);
         (referrers || []).forEach(r => {
           referrerMap[r.id] = {
             code: r.referral_code ? String(r.referral_code) : '',
-            teleId: r.username || String(r.telegram_uid)
+            // username 없으면 first_name, 그도 없으면 telegram_uid
+            teleId: r.username || r.first_name || String(r.telegram_uid)
           };
         });
       }
