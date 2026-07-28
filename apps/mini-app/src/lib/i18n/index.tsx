@@ -26,6 +26,16 @@ const I18nContext = createContext<I18nContextValue | null>(null);
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(() => {
     if (typeof window === 'undefined') return DEFAULT_LOCALE;
+
+    // 1순위: URL ?lang= 파라미터 (텔레그램 봇에서 언어를 선택한 경우)
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlLang = urlParams.get('lang') as Locale | null;
+    if (urlLang && translations[urlLang]) {
+      localStorage.setItem(STORAGE_KEY, urlLang);
+      return urlLang;
+    }
+
+    // 2순위: localStorage에 저장된 언어
     const stored = localStorage.getItem(STORAGE_KEY) as Locale | null;
     return stored && translations[stored] ? stored : DEFAULT_LOCALE;
   });
