@@ -87,7 +87,7 @@ export class AdminService {
 
     const { data, count } = await this.client
       .from('users')
-      .select('*')
+      .select('*', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(from, to);
 

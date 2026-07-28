@@ -17,6 +17,7 @@ import {
 import { useWalletStore } from '@/stores/useWalletStore';
 import { useTokenOrderStore, sortSymbolsByUserOrder } from '@/stores/useTokenOrderStore';
 import { getPortfolio } from '@/lib/api/balance';
+import { getTokens, type Token as ApiToken } from '@/lib/api/tokens';
 import { fetchSolPrice, type SolPriceData } from '@/lib/api/price';
 import { useRoi } from '@/lib/hooks/useRoi';
 import { getTokenLogoUrl } from '@/lib/tokenLogo';
@@ -61,6 +62,7 @@ function HomePage() {
   const [authChecked, setAuthChecked] = useState(false);
   const [solPrice, setSolPrice] = useState<SolPriceData | null>(null);
   const [isEditingOrder, setIsEditingOrder] = useState(false);
+  const [adminTokens, setAdminTokens] = useState<ApiToken[]>([]);
 
   const moveUp = useTokenOrderStore((s) => s.moveUp);
   const moveDown = useTokenOrderStore((s) => s.moveDown);
@@ -103,6 +105,13 @@ function HomePage() {
     const interval = setInterval(() => fetchPortfolio(true), 30_000);
     return () => clearInterval(interval);
   }, [activeWalletId]);
+
+  // 어드민 추가 토큰 목록 조회
+  useEffect(() => {
+    getTokens()
+      .then((tokens) => setAdminTokens(tokens.filter((t) => t.is_active)))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -196,16 +205,37 @@ function HomePage() {
       logoUrl: tok.logoUrl || getTokenLogoUrl(tok.symbol),
     }));
 
+  // 어드민 추가 토큰 중 잔액 목록에 없는 것(보유량 0)도 홈에 표시
+  const rawMints = new Set(rawTokens.map((t) => t.mint));
+  const rawSymbols = new Set(rawTokens.map((t) => t.symbol?.toUpperCase()));
+  const adminOnlyTokens: DisplayToken[] = adminTokens
+    .filter(
+      (at) =>
+        !rawMints.has(at.mint_address) &&
+        at.symbol.toUpperCase() !== 'USDT' &&
+        at.symbol.toUpperCase() !== 'USDC' &&
+        at.symbol.toUpperCase() !== 'SOL',
+    )
+    .map((at) => ({
+      mint: at.mint_address,
+      symbol: at.symbol,
+      decimals: at.decimals,
+      balance: 0,
+      logoUrl: getTokenLogoUrl(at.symbol),
+    }));
+
+  const allOtherTokens = [...otherTokens, ...adminOnlyTokens];
+
   const baseTokens: DisplayToken[] = [usdcToken, usdtToken, solToken];
 
-  // 사용자 정렬 순서 적용: order에 있는 심볼은 순서대로, 없는 심볼(otherTokens)은 뒤로
+  // 사용자 정렬 순서 적용: order에 있는 심볼은 순서대로, 없는 심볼(allOtherTokens)은 뒤로
   const tokenOrder = useTokenOrderStore((s) => s.order);
   const baseSymbols = baseTokens.map((t) => t.symbol);
-  const otherSymbols = otherTokens.map((t) => t.symbol);
+  const otherSymbols = allOtherTokens.map((t) => t.symbol);
   const sortedBase = sortSymbolsByUserOrder(baseSymbols, tokenOrder)
     .map((sym) => baseTokens.find((t) => t.symbol === sym))
     .filter((t): t is DisplayToken => Boolean(t));
-  const displayTokens: DisplayToken[] = [...sortedBase, ...otherTokens];
+  const displayTokens: DisplayToken[] = [...sortedBase, ...allOtherTokens];
 
   const truncateAddr = (addr: string) =>
     `${addr.slice(0, 4)}...${addr.slice(-4)}`;

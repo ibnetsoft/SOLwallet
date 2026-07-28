@@ -173,7 +173,7 @@ export default function SwapPage() {
               value={inputAmount}
               onChange={(e) => setInputAmount(e.target.value)}
               placeholder="0.0"
-              className="flex-1 bg-transparent text-2xl font-bold outline-none tabular-nums placeholder:text-gray-600"
+              className="flex-1 min-w-0 bg-transparent text-2xl font-bold outline-none tabular-nums placeholder:text-gray-600"
             />
             <TokenBadge symbol={inputToken.symbol} logoUrl={getTokenLogoUrl(inputToken.symbol)} />
           </div>
