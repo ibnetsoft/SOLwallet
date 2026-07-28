@@ -10,6 +10,7 @@ const LAUNCH_RETRY_DELAY_MS = 3000;
 export class TelegramService {
   private readonly logger = new Logger(TelegramService.name);
   private bot: Telegraf<Context> | null = null;
+  private isLaunching = false;
 
   constructor(
     private readonly configService: ConfigService,
@@ -17,6 +18,9 @@ export class TelegramService {
   ) {}
 
   async launchBot(token: string, retries = MAX_LAUNCH_RETRIES): Promise<void> {
+    if (this.isLaunching) return; // 중복 launch 방지
+    this.isLaunching = true;
+
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
         // 이전 봇 인스턴스 정리
@@ -105,8 +109,23 @@ export class TelegramService {
         });
 
         // Launch the bot
+        // NOTE: Telegraf 4.x의 launch()는 내부에서 무한 폴링 루프에 빠지므로
+        // resolve하지 않음. 성공 여부는 bot.launch() 호출 전에 getMe/deleteWebhook으로
+        // Telegram API 연결을 먼저 검증하고, launch()는 fire-and-forget으로 실행.
         this.logger.log(`🔄 Telegram bot launch attempt ${attempt}/${retries}...`);
-        await this.bot.launch({ dropPendingUpdates: true });
+
+        // 사전 검증: API 연결 + webhook 정리
+        await this.bot.telegram.getMe();
+        await this.bot.telegram.deleteWebhook({ drop_pending_updates: true });
+
+        // launch()는 fire-and-forget — resolve하지 않으므로 await 불가
+        this.bot
+          .launch({ dropPendingUpdates: true })
+          .catch((err) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            this.logger.error(`Bot polling error: ${msg}`);
+          });
+
         this.logger.log('✅ Telegram bot launched successfully');
 
         // Graceful shutdown
