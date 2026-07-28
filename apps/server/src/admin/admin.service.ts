@@ -425,9 +425,17 @@ export class AdminService {
     }
 
     const orders = (data || []).map((o) => ({
-      ...o,
+      id: o.id,
+      userId: o.user_id,
       tokenSymbol: tokenMap[o.token_id] || '—',
       username: (o.users as { username?: string })?.username || '—',
+      side: o.side,
+      price: o.price,
+      quantity: o.quantity,
+      fee: o.fee,
+      status: o.status,
+      txSignature: o.tx_signature,
+      createdAt: o.created_at,
     }));
 
     return { orders, total: count || 0 };
