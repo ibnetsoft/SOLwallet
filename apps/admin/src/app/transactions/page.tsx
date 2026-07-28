@@ -5,10 +5,11 @@ import { getOrders, getTokens } from '@/lib/api/admin';
 import type { AdminOrderDetail, AdminTokenDetail } from '@solwallet/shared-types';
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  active: { label: '활성', color: 'bg-blue-500/20 text-blue-400' },
-  filled: { label: '체결', color: 'bg-success/20 text-success' },
-  cancelled: { label: '취소', color: 'bg-danger/20 text-danger' },
-  expired: { label: '만료', color: 'bg-gray-600/20 text-gray-400' },
+  active:    { label: '미체결', color: 'bg-blue-500/20 text-blue-400' },
+  submitted: { label: '미체결', color: 'bg-blue-500/20 text-blue-400' },
+  filled:    { label: '체결',   color: 'bg-success/20 text-success' },
+  cancelled: { label: '취소',   color: 'bg-danger/20 text-danger' },
+  expired:   { label: '만료',   color: 'bg-gray-600/20 text-gray-400' },
 };
 
 export default function TransactionsPage() {
@@ -93,7 +94,7 @@ export default function TransactionsPage() {
             className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary-500 transition"
           >
             <option value="">전체 상태</option>
-            <option value="active">활성</option>
+            <option value="active">미체결</option>
             <option value="filled">체결</option>
             <option value="cancelled">취소</option>
             <option value="expired">만료</option>
@@ -124,36 +125,42 @@ export default function TransactionsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-700">
-                <th className="text-left py-3 px-4 text-gray-400 font-medium">시간</th>
-                <th className="text-left py-3 px-4 text-gray-400 font-medium">유저</th>
-                <th className="text-left py-3 px-4 text-gray-400 font-medium">종류</th>
-                <th className="text-left py-3 px-4 text-gray-400 font-medium">토큰</th>
-                <th className="text-right py-3 px-4 text-gray-400 font-medium">가격</th>
-                <th className="text-right py-3 px-4 text-gray-400 font-medium">수량</th>
-                <th className="text-right py-3 px-4 text-gray-400 font-medium">수수료</th>
-                <th className="text-left py-3 px-4 text-gray-400 font-medium">Tx Hash</th>
-                <th className="text-center py-3 px-4 text-gray-400 font-medium">상태</th>
+                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">주문시간</th>
+                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">마감시간</th>
+                <th className="text-left py-3 px-2 text-gray-400 font-medium">유저</th>
+                <th className="text-left py-3 px-2 text-gray-400 font-medium">종류</th>
+                <th className="text-left py-3 px-2 text-gray-400 font-medium">토큰</th>
+                <th className="text-right py-3 px-2 text-gray-400 font-medium">가격</th>
+                <th className="text-right py-3 px-2 text-gray-400 font-medium">수량</th>
+                <th className="text-right py-3 px-2 text-gray-400 font-medium">수수료</th>
+                <th className="text-left py-3 px-2 text-gray-400 font-medium">Tx Hash</th>
+                <th className="text-center py-3 px-2 text-gray-400 font-medium">상태</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-8 text-gray-400">로딩 중...</td>
+                  <td colSpan={10} className="text-center py-8 text-gray-400">로딩 중...</td>
                 </tr>
               ) : orders.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-8 text-gray-400">데이터가 없습니다</td>
+                  <td colSpan={10} className="text-center py-8 text-gray-400">데이터가 없습니다</td>
                 </tr>
               ) : (
                 orders.map((order) => {
                   const statusInfo = STATUS_MAP[order.status] || STATUS_MAP.active;
                   return (
                     <tr key={order.id} className="border-b border-gray-700/50 hover:bg-gray-700/30 transition">
-                      <td className="py-3 px-4 text-gray-400 text-xs whitespace-nowrap">
+                      <td className="py-2 px-2 text-gray-400 text-xs whitespace-nowrap">
                         {new Date(order.createdAt).toLocaleString('ko-KR')}
                       </td>
-                      <td className="py-3 px-4">{order.username}</td>
-                      <td className="py-3 px-4">
+                      <td className="py-2 px-2 text-gray-400 text-xs whitespace-nowrap">
+                        {order.status === 'filled' && order.updatedAt
+                          ? new Date(order.updatedAt).toLocaleString('ko-KR')
+                          : '—'}
+                      </td>
+                      <td className="py-2 px-2">{order.username}</td>
+                      <td className="py-2 px-2">
                         <span className={`text-xs px-1.5 py-0.5 rounded ${
                           order.side === 'buy'
                             ? 'bg-green-600/20 text-green-400'
@@ -162,11 +169,11 @@ export default function TransactionsPage() {
                           {order.side === 'buy' ? 'BUY' : 'SELL'}
                         </span>
                       </td>
-                      <td className="py-3 px-4 font-medium">{order.tokenSymbol}</td>
-                      <td className="py-3 px-4 text-right font-mono text-xs">{order.price}</td>
-                      <td className="py-3 px-4 text-right font-mono text-xs">{order.quantity}</td>
-                      <td className="py-3 px-4 text-right text-gray-400 text-xs">{order.fee}</td>
-                      <td className="py-3 px-4 font-mono text-xs text-gray-400">
+                      <td className="py-2 px-2 font-medium">{order.tokenSymbol}</td>
+                      <td className="py-2 px-2 text-right font-mono text-xs">{order.price}</td>
+                      <td className="py-2 px-2 text-right font-mono text-xs">{order.quantity}</td>
+                      <td className="py-2 px-2 text-right text-gray-400 text-xs">{order.fee}</td>
+                      <td className="py-2 px-2 font-mono text-xs text-gray-400">
                         {order.txSignature ? (
                           <a
                             href={buildSolscanTxUrl(order.txSignature)}
@@ -178,7 +185,7 @@ export default function TransactionsPage() {
                           </a>
                         ) : '—'}
                       </td>
-                      <td className="py-3 px-4 text-center">
+                      <td className="py-2 px-2 text-center">
                         <span className={`text-xs px-2 py-1 rounded-full ${statusInfo.color}`}>
                           {statusInfo.label}
                         </span>

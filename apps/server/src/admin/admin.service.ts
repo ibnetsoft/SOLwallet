@@ -436,6 +436,7 @@ export class AdminService {
       status: o.status,
       txSignature: o.tx_signature,
       createdAt: o.created_at,
+      updatedAt: o.updated_at || null,
     }));
 
     return { orders, total: count || 0 };

@@ -175,6 +175,7 @@ export interface AdminOrderDetail {
   status: string;
   txSignature: string | null;
   createdAt: string;
+  updatedAt: string | null;
 }
 
 // ========================================
