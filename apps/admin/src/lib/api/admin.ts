@@ -206,8 +206,18 @@ export interface AdminTransferItem {
   tokenSymbol: string;
   status: string;
   createdAt: string;
+  sender: string;
+  receiver: string;
+  preBalance: number;
+  postBalance: number;
 }
 
-export function getTransfers(walletAddress: string, limit = 50): Promise<AdminTransferItem[]> {
+export interface AdminTransferResponse {
+  transfers: AdminTransferItem[];
+  userId: string | null;
+  userName: string | null;
+}
+
+export function getTransfers(walletAddress: string, limit = 50): Promise<AdminTransferResponse> {
   return apiFetch(`/admin/transfers?walletAddress=${encodeURIComponent(walletAddress)}&limit=${limit}`);
 }

@@ -206,6 +206,19 @@ export class AdminController {
       walletAddress,
       limit ? parseInt(limit, 10) : 50,
     );
-    return { success: true, data: items };
+
+    // walletAddress → userId 역조회
+    let userId: string | null = null;
+    let userName: string | null = null;
+    try {
+      userId = await this.transfersService.getUserIdByWallet(walletAddress);
+      if (userId) {
+        userName = await this.transfersService.getUserName(userId);
+      }
+    } catch {
+      // 조회 실패해도 히스토리는 반환
+    }
+
+    return { success: true, data: { transfers: items, userId, userName } };
   }
 }

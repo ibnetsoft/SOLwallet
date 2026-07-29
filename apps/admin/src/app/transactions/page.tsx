@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getOrders, getTokens, getTransfers, type AdminTransferItem } from '@/lib/api/admin';
+import { getOrders, getTokens, getTransfers, type AdminTransferResponse, type AdminTransferItem } from '@/lib/api/admin';
 import type { AdminOrderDetail, AdminTokenDetail } from '@solwallet/shared-types';
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -232,6 +232,8 @@ export default function TransactionsPage() {
 function TransferHistorySection() {
   const [walletAddress, setWalletAddress] = useState('');
   const [transfers, setTransfers] = useState<AdminTransferItem[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
   const [isLoadingTransfers, setIsLoadingTransfers] = useState(false);
   const [transferError, setTransferError] = useState('');
 
@@ -241,7 +243,9 @@ function TransferHistorySection() {
     setTransferError('');
     try {
       const data = await getTransfers(walletAddress.trim(), 50);
-      setTransfers(data);
+      setTransfers(data.transfers);
+      setUserId(data.userId);
+      setUserName(data.userName);
     } catch (err) {
       setTransferError(err instanceof Error ? err.message : '입출금 내역 조회 실패');
       setTransfers([]);
@@ -251,6 +255,7 @@ function TransferHistorySection() {
   };
 
   const SOLSCAN_TX_BASE = 'https://solscan.io/tx';
+  const formatAddr = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
   const formatTxHash = (hash: string) => `${hash.slice(0, 8)}...${hash.slice(-4)}`;
 
   return (
@@ -275,6 +280,12 @@ function TransferHistorySection() {
             {isLoadingTransfers ? '조회 중...' : '조회'}
           </button>
         </div>
+        {userId && (
+          <p className="mt-2 text-xs text-gray-400">
+            유저: <span className="text-white font-medium">{userName || '—'}</span>
+            {' '}({userId.slice(0, 8)}...)
+          </p>
+        )}
       </div>
 
       {transferError && (
@@ -288,12 +299,17 @@ function TransferHistorySection() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-700">
-                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">시간</th>
-                <th className="text-left py-3 px-2 text-gray-400 font-medium">종류</th>
-                <th className="text-left py-3 px-2 text-gray-400 font-medium">토큰</th>
-                <th className="text-right py-3 px-2 text-gray-400 font-medium">수량</th>
-                <th className="text-left py-3 px-2 text-gray-400 font-medium">Tx Hash</th>
-                <th className="text-center py-3 px-2 text-gray-400 font-medium">상태</th>
+                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">발생 날짜</th>
+                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">유저 ID</th>
+                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">구분</th>
+                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">Sender</th>
+                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">Receiver</th>
+                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">토큰</th>
+                <th className="text-right py-3 px-2 text-gray-400 font-medium whitespace-nowrap">발송 전 잔고</th>
+                <th className="text-right py-3 px-2 text-gray-400 font-medium whitespace-nowrap">발송 금액</th>
+                <th className="text-right py-3 px-2 text-gray-400 font-medium whitespace-nowrap">발송 후 잔고</th>
+                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">Tx Hash</th>
+                <th className="text-center py-3 px-2 text-gray-400 font-medium whitespace-nowrap">상태</th>
               </tr>
             </thead>
             <tbody>
@@ -302,17 +318,38 @@ function TransferHistorySection() {
                   <td className="py-2 px-2 text-gray-400 text-xs whitespace-nowrap">
                     {new Date(tr.createdAt).toLocaleString('ko-KR')}
                   </td>
+                  <td className="py-2 px-2 text-xs text-gray-400">
+                    {userId ? (
+                      <span title={userId}>{userId.slice(0, 8)}...</span>
+                    ) : '—'}
+                  </td>
                   <td className="py-2 px-2">
                     <span className={`text-xs px-1.5 py-0.5 rounded ${
                       tr.type === 'deposit'
                         ? 'bg-green-600/20 text-green-400'
                         : 'bg-red-600/20 text-red-400'
                     }`}>
-                      {tr.type === 'deposit' ? '입금' : '출금'}
+                      {tr.type === 'deposit' ? 'Receive' : 'Send'}
                     </span>
                   </td>
+                  <td className="py-2 px-2 font-mono text-xs text-gray-300" title={tr.sender}>
+                    {formatAddr(tr.sender)}
+                  </td>
+                  <td className="py-2 px-2 font-mono text-xs text-gray-300" title={tr.receiver}>
+                    {formatAddr(tr.receiver)}
+                  </td>
                   <td className="py-2 px-2 font-medium">{tr.tokenSymbol}</td>
-                  <td className="py-2 px-2 text-right font-mono text-xs">{tr.amount.toFixed(6)}</td>
+                  <td className="py-2 px-2 text-right font-mono text-xs text-gray-400">
+                    {tr.preBalance.toFixed(tr.tokenSymbol === 'SOL' ? 6 : 2)}
+                  </td>
+                  <td className="py-2 px-2 text-right font-mono text-xs">
+                    <span className={tr.type === 'deposit' ? 'text-green-400' : 'text-red-400'}>
+                      {tr.type === 'deposit' ? '+' : '-'}{tr.amount.toFixed(tr.tokenSymbol === 'SOL' ? 6 : 2)}
+                    </span>
+                  </td>
+                  <td className="py-2 px-2 text-right font-mono text-xs text-gray-400">
+                    {tr.postBalance.toFixed(tr.tokenSymbol === 'SOL' ? 6 : 2)}
+                  </td>
                   <td className="py-2 px-2 font-mono text-xs text-gray-400">
                     <a
                       href={`${SOLSCAN_TX_BASE}/${tr.id}`}

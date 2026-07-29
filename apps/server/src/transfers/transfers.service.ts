@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Connection, PublicKey } from '@solana/web3.js';
+import { SupabaseService } from '../supabase/supabase.service';
 
 export interface TransferItem {
   id: string; // transaction signature
@@ -9,6 +10,10 @@ export interface TransferItem {
   tokenSymbol: string;
   status: string;
   createdAt: string; // ISO date string
+  sender: string;
+  receiver: string;
+  preBalance: number;
+  postBalance: number;
 }
 
 const USDT_MINT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
@@ -19,9 +24,42 @@ export class TransfersService {
   private readonly logger = new Logger(TransfersService.name);
   private readonly connection: Connection;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly supabaseService: SupabaseService,
+  ) {
     const rpcUrl = this.configService.get<string>('SOLANA_RPC_URL') || 'https://api.mainnet-beta.solana.com';
     this.connection = new Connection(rpcUrl, 'confirmed');
+  }
+
+  private get client() {
+    return this.supabaseService.getClient();
+  }
+
+  /**
+   * 지갑 주소 → userId 역조회
+   */
+  async getUserIdByWallet(walletAddress: string): Promise<string | null> {
+    const { data } = await this.client
+      .from('wallets')
+      .select('user_id')
+      .eq('public_key', walletAddress)
+      .limit(1)
+      .single();
+    return data?.user_id ?? null;
+  }
+
+  /**
+   * userId → username(또는 first_name) 조회
+   */
+  async getUserName(userId: string): Promise<string> {
+    const { data } = await this.client
+      .from('users')
+      .select('username, first_name, telegram_uid')
+      .eq('id', userId)
+      .single();
+    if (!data) return '—';
+    return data.username || data.first_name || String(data.telegram_uid);
   }
 
   /**
@@ -58,8 +96,16 @@ export class TransfersService {
         const postBal = tx.meta.postBalances[accountIndex] || 0;
         const solDiff = postBal - preBal;
 
+        // SOL 입출금 시 sender/receiver 추출
+        const solSender = walletAddress;
+        const solReceiver = walletAddress;
+
         // SOL 변동이 입/출금에 해당하면 기록
         if (solDiff > 0) {
+          // SOL 입금 — counterparty 찾기: 다른 계정들 중 SOL을 보낸 계정 탐색
+          const { sender, receiver } = this.findSolCounterparties(
+            tx, walletAddress, accountIndex, 'deposit',
+          );
           transfers.push({
             id: sigs[i],
             type: 'deposit',
@@ -67,9 +113,16 @@ export class TransfersService {
             tokenSymbol: 'SOL',
             status: tx.meta.err ? 'failed' : 'completed',
             createdAt: new Date((sigInfo.blockTime || 0) * 1000).toISOString(),
+            sender,
+            receiver,
+            preBalance: preBal / 1e9,
+            postBalance: postBal / 1e9,
           });
         } else if (solDiff < -10000) {
           // -10000 lamports 초과 = 수수료 이상의 출금
+          const { sender, receiver } = this.findSolCounterparties(
+            tx, walletAddress, accountIndex, 'withdraw',
+          );
           transfers.push({
             id: sigs[i],
             type: 'withdraw',
@@ -77,6 +130,10 @@ export class TransfersService {
             tokenSymbol: 'SOL',
             status: tx.meta.err ? 'failed' : 'completed',
             createdAt: new Date((sigInfo.blockTime || 0) * 1000).toISOString(),
+            sender,
+            receiver,
+            preBalance: preBal / 1e9,
+            postBalance: postBal / 1e9,
           });
         }
 
@@ -111,6 +168,11 @@ export class TransfersService {
           if (entry.mint === USDT_MINT) symbol = 'USDT';
           else if (entry.mint === USDC_MINT) symbol = 'USDC';
 
+          // SPL 토큰의 sender/receiver — pre/post token balances에서 owner가 다른 쪽을 찾기
+          const { sender, receiver } = this.findSplCounterparties(
+            tx, walletAddress, entry.mint,
+          );
+
           transfers.push({
             id: sigs[i],
             type: diff > 0 ? 'deposit' : 'withdraw',
@@ -118,6 +180,10 @@ export class TransfersService {
             tokenSymbol: symbol,
             status: tx.meta.err ? 'failed' : 'completed',
             createdAt: new Date((sigInfo.blockTime || 0) * 1000).toISOString(),
+            sender,
+            receiver,
+            preBalance: entry.pre,
+            postBalance: entry.post,
           });
         }
       }
@@ -130,5 +196,90 @@ export class TransfersService {
       this.logger.error(`Failed to fetch transfer history: ${error instanceof Error ? error.message : String(error)}`);
       return [];
     }
+  }
+
+  /**
+   * SOL 전송의 counterparty(sender/receiver)를 트랜잭션에서 추출
+   * SystemProgram.transfer 명령어에서 상대방 주소를 찾음
+   */
+  private findSolCounterparties(
+    tx: any,
+    walletAddress: string,
+    accountIndex: number,
+    direction: 'deposit' | 'withdraw',
+  ): { sender: string; receiver: string } {
+    const me = walletAddress;
+    let counterparty = me;
+
+    // 파싱된 instructions에서 SystemProgram.transfer 찾기
+    try {
+      const instructions = tx.transaction.message.instructions;
+      for (const ix of instructions) {
+        if (ix.parsed?.type === 'transfer' && ix.programId.toBase58() === '11111111111111111111111111111111') {
+          const source = ix.parsed.info.source;
+          const dest = ix.parsed.info.destination;
+          if (direction === 'deposit' && dest === me) {
+            counterparty = source;
+          } else if (direction === 'withdraw' && source === me) {
+            counterparty = dest;
+          }
+          break;
+        }
+      }
+    } catch {
+      // 파싱 실패 시 기본값 유지
+    }
+
+    if (direction === 'deposit') {
+      return { sender: counterparty, receiver: me };
+    } else {
+      return { sender: me, receiver: counterparty };
+    }
+  }
+
+  /**
+   * SPL 토큰 전송의 counterparty를 token balances에서 추출
+   */
+  private findSplCounterparties(
+    tx: any,
+    walletAddress: string,
+    mint: string,
+  ): { sender: string; receiver: string } {
+    const me = walletAddress;
+    let sender = me;
+    let receiver = me;
+
+    // pre/post token balances에서 같은 mint를 가진 다른 owner를 찾기
+    const allPre = tx.meta.preTokenBalances ?? [];
+    const allPost = tx.meta.postTokenBalances ?? [];
+
+    // pre에서 owner가 wallet이 아닌 것을 보내는 쪽으로, post에서 owner가 wallet이 아닌 것을 받는 쪽으로
+    for (const b of allPre) {
+      if (b.mint === mint && b.owner !== me) {
+        // 이 사람이 보낸 것일 수 있음 — post에서 이 사람의 잔액이 줄었는지 확인
+        const preAmt = Number(b.uiTokenAmount?.uiAmountString ?? 0);
+        const postEntry = allPost.find(
+          (p: any) => p.owner === b.owner && p.mint === mint,
+        );
+        const postAmt = postEntry ? Number(postEntry.uiTokenAmount?.uiAmountString ?? 0) : 0;
+        if (postAmt < preAmt) {
+          sender = b.owner;
+        }
+      }
+    }
+    for (const b of allPost) {
+      if (b.mint === mint && b.owner !== me) {
+        const postAmt = Number(b.uiTokenAmount?.uiAmountString ?? 0);
+        const preEntry = allPre.find(
+          (p: any) => p.owner === b.owner && p.mint === mint,
+        );
+        const preAmt = preEntry ? Number(preEntry.uiTokenAmount?.uiAmountString ?? 0) : 0;
+        if (postAmt > preAmt) {
+          receiver = b.owner;
+        }
+      }
+    }
+
+    return { sender, receiver };
   }
 }
