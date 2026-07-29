@@ -270,7 +270,7 @@ function HomePage() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
               </span>
-              <span className="text-[10px] text-gray-400">Solana Network</span>
+              <span className="text-[10px] text-gray-400">{t('home.solanaNetwork')}</span>
             </div>
           </div>
         </div>
@@ -547,6 +547,8 @@ function AssetRow({
   onMoveDown?: () => void;
   swapHref?: string;
 }) {
+  const { t } = useT();
+
   const badgeStyle =
     badge === 'Stable'
       ? 'bg-blue-500/15 text-blue-400 border border-blue-500/20'
@@ -600,7 +602,7 @@ function AssetRow({
             <p className="font-medium text-sm">{symbol}</p>
             {badge && (
               <span className={`text-[9px] px-1.5 py-0.5 rounded-full uppercase tracking-wide ${badgeStyle}`}>
-                {badge}
+                {badge === 'Stable' ? t('home.stable') : t('home.staking')}
               </span>
             )}
           </div>
@@ -632,7 +634,7 @@ function AssetRow({
               if (!isFirst) onMoveUp?.();
             }}
             disabled={isFirst}
-            aria-label="위로"
+            aria-label={t('home.moveUp')}
             className={`p-1.5 rounded-lg transition ${
               isFirst
                 ? 'text-gray-600 cursor-not-allowed'
@@ -649,7 +651,7 @@ function AssetRow({
               if (!isLast) onMoveDown?.();
             }}
             disabled={isLast}
-            aria-label="아래로"
+            aria-label={t('home.moveDown')}
             className={`p-1.5 rounded-lg transition ${
               isLast
                 ? 'text-gray-600 cursor-not-allowed'

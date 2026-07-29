@@ -61,6 +61,9 @@ const LANG_SELECT_MESSAGES: Record<SupportedLocale, string> = {
   ja: '🌐 言語を選択してください。',
 };
 
+// 초기 언어 선택 메시지 (기본 영어) — /start 시 표시
+const INITIAL_LANG_SELECT = '🌐 Please select your language / 언어를 선택해주세요';
+
 @Injectable()
 export class TelegramService {
   private readonly logger = new Logger(TelegramService.name);
@@ -114,9 +117,9 @@ export class TelegramService {
             this.logger.error(`Failed to register user: ${msg}`);
           }
 
-          // 언어 선택 메시지 전송
+          // 언어 선택 메시지 전송 (기본 영어)
           try {
-            await ctx.reply('🌐 Please select your language / 언어를 선택해주세요', {
+            await ctx.reply(INITIAL_LANG_SELECT, {
               reply_markup: {
                 inline_keyboard: [
                   [

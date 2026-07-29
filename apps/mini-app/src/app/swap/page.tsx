@@ -184,7 +184,7 @@ export default function SwapPage() {
           <button
             onClick={swapDirection}
             className="bg-gray-700 hover:bg-gray-600 active:bg-gray-500 rounded-xl p-2 transition border-4 border-gray-900"
-            aria-label="방향 전환"
+            aria-label={t('swap.switchDirection')}
           >
             <ArrowDownUp className="w-4 h-4" />
           </button>

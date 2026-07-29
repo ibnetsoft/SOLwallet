@@ -57,6 +57,7 @@ const ko: Record<string, string> = {
   'swap.title': '스왑',
   'swap.from': '보내는 토큰',
   'swap.to': '받는 토큰',
+  'swap.switchDirection': '방향 전환',
   'swap.amount': '수량',
   'swap.balance': '잔액',
   'swap.max': '최대',
@@ -77,11 +78,25 @@ const ko: Record<string, string> = {
   'swap.noticeDelayRisk': '네트워크 혼잡 시 체결에 수 초~수십 초가 소요될 수 있으며, 극단적 상황에서는 실패할 수 있습니다.',
   'swap.noticeStablecoin': 'USDT(Tether)와 USDC(Circle)는 별도 발행사의 스테이블코인으로, 항상 1:1로 교환된다고 보장할 수 없습니다.',
 
+  // ─── Home ───
+  'home.solanaNetwork': 'Solana Network',
+  'home.stable': '스테이블',
+  'home.staking': '스테이킹',
+  'home.moveUp': '위로',
+  'home.moveDown': '아래로',
+
   // ─── Trade ───
   'trade.buyOrder': '매수 주문',
   'trade.sellOrder': '매도 주문',
   'trade.buyBtn': '매수',
   'trade.sellBtn': '매도',
+  'trade.priceLabel': '가격',
+  'trade.amountLabel': '수량',
+  'trade.totalLabel': '총액',
+  'trade.available': '가용잔액',
+  'trade.maxBuy': '최대 매수',
+  'trade.buyTag': '매수',
+  'trade.sellTag': '매도',
   'trade.limit': '지정가',
   'trade.market': '시장가',
   'trade.tokenSelect': '토큰 선택',

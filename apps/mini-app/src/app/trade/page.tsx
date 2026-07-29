@@ -401,7 +401,7 @@ function TradeContent() {
       {/* Price Input — 지정가일 때만 표시 */}
       {orderType === 'limit' ? (
         <section className="mb-4">
-          <label className="text-sm text-gray-400 mb-1 block">Price</label>
+          <label className="text-sm text-gray-400 mb-1 block">{t('trade.priceLabel')}</label>
           <div className="bg-gray-800/50 rounded-xl p-4 flex items-center gap-2">
             <input
               type="number"
@@ -433,7 +433,7 @@ function TradeContent() {
       {/* Amount Input */}
       <section className="mb-4">
         <label className="text-sm text-gray-400 mb-1 block">
-          Amount
+          {t('trade.amountLabel')}
         </label>
         <div className="bg-gray-800/50 rounded-xl p-4 mb-6 relative">
           <input
@@ -547,7 +547,7 @@ function TradeContent() {
 
       {/* Total Section */}
       <section className="mb-4">
-        <label className="text-sm text-gray-400 mb-1 block">Total</label>
+        <label className="text-sm text-gray-400 mb-1 block">{t('trade.totalLabel')}</label>
         <div className="bg-gray-800/50 rounded-xl p-4 flex justify-between items-center">
           <span className="text-white">{totalAmount > 0 ? totalAmount.toFixed(4) : '0'}</span>
           <span className="text-gray-400 text-sm">{quoteSymbol}</span>
@@ -557,12 +557,12 @@ function TradeContent() {
       {/* Available & Max Buy */}
       <section className="mb-6 space-y-2 px-1">
         <div className="flex justify-between text-sm">
-          <span className="text-gray-400">Available</span>
+          <span className="text-gray-400">{t('trade.available')}</span>
           <span className="font-medium text-white">{side === 'buy' ? quoteBalance.toFixed(6) : tokenBalance.toFixed(6)} {side === 'buy' ? quoteSymbol : selectedToken?.symbol}</span>
         </div>
         {side === 'buy' && (
           <div className="flex justify-between text-sm">
-            <span className="text-gray-400">Max Buy</span>
+            <span className="text-gray-400">{t('trade.maxBuy')}</span>
             <span className="font-medium text-white">{maxBalance > 0 ? maxBalance.toFixed(4) : '0.0000'} {selectedToken?.symbol}</span>
           </div>
         )}
@@ -586,7 +586,7 @@ function TradeContent() {
       >
         {isSubmitting
           ? t('common.processing')
-          : t('trade.submitOrder', { side: side === 'buy' ? 'Buy' : 'Sell', symbol: selectedToken?.symbol ?? '' })}
+          : t('trade.submitOrder', { side: side === 'buy' ? t('trade.buyBtn') : t('trade.sellBtn'), symbol: selectedToken?.symbol ?? '' })}
       </button>
 
       {/* Orders Tabs — Open Orders / History */}
@@ -641,7 +641,7 @@ function TradeContent() {
                         <span className={`text-xs px-1.5 py-0.5 rounded ${
                           order.side === 'buy' ? 'bg-green-600/20 text-green-400' : 'bg-red-600/20 text-red-400'
                         }`}>
-                          {order.side === 'buy' ? 'BUY' : 'SELL'}
+                          {order.side === 'buy' ? t('trade.buyTag') : t('trade.sellTag')}
                         </span>
                         <span className="font-medium text-sm">{order.tokenSymbol}</span>
                       </div>
@@ -690,7 +690,7 @@ function TradeContent() {
                           <span className={`text-xs px-1.5 py-0.5 rounded ${
                             order.side === 'buy' ? 'bg-green-600/20 text-green-400' : 'bg-red-600/20 text-red-400'
                           }`}>
-                            {order.side === 'buy' ? 'BUY' : 'SELL'}
+                            {order.side === 'buy' ? t('trade.buyTag') : t('trade.sellTag')}
                           </span>
                           <span className="font-medium text-sm">{order.tokenSymbol}</span>
                           <span className={`text-[10px] px-1.5 py-0.5 rounded ${statusColor}`}>
