@@ -57,8 +57,8 @@ export default function WithdrawModal({
       // 2. SOL 전송 트랜잭션 빌드 (blockhash 포함)
       const unsignedTx = await buildSolTransferTx(walletAddress, toAddress.trim(), amountNum);
 
-      // 3. 온디바이스 서명
-      const signedTx = signTransaction(unsignedTx, secretKey);
+      // 3. 온디바이스 서명 (SOL 전송 = legacy)
+      const signedTx = signTransaction(unsignedTx, secretKey, 'legacy');
 
       // 4. 서버에 제출
       const result = await submitWithdraw({

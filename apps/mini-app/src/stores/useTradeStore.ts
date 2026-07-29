@@ -256,9 +256,9 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         throw new Error(getMsg('error.txBuildFailed'));
       }
 
-      // 2. 온디바이스 서명
+      // 2. 온디바이스 서명 (Manifest = versioned)
       const { signTransaction } = await import('@/lib/wallet');
-      const signedTx = signTransaction(result.unsignedTx, secretKey);
+      const signedTx = signTransaction(result.unsignedTx, secretKey, 'versioned');
 
       // 3. 서명된 트랜잭션 제출
       const submitResult = await ordersApi.submitOrder(result.order.id as string, signedTx);
@@ -303,9 +303,9 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         throw new Error(getMsg('error.txBuildFailed'));
       }
 
-      // 2. 온디바이스 서명
+      // 2. 온디바이스 서명 (Manifest 취소 = versioned)
       const { signTransaction } = await import('@/lib/wallet');
-      const signedTx = signTransaction(unsignedTx, secretKey);
+      const signedTx = signTransaction(unsignedTx, secretKey, 'versioned');
 
       // 3. 서명된 cancel tx 제출
       const result = await ordersApi.submitCancelOrder(orderId, signedTx);

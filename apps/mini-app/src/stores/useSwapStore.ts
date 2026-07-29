@@ -151,9 +151,9 @@ export const useSwapStore = create<SwapState>((set, get) => ({
         throw new Error(getMsg('error.txBuildFailed'));
       }
 
-      // 2. 온디바이스 서명
+      // 2. 온디바이스 서명 (Jupiter swap = versioned)
       const { signTransaction } = await import('@/lib/wallet');
-      const signedTx = signTransaction(result.unsignedTx, secretKey);
+      const signedTx = signTransaction(result.unsignedTx, secretKey, 'versioned');
 
       // 3. 서명된 트랜잭션 제출
       const submitResult = await swapApi.executeSwap(signedTx);
