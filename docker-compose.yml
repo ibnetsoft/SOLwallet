@@ -20,6 +20,7 @@ services:
         NEXT_PUBLIC_API_URL: /api
         NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
         NEXT_PUBLIC_MINI_APP_URL: ${MINI_APP_URL:-https://aoiwallet.com}
+        NEXT_PUBLIC_SOLANA_RPC_URL: ${SOLANA_RPC_URL}
     container_name: solwallet-mini-app
     restart: unless-stopped
     env_file:
@@ -29,6 +30,7 @@ services:
       - NEXT_PUBLIC_SUPABASE_URL=${SUPABASE_URL}
       - NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME}
       - NEXT_PUBLIC_MINI_APP_URL=${MINI_APP_URL}
+      - NEXT_PUBLIC_SOLANA_RPC_URL=${SOLANA_RPC_URL}
 
   # ─── Admin Dashboard (Next.js) ───
   admin:
