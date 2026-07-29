@@ -63,12 +63,23 @@ export class OrdersService {
   }
 
   /**
-   * Manifest에 보낼 clientOrderId 생성 — 시간 기반 고유값
-   * (취소 시 식별자로 사용)
+   * Manifest에 보낼 clientOrderId 생성 — DB order.id(UUID) 기반 해시
+   *
+   * Manifest API 제약: 0 ~ 2147483647 (31-bit unsigned int)
+   * 기존 Date.now()는 1.7e12로 범위 초과 → "clientOrderId must be an integer
+   * between 0 and 2147483647" 에러 발생.
+   *
+   * UUID를 해시하여 31비트로 변환 → 고유성 + Manifest 제약 동시 만족.
+   * (2^31 = 21억 공간에서 32비트 해시 충돌 확률은 무시 가능 수준)
    */
-  private generateClientOrderId(): number {
-    // Date.now() 범위: 1.7e12 — BIGINT(64bit) 안전
-    return Date.now();
+  private generateClientOrderId(orderId: string): number {
+    let hash = 0;
+    for (let i = 0; i < orderId.length; i++) {
+      // FNV-1a 변형: 간단하면서 균등 분포
+      hash = (hash * 31 + orderId.charCodeAt(i)) >>> 0;
+    }
+    // 1 ~ 2147483647 (0은 Manifest에서 유효하지 않을 수 있어 1부터 사용)
+    return (hash % 2147483646) + 1;
   }
 
   /**
@@ -105,9 +116,8 @@ export class OrdersService {
     const total = dto.price * dto.quantity;
     const fee = total * feeRate;
 
-    const clientOrderId = this.generateClientOrderId();
-
     // DB에 주문 저장 (초기 상태: pending — unsigned tx 획득 후 active로 변경)
+    // clientOrderId는 order.id(UUID) 기반으로 생성하므로 INSERT 후에 계산
     const { data: order, error } = await this.client
       .from('orders')
       .insert({
@@ -121,7 +131,6 @@ export class OrdersService {
         fee: fee.toFixed(6),
         fee_rate: feeRate,
         status: 'pending',
-        manifest_client_order_id: clientOrderId,
       })
       .select()
       .single();
@@ -130,6 +139,9 @@ export class OrdersService {
       this.logger.error(`Failed to create order: ${error.message}`);
       throw error;
     }
+
+    // order.id(UUID) 기반으로 Manifest 호환 clientOrderId 생성 (31-bit int)
+    const clientOrderId = this.generateClientOrderId(order.id);
 
     // Manifest API에 unsigned 트랜잭션 요청 (문서 스펙 준수)
     let unsignedTx = '';
@@ -185,12 +197,13 @@ export class OrdersService {
       throw new BadRequestException('트랜잭션 생성에 실패했습니다. 잠시 후 다시 시도해주세요.');
     }
 
-    // 성공 시 'active' 상태로 변경 + requestId 저장
+    // 성공 시 'active' 상태로 변경 + requestId + clientOrderId 저장
     await this.client
       .from('orders')
       .update({
         status: 'active',
         manifest_request_id: requestId,
+        manifest_client_order_id: clientOrderId,
         updated_at: new Date().toISOString(),
       })
       .eq('id', order.id);
