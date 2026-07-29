@@ -283,7 +283,7 @@ export class OrdersService {
   async getActiveOrders(userId: string) {
     const { data, error } = await this.client
       .from('orders')
-      .select('*')
+      .select('*, tokens(symbol)')  // token symbol join
       .eq('user_id', userId)
       .in('status', ['active', 'submitted'])
       .order('created_at', { ascending: false });
@@ -293,7 +293,11 @@ export class OrdersService {
       throw error;
     }
 
-    return (data || []) as Record<string, unknown>[];
+    // tokens.symbol 평탄화 — 클라이언트에서 token_symbol로 접근 가능하도록
+    return (data || []).map((row: any) => ({
+      ...row,
+      token_symbol: row.tokens?.symbol ?? null,
+    }));
   }
 
   /**
@@ -303,7 +307,7 @@ export class OrdersService {
   async getOrderHistory(userId: string, before?: string, limit = 20) {
     let query = this.client
       .from('orders')
-      .select('*', { count: 'exact' })
+      .select('*, tokens(symbol)', { count: 'exact' })  // token symbol join
       .eq('user_id', userId)
       .in('status', ['filled', 'cancelled', 'expired', 'failed']);
 
@@ -321,7 +325,11 @@ export class OrdersService {
     }
 
     // 다음 페이지 존재 여부 — 반환된 마지막 주문의 created_at이 cursor
-    const items = (data || []) as Record<string, unknown>[];
+    // token symbol 평탄화 — 클라이언트에서 token_symbol로 접근 가능하도록
+    const items = (data || []).map((row: any) => ({
+      ...row,
+      token_symbol: row.tokens?.symbol ?? null,
+    }));
     const hasMore = items.length === limit;
     const nextCursor = hasMore && items.length > 0
       ? (items[items.length - 1].created_at as string)
