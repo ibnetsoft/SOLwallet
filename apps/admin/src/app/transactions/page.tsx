@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getOrders, getTokens } from '@/lib/api/admin';
+import { getOrders, getTokens, getTransfers, type AdminTransferItem } from '@/lib/api/admin';
 import type { AdminOrderDetail, AdminTokenDetail } from '@solwallet/shared-types';
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -221,6 +221,127 @@ export default function TransactionsPage() {
           </div>
         )}
       </div>
+
+      {/* ─── 입출금 내역 (On-chain) ─── */}
+      <TransferHistorySection />
+    </div>
+  );
+}
+
+// ─── 입출금 내역 섹션 ───
+function TransferHistorySection() {
+  const [walletAddress, setWalletAddress] = useState('');
+  const [transfers, setTransfers] = useState<AdminTransferItem[]>([]);
+  const [isLoadingTransfers, setIsLoadingTransfers] = useState(false);
+  const [transferError, setTransferError] = useState('');
+
+  const fetchTransfers = async () => {
+    if (!walletAddress.trim()) return;
+    setIsLoadingTransfers(true);
+    setTransferError('');
+    try {
+      const data = await getTransfers(walletAddress.trim(), 50);
+      setTransfers(data);
+    } catch (err) {
+      setTransferError(err instanceof Error ? err.message : '입출금 내역 조회 실패');
+      setTransfers([]);
+    } finally {
+      setIsLoadingTransfers(false);
+    }
+  };
+
+  const SOLSCAN_TX_BASE = 'https://solscan.io/tx';
+  const formatTxHash = (hash: string) => `${hash.slice(0, 8)}...${hash.slice(-4)}`;
+
+  return (
+    <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 mt-6">
+      <div className="p-6 pb-0">
+        <h2 className="text-lg font-bold mb-3">💳 입출금 내역 (On-chain)</h2>
+        <p className="text-xs text-gray-500 mb-3">지갑 주소를 입력하면 SOL / SPL 토큰 입출금 내역을 조회합니다.</p>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={walletAddress}
+            onChange={(e) => setWalletAddress(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && fetchTransfers()}
+            placeholder="지갑 주소 입력..."
+            className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white font-mono outline-none focus:border-primary-500 transition"
+          />
+          <button
+            onClick={fetchTransfers}
+            disabled={!walletAddress.trim() || isLoadingTransfers}
+            className="px-4 py-2 rounded-lg bg-primary-600 text-sm font-medium text-white disabled:opacity-50 hover:bg-primary-500 transition"
+          >
+            {isLoadingTransfers ? '조회 중...' : '조회'}
+          </button>
+        </div>
+      </div>
+
+      {transferError && (
+        <div className="mx-6 mt-3 bg-danger/10 border border-danger/30 rounded-lg p-3 text-danger text-xs">
+          {transferError}
+        </div>
+      )}
+
+      {transfers.length > 0 && (
+        <div className="overflow-x-auto mt-3">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-700">
+                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">시간</th>
+                <th className="text-left py-3 px-2 text-gray-400 font-medium">종류</th>
+                <th className="text-left py-3 px-2 text-gray-400 font-medium">토큰</th>
+                <th className="text-right py-3 px-2 text-gray-400 font-medium">수량</th>
+                <th className="text-left py-3 px-2 text-gray-400 font-medium">Tx Hash</th>
+                <th className="text-center py-3 px-2 text-gray-400 font-medium">상태</th>
+              </tr>
+            </thead>
+            <tbody>
+              {transfers.map((tr) => (
+                <tr key={`${tr.id}-${tr.tokenSymbol}`} className="border-b border-gray-700/50 hover:bg-gray-700/30 transition">
+                  <td className="py-2 px-2 text-gray-400 text-xs whitespace-nowrap">
+                    {new Date(tr.createdAt).toLocaleString('ko-KR')}
+                  </td>
+                  <td className="py-2 px-2">
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${
+                      tr.type === 'deposit'
+                        ? 'bg-green-600/20 text-green-400'
+                        : 'bg-red-600/20 text-red-400'
+                    }`}>
+                      {tr.type === 'deposit' ? '입금' : '출금'}
+                    </span>
+                  </td>
+                  <td className="py-2 px-2 font-medium">{tr.tokenSymbol}</td>
+                  <td className="py-2 px-2 text-right font-mono text-xs">{tr.amount.toFixed(6)}</td>
+                  <td className="py-2 px-2 font-mono text-xs text-gray-400">
+                    <a
+                      href={`${SOLSCAN_TX_BASE}/${tr.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary-400 hover:text-primary-300 transition"
+                    >
+                      {formatTxHash(tr.id)}
+                    </a>
+                  </td>
+                  <td className="py-2 px-2 text-center">
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      tr.status === 'completed'
+                        ? 'bg-success/20 text-success'
+                        : 'bg-danger/20 text-danger'
+                    }`}>
+                      {tr.status === 'completed' ? '완료' : '실패'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {walletAddress && !isLoadingTransfers && transfers.length === 0 && !transferError && (
+        <div className="text-center py-6 text-gray-400 text-sm">입출금 내역이 없습니다.</div>
+      )}
     </div>
   );
 }

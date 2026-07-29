@@ -110,8 +110,8 @@ export default function TransactionsPage() {
           <ArrowLeft className="w-5 h-5" />
         </Link>
         <div>
-          <h1 className="text-lg font-bold">Transaction History</h1>
-          <p className="text-[10px] text-gray-500">History of your trades & transfers</p>
+          <h1 className="text-lg font-bold">{t('tx.title')}</h1>
+          <p className="text-[10px] text-gray-500">{t('tx.subtitle')}</p>
         </div>
       </header>
 
@@ -127,10 +127,10 @@ export default function TransactionsPage() {
                 : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
             }`}
           >
-            {f === 'all' ? t('tx.all') : 
-             f === 'buy' ? t('tx.buy') : 
-             f === 'sell' ? t('tx.sell') : 
-             f === 'deposit' ? 'Deposit' : 'Withdraw'}
+            {f === 'all' ? t('tx.all') :
+             f === 'buy' ? t('tx.buy') :
+             f === 'sell' ? t('tx.sell') :
+             f === 'deposit' ? t('home.deposit') : t('home.withdraw')}
           </button>
         ))}
       </div>
@@ -180,7 +180,7 @@ export default function TransactionsPage() {
                   </div>
                   <div>
                     <p className="text-sm font-medium capitalize">
-                      {o.type === 'buy' ? t('tx.buy') : o.type === 'sell' ? t('tx.sell') : o.type} · {o.tokenSymbol}
+                      {o.type === 'buy' ? t('tx.buy') : o.type === 'sell' ? t('tx.sell') : o.type === 'deposit' ? t('home.deposit') : o.type === 'withdraw' ? t('home.withdraw') : o.type} · {o.tokenSymbol}
                     </p>
                     <p className="text-[10px] text-gray-500 mt-0.5">
                       {o.createdAt
@@ -206,7 +206,7 @@ export default function TransactionsPage() {
                   )}
                   {(isDeposit || isWithdraw) && (
                     <p className="text-[10px] text-gray-500 mt-0.5 capitalize">
-                      {o.status}
+                      {o.status === 'completed' ? (isDeposit ? t('home.deposit') : t('home.withdraw')) : o.status}
                     </p>
                   )}
                 </div>

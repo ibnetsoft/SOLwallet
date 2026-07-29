@@ -196,3 +196,18 @@ export function createSubAdmin(username: string, password: string): Promise<SubA
 export function deleteSubAdmin(id: string): Promise<{ success: boolean }> {
   return apiFetch(`/admin/subadmins/${id}`, { method: 'DELETE' });
 }
+
+// ─── 입출금 내역 ───
+
+export interface AdminTransferItem {
+  id: string;
+  type: 'deposit' | 'withdraw';
+  amount: number;
+  tokenSymbol: string;
+  status: string;
+  createdAt: string;
+}
+
+export function getTransfers(walletAddress: string, limit = 50): Promise<AdminTransferItem[]> {
+  return apiFetch(`/admin/transfers?walletAddress=${encodeURIComponent(walletAddress)}&limit=${limit}`);
+}

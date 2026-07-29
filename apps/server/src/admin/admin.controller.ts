@@ -21,6 +21,7 @@ import { AdminGuard } from './admin.guard';
 import { CreateTokenDto } from '../common/dto/token.dto';
 import type { ToggleTokenDto, ReorderTokensDto } from '@solwallet/shared-types';
 import { BalanceService } from '../balance/balance.service';
+import { TransfersService } from '../transfers/transfers.service';
 
 @Controller('admin')
 @UseGuards(AdminGuard)
@@ -28,6 +29,7 @@ export class AdminController {
   constructor(
     private readonly adminService: AdminService,
     private readonly balanceService: BalanceService,
+    private readonly transfersService: TransfersService,
   ) {}
 
   // ─── 대시보드 ───
@@ -188,5 +190,22 @@ export class AdminController {
   async updateFeeRate(@Body('feeRate') feeRate: number) {
     const result = await this.adminService.updateFeeRate(Number(feeRate));
     return { success: true, data: result };
+  }
+
+  // ─── 입출금 내역 ───
+
+  @Get('transfers')
+  async getTransfers(
+    @Query('walletAddress') walletAddress: string,
+    @Query('limit') limit?: string,
+  ) {
+    if (!walletAddress) {
+      return { success: true, data: [] };
+    }
+    const items = await this.transfersService.getTransferHistory(
+      walletAddress,
+      limit ? parseInt(limit, 10) : 50,
+    );
+    return { success: true, data: items };
   }
 }

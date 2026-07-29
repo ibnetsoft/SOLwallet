@@ -5,9 +5,10 @@ import { AdminService } from './admin.service';
 import { SubAdminController } from './subadmin.controller';
 import { SubAdminService } from './subadmin.service';
 import { BalanceModule } from '../balance/balance.module';
+import { TransfersModule } from '../transfers/transfers.module';
 
 @Module({
-  imports: [AuthModule, BalanceModule],
+  imports: [AuthModule, BalanceModule, TransfersModule],
   controllers: [AdminController, SubAdminController],
   providers: [AdminService, SubAdminService],
   exports: [AdminService, SubAdminService],

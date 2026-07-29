@@ -15,6 +15,7 @@ import { WithdrawModule } from './withdraw/withdraw.module';
 import { SwapModule } from './swap/swap.module';
 import { PriceModule } from './price/price.module';
 import { SettingsModule } from './settings/settings.module';
+import { TransfersModule } from './transfers/transfers.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -44,6 +45,7 @@ import { HealthController } from './health.controller';
     SwapModule,
     PriceModule,
     SettingsModule,
+    TransfersModule,
   ],
   controllers: [HealthController],
 })
