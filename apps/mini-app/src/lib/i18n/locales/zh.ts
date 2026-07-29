@@ -247,8 +247,7 @@ const zh: Record<string, string> = {
   // ─── Referral ───
   'referral.shareTitle': 'AOI Wallet 推荐链接',
   'referral.code': '推荐码：{code}',
-  'referral.telegram': 'Telegram：{link}',
-  'referral.web': '网页：{link}',
+  'referral.link': '链接：{link}',
 
   // ─── API Errors ───
   'error.authExpired': '会话已过期，请重新登录。',

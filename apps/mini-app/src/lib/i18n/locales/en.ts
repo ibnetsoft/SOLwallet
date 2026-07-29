@@ -249,8 +249,7 @@ const en: Record<TranslationKey, string> = {
   // ─── Referral ───
   'referral.shareTitle': 'AOI Wallet Referral Link',
   'referral.code': 'Code: {code}',
-  'referral.telegram': 'Telegram: {link}',
-  'referral.web': 'Web: {link}',
+  'referral.link': 'Link: {link}',
 
   // ─── API Errors ───
   'error.authExpired': 'Session expired. Please log in again.',

@@ -249,8 +249,7 @@ const ko: Record<string, string> = {
   // ─── Referral ───
   'referral.shareTitle': 'AOI Wallet 추천 링크',
   'referral.code': '추천코드: {code}',
-  'referral.telegram': 'Telegram: {link}',
-  'referral.web': '웹: {link}',
+  'referral.link': '링크: {link}',
 
   // ─── API Errors ───
   'error.authExpired': '인증이 만료되었습니다. 다시 로그인해주세요.',

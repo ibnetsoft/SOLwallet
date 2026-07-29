@@ -12,7 +12,7 @@ import MnemonicDisplay from '@/components/MnemonicDisplay';
 import { MAX_WALLETS } from '@solwallet/config';
 import { getUserProfile } from '@/lib/api/user';
 import type { UserProfile } from '@/lib/api/user';
-import { getTelegramDeepLink } from '@/lib/referral';
+import { getShareLink } from '@/lib/referral';
 import { isLoggedIn } from '@/lib/api/auth';
 import { useT } from '@/lib/i18n';
 
@@ -304,8 +304,8 @@ export default function SettingsPage() {
               <button
                 onClick={() => {
                   if (profile.referralCode) {
-                    // 텔레그램 딥링크만 복사
-                    const shareText = getTelegramDeepLink(profile.referralCode);
+                    // 웹 URL 우선 (PC/모바일 모두 작동), 없으면 딥링크 폴백
+                    const shareText = getShareLink(profile.referralCode);
                     navigator.clipboard.writeText(shareText).then(
                       () => showToast(t('settings.copySuccess')),
                       () => showToast(t('settings.copyFailed'))

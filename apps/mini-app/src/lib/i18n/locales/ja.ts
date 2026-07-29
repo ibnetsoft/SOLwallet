@@ -247,8 +247,7 @@ const ja: Record<string, string> = {
   // ─── Referral ───
   'referral.shareTitle': 'AOI Wallet 紹介リンク',
   'referral.code': '紹介コード：{code}',
-  'referral.telegram': 'Telegram：{link}',
-  'referral.web': 'ウェブ：{link}',
+  'referral.link': 'リンク：{link}',
 
   // ─── API Errors ───
   'error.authExpired': 'セッションが期限切れです。再度ログインしてください。',
