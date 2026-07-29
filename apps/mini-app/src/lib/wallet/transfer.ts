@@ -3,18 +3,27 @@ import {
   SystemProgram,
   PublicKey,
   LAMPORTS_PER_SOL,
+  Connection,
 } from '@solana/web3.js';
+
+const RPC_URL = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
 
 /**
  * SOL 전송 트랜잭션 빌드 (unsigned)
  * 클라이언트에서 빌드 → signTransaction()으로 서명 → 서버에 전송
  */
-export function buildSolTransferTx(
+export async function buildSolTransferTx(
   from: string,
   to: string,
   amountSol: number,
-): string {
-  const transaction = new Transaction().add(
+): Promise<string> {
+  const connection = new Connection(RPC_URL, 'confirmed');
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+
+  const transaction = new Transaction({
+    blockhash,
+    lastValidBlockHeight,
+  }).add(
     SystemProgram.transfer({
       fromPubkey: new PublicKey(from),
       toPubkey: new PublicKey(to),

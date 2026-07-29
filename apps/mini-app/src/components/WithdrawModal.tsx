@@ -54,8 +54,8 @@ export default function WithdrawModal({
         throw new Error(t('error.walletUnlockFailed'));
       }
 
-      // 2. SOL 전송 트랜잭션 빌드
-      const unsignedTx = buildSolTransferTx(walletAddress, toAddress.trim(), amountNum);
+      // 2. SOL 전송 트랜잭션 빌드 (blockhash 포함)
+      const unsignedTx = await buildSolTransferTx(walletAddress, toAddress.trim(), amountNum);
 
       // 3. 온디바이스 서명
       const signedTx = signTransaction(unsignedTx, secretKey);
