@@ -1,5 +1,5 @@
 import { API_BASE } from './client';
-import { saveAuthToken } from '@/lib/storage';
+import { saveAuthToken, clearAuthToken, clearAllStorage } from '@/lib/storage';
 import { getMsg } from '@/lib/i18n';
 
 /**
@@ -62,4 +62,23 @@ export async function devLogin(username?: string, devSecret?: string): Promise<s
 export function isLoggedIn(): boolean {
   if (typeof window === 'undefined') return false;
   return !!localStorage.getItem('solwallet_auth_token');
+}
+
+/**
+ * 로그아웃 — 인증 토큰만 삭제 (지갑 데이터는 유지)
+ * 같은 기기에서 다른 계정으로 전환하거나 재로그인할 때 사용.
+ * Telegram 미니앱 환경에서는 다시 열면 현재 Telegram 계정으로 자동 로그인됨.
+ */
+export function logout(): void {
+  clearAuthToken();
+}
+
+/**
+ * 완전 로그아웃 — 인증 토큰 + 로컬 지갑 데이터(암호화된 개인키 포함) 모두 삭제
+ * ⚠️ 이 기기의 지갑 개인키가 영구 삭제됨.
+ *    시드 구문 백업이 없으면 복구 불가.
+ * 기기 변경, 계정 완전 초기화 시 사용.
+ */
+export function fullLogout(): void {
+  clearAllStorage();
 }

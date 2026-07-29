@@ -13,7 +13,7 @@ import { MAX_WALLETS } from '@solwallet/config';
 import { getUserProfile } from '@/lib/api/user';
 import type { UserProfile } from '@/lib/api/user';
 import { getShareLink } from '@/lib/referral';
-import { isLoggedIn } from '@/lib/api/auth';
+import { isLoggedIn, logout } from '@/lib/api/auth';
 import { useT } from '@/lib/i18n';
 
 export default function SettingsPage() {
@@ -343,6 +343,26 @@ export default function SettingsPage() {
             <span>Manifest.trade</span>
           </div>
         </div>
+      </section>
+
+      {/* 로그아웃 — 계정 전환 (지갑 데이터 유지) */}
+      <section className="mb-6">
+        <button
+          onClick={() => {
+            logout();
+            showToast(t('settings.logoutDone'));
+            // 로그인 페이지로 이동 — Telegram 미니앱에서는 현재 계정으로 재로그인
+            setTimeout(() => {
+              window.location.href = '/login';
+            }, 500);
+          }}
+          className="w-full py-3 rounded-xl bg-gray-800 text-gray-300 font-medium text-sm hover:bg-gray-700 transition border border-gray-700"
+        >
+          {t('settings.logout')}
+        </button>
+        <p className="text-[11px] text-gray-500 mt-2 text-center leading-relaxed">
+          {t('settings.logoutDesc')}
+        </p>
       </section>
 
       {/* Bottom Nav */}
