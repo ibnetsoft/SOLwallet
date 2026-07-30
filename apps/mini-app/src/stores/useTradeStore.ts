@@ -271,6 +271,20 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         }
       }
 
+      // 2b. SOL 매도 시 wrapTx가 있으면 서명/제출 (SOL → wSOL 래핑)
+      if (result.wrapTx) {
+        try {
+          const signedWrapTx = signTransaction(result.wrapTx, secretKey, 'legacy');
+          await ordersApi.submitSetupTx(signedWrapTx);
+          // wSOL 래핑 트랜잭션이 컨펌될 때까지 대기
+          await new Promise((r) => setTimeout(r, 2000));
+        } catch (wrapErr) {
+          console.error('[createOrder] wSOL wrap failed:', wrapErr);
+          useWalletStore.getState().lockWallets();
+          throw new Error('SOL을 wSOL으로 래핑하는 데 실패했습니다. 잠시 후 다시 시도해주세요.');
+        }
+      }
+
       // 3. 서명 직전 fresh tx 획득 — Manifest blockhash 만료 방지
       // createOrder에서 반환된 unsignedTx는 시간 경과로 blockhash 만료 가능
       // 서명 직전 서버에서 Manifest를 재호출하여 fresh blockhash의 tx를 가져옴

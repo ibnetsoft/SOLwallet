@@ -13,6 +13,8 @@ export interface CreateOrderResult {
   unsignedTx: string;
   /** 첫 거래 전 필요한 ATA 생성 트랜잭션 (없으면 undefined) */
   setupTx?: string;
+  /** SOL 매도 시 wSOL 래핑 트랜잭션 (없으면 undefined) */
+  wrapTx?: string;
 }
 
 /**

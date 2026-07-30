@@ -14,6 +14,7 @@ import {
   TOKEN_PROGRAM_ID,
   NATIVE_MINT,
   ASSOCIATED_TOKEN_PROGRAM_ID,
+  createSyncNativeInstruction,
 } from '@solana/spl-token';
 import { MANIFEST, USDT_MINT, USDC_MINT } from '@solwallet/config';
 import { SettingsService } from '../settings/settings.service';
@@ -112,7 +113,7 @@ export class OrdersService {
   async createOrder(
     userId: string,
     dto: CreateOrderDto,
-  ): Promise<{ order: Record<string, unknown>; unsignedTx: string; setupTx?: string }> {
+  ): Promise<{ order: Record<string, unknown>; unsignedTx: string; setupTx?: string; wrapTx?: string }> {
     // 지갑 소유권 검증 + public key 획득
     const walletPublicKey = await this.verifyWalletOwnership(dto.walletId, userId);
 
@@ -182,7 +183,7 @@ export class OrdersService {
       needsAtaSetup = true;
     }
 
-    // ATA가 없으면 setup tx 생성 — idempotent create ATA instruction 포함
+    // ── ATA 생성 tx (필요 시) ──
     let setupTx: string | undefined;
     if (needsAtaSetup) {
       try {
@@ -214,7 +215,6 @@ export class OrdersService {
             lastValidBlockHeight,
           }).add(createAtaIx);
 
-          // SOL 매도 시 wSOL ATA는 생성만 하고 자금은 deposit에서 wrapping됨
           setupTx = setupTransaction.serialize({
             requireAllSignatures: false,
             verifySignatures: false,
@@ -224,6 +224,54 @@ export class OrdersService {
         }
       } catch (err) {
         this.logger.error(`Failed to build ATA setup tx: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    // ── SOL 매도 시 wSOL 래핑 tx — SOL을 wSOL ATA로 전송 + syncNative ──
+    // Manifest 주문 tx는 wSOL deposit을 요구하므로, SOL → wSOL 래핑이 선행되어야 함.
+    // wrapTx는 단순한 legacy transaction이라 클라이언트에서 온디바이스 서명.
+    let wrapTx: string | undefined;
+    if (isNativeSol && dto.side === 'sell') {
+      try {
+        const wsolAta = getAssociatedTokenAddressSync(NATIVE_MINT, traderPubkey, true);
+        // 주문 수량만큼 래핑 (lamports 단위, 소수점 9자리)
+        const wrapAmount = Math.floor(Number(dto.quantity) * LAMPORTS_PER_SOL);
+
+        // SystemProgram.transfer: SOL → wSOL ATA (래핑)
+        const transferIx = SystemProgram.transfer({
+          fromPubkey: traderPubkey,
+          toPubkey: wsolAta,
+          lamports: wrapAmount,
+        });
+        // syncNative: wSOL ATA 잔액 동기화 (SPL Token이 SOL 입금을 인식)
+        const syncIx = createSyncNativeInstruction(wsolAta);
+
+        const bhRes = await fetch(this.rpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestBlockhash', params: [] }),
+        });
+        const bhData = await bhRes.json() as { result?: { value?: { blockhash: string; lastValidBlockHeight: number } } };
+        const blockhash = bhData.result?.value?.blockhash;
+        const lastValidBlockHeight = bhData.result?.value?.lastValidBlockHeight ?? 0;
+
+        if (blockhash) {
+          const wrapTransaction = new Transaction({
+            feePayer: traderPubkey,
+            blockhash,
+            lastValidBlockHeight,
+          }).add(transferIx, syncIx);
+
+          wrapTx = wrapTransaction.serialize({
+            requireAllSignatures: false,
+            verifySignatures: false,
+          }).toString('base64');
+
+          this.logger.log(`wSOL wrap tx created: ${wrapAmount / LAMPORTS_PER_SOL} SOL (wallet ${walletPublicKey.slice(0, 8)}...)`);
+        }
+      } catch (err) {
+        this.logger.error(`Failed to build wSOL wrap tx: ${err instanceof Error ? err.message : String(err)}`);
+        throw new BadRequestException('wSOL 래핑 트랜잭션 생성에 실패했습니다.');
       }
     }
 
@@ -324,7 +372,7 @@ export class OrdersService {
       })
       .eq('id', order.id);
 
-    return { order: order as Record<string, unknown>, unsignedTx, setupTx };
+    return { order: order as Record<string, unknown>, unsignedTx, setupTx, wrapTx };
   }
 
   /**
