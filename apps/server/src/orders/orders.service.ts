@@ -1249,40 +1249,45 @@ export class OrdersService {
           method: 'sendTransaction',
           params: [signedTx, {
             encoding: 'base64',
-            skipPreflight: true,
-            maxRetries: 3,
-            preflightCommitment: 'confirmed',
+            skipPreflight: false,
+            preflightCommitment: 'processed',
+            maxRetries: 5,
           }],
         }),
       });
 
-      const rpcData = await rpcRes.json() as { result?: string; error?: { message?: string } };
+      const rpcData = await rpcRes.json() as { result?: string; error?: { message?: string; code?: number } };
       txSignature = rpcData.result || '';
 
       if (!txSignature) {
         throw new Error(rpcData.error?.message || 'RPC 전송 실패');
       }
+      this.logger.log(`[submitCancelOrder] RPC accepted: ${txSignature.slice(0, 12)}...`);
     } catch (err) {
-      this.logger.error(`RPC cancel submit error: ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.error(`[submitCancelOrder] RPC error: ${err instanceof Error ? err.message : String(err)}`);
       throw new BadRequestException('취소 트랜잭션 제출에 실패했습니다.');
     }
 
     // cancel tx on-chain confirm 대기
-    const connection = new Connection(this.rpcUrl, 'confirmed');
+    const connection = new Connection(this.rpcUrl, {
+      confirmTransactionInitialTimeout: 30_000,
+    });
     try {
       const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+      this.logger.log(`[submitCancelOrder] waiting for confirm: ${txSignature.slice(0, 12)}...`);
       const confirmed = await connection.confirmTransaction(
         { signature: txSignature, blockhash, lastValidBlockHeight },
         'confirmed',
       );
 
       if (!confirmed.value || confirmed.value.err) {
-        this.logger.warn(`Cancel tx ${txSignature} not confirmed. err=${JSON.stringify(confirmed.value?.err)}`);
+        this.logger.warn(`[submitCancelOrder] NOT CONFIRMED — tx=${txSignature} err=${JSON.stringify(confirmed.value?.err)}`);
         throw new BadRequestException('취소 트랜잭션이 체인에 반영되지 않았습니다. 다시 시도해주세요.');
       }
+      this.logger.log(`[submitCancelOrder] CONFIRMED — tx=${txSignature.slice(0, 12)}...`);
     } catch (err) {
       if (err instanceof BadRequestException) throw err;
-      this.logger.warn(`Cancel tx confirmation timeout: ${txSignature}`);
+      this.logger.warn(`[submitCancelOrder] confirm timeout: ${txSignature} — ${err instanceof Error ? err.message : String(err)}`);
       throw new BadRequestException('취소 컨펌 대기 시간 초과. 다시 시도해주세요.');
     }
 
