@@ -295,6 +295,7 @@ export class OrdersService {
             },
           ],
           computeUnitPrice: MANIFEST.computeUnitPrice,
+          setupIxs: true,
         }),
       });
 
@@ -929,6 +930,7 @@ export class OrdersService {
           },
         ],
         computeUnitPrice: MANIFEST.computeUnitPrice,
+        setupIxs: true,
       }),
     });
 
