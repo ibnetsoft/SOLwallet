@@ -524,6 +524,137 @@ export class OrdersService {
   }
 
   /**
+   * Manifest에서 보유 잔액(base+quote) 전액 인출 tx 생성 — fresh blockhash
+   *
+   * 체결된 주문의 수익(USDC 등)은 Manifest wrapper 내부에 보관되므로,
+   * 사용자가 명시적으로 withdraw해야 자기 지갑 ATA로 들어옴.
+   * Manifest SDK의 withdrawAllIx()로 base+quote 모든 잔액을 인출.
+   */
+  async getWithdrawTx(
+    userId: string,
+    walletId: string,
+  ): Promise<{ unsignedTx: string }> {
+    this.logger.log(`[getWithdrawTx] START — user=${userId.slice(0, 8)} wallet=${walletId.slice(0, 8)}`);
+
+    // 지갑 소유권 검증 + public key 획득
+    const walletPublicKey = await this.verifyWalletOwnership(walletId, userId);
+    const traderPubkey = new PublicKey(walletPublicKey);
+
+    try {
+      // Manifest SDK 동적 로드
+      const { Market, ManifestClient } = await import('@cks-systems/manifest-sdk');
+
+      // SOL/USDC 마켓 조회 (현재 지원하는 유일한 마켓)
+      const baseMint = new PublicKey(NATIVE_MINT.toBase58());
+      const quoteMint = new PublicKey(USDC_MINT);
+      const markets = await Market.findByMints(this.connection, baseMint, quoteMint);
+
+      if (!markets || markets.length === 0) {
+        throw new BadRequestException('거래 가능한 마켓을 찾을 수 없습니다.');
+      }
+
+      const marketAddress = markets[0].address;
+      this.logger.log(`[getWithdrawTx] market=${marketAddress.toBase58().slice(0, 8)}...`);
+
+      // private key 없이 client 생성 (instruction만 필요)
+      const client = await ManifestClient.getClientForMarketNoPrivateKey(
+        this.connection,
+        marketAddress,
+        traderPubkey,
+      );
+
+      // 모든 잔액(base + quote) 인출 instruction
+      const withdrawIxs = client.withdrawAllIx();
+
+      if (!withdrawIxs || withdrawIxs.length === 0) {
+        throw new BadRequestException('인출할 잔액이 없습니다.');
+      }
+
+      this.logger.log(`[getWithdrawTx] withdrawAllIx count=${withdrawIxs.length}`);
+
+      // fresh blockhash로 legacy transaction 빌드
+      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
+      const withdrawTx = new Transaction({
+        feePayer: traderPubkey,
+        blockhash,
+        lastValidBlockHeight,
+      }).add(...withdrawIxs);
+
+      const unsignedTx = withdrawTx.serialize({
+        requireAllSignatures: false,
+        verifySignatures: false,
+      }).toString('base64');
+
+      this.logger.log(`[getWithdrawTx] DONE — wallet ${walletPublicKey.slice(0, 8)}...`);
+      return { unsignedTx };
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      this.logger.error(`[getWithdrawTx] error: ${err instanceof Error ? err.message : String(err)}`);
+      throw new BadRequestException('인출 트랜잭션 생성에 실패했습니다. 잠시 후 다시 시도해주세요.');
+    }
+  }
+
+  /**
+   * 서명된 withdraw 트랜잭션 제출 — RPC 전송 후 컨펌 확인
+   */
+  async submitWithdrawTx(
+    signedTx: string,
+    _userId: string,
+  ): Promise<{ txSignature: string }> {
+    this.logger.log(`[submitWithdrawTx] START — txLen=${signedTx.length}`);
+    let txSignature = '';
+    try {
+      const rpcRes = await fetch(this.rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'sendTransaction',
+          params: [signedTx, {
+            encoding: 'base64',
+            skipPreflight: true,
+            maxRetries: 3,
+            preflightCommitment: 'confirmed',
+          }],
+        }),
+      });
+
+      const rpcData = await rpcRes.json() as { result?: string; error?: { message?: string } };
+      txSignature = rpcData.result || '';
+
+      if (!txSignature) {
+        throw new Error(rpcData.error?.message || 'RPC 전송 실패');
+      }
+      this.logger.log(`[submitWithdrawTx] tx sent to RPC: ${txSignature.slice(0, 12)}...`);
+    } catch (err) {
+      this.logger.error(`[submitWithdrawTx] RPC error: ${err instanceof Error ? err.message : String(err)}`);
+      throw new BadRequestException('인출 트랜잭션 제출에 실패했습니다.');
+    }
+
+    // 인출이 온체인에 반영되었는지 확인
+    try {
+      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
+      this.logger.log(`[submitWithdrawTx] waiting for confirm: ${txSignature.slice(0, 12)}...`);
+      const confirmed = await this.connection.confirmTransaction(
+        { signature: txSignature, blockhash, lastValidBlockHeight },
+        'confirmed',
+      );
+      if (!confirmed.value || confirmed.value.err) {
+        this.logger.warn(`[submitWithdrawTx] NOT CONFIRMED — tx=${txSignature} err=${JSON.stringify(confirmed.value?.err)}`);
+        throw new BadRequestException('인출이 체인에 반영되지 않았습니다. 다시 시도해주세요.');
+      }
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      this.logger.warn(`[submitWithdrawTx] confirm timeout: ${txSignature} — ${err instanceof Error ? err.message : String(err)}`);
+      throw new BadRequestException('인출 컨펌이 지연되었습니다. 다시 시도해주세요.');
+    }
+
+    this.logger.log(`[submitWithdrawTx] CONFIRMED — tx=${txSignature.slice(0, 12)}...`);
+    return { txSignature };
+  }
+
+  /**
    * 서명된 트랜잭션 제출 — Solana RPC로 전송
    */
   async submitOrder(

@@ -65,6 +65,7 @@ function TradeContent() {
     applyCurrentPrice,
     createAndSubmitOrder,
     cancelOrder,
+    withdrawFunds,
   } = useTradeStore();
 
   const { wallets, initialize } = useWalletStore();
@@ -77,6 +78,8 @@ function TradeContent() {
   const [showCancelPinModal, setShowCancelPinModal] = useState(false);
   const [cancelPinError, setCancelPinError] = useState('');
   const [pendingCancelOrderId, setPendingCancelOrderId] = useState<string | null>(null);
+  const [showWithdrawPinModal, setShowWithdrawPinModal] = useState(false);
+  const [withdrawPinError, setWithdrawPinError] = useState('');
   const [activeTab, setActiveTab] = useState<'open' | 'history'>('open');
 
   // 무한 스크롤 — History 탭에서 sentinel이 보이면 다음 페이지 로드
@@ -268,6 +271,21 @@ function TradeContent() {
       showToast(t('trade.orderCancelled'));
     } catch (err) {
       setCancelPinError(err instanceof Error ? err.message : t('trade.cancelFailed'));
+    }
+  };
+
+  // 수익 인출 → PIN 입력 → Manifest 잔액 withdraw
+  const handleWithdrawExecute = async (pin: string) => {
+    setWithdrawPinError('');
+    try {
+      const result = await withdrawFunds(pin);
+      setShowWithdrawPinModal(false);
+      showToast(t('trade.withdrawSuccess', { defaultValue: '수익이 인출되었습니다.' }));
+      if (result.txSignature) {
+        showToast(`📝 Tx: ${result.txSignature.slice(0, 8)}...`);
+      }
+    } catch (err) {
+      setWithdrawPinError(err instanceof Error ? err.message : t('trade.withdrawFailed', { defaultValue: '인출에 실패했습니다.' }));
     }
   };
 
@@ -624,13 +642,21 @@ function TradeContent() {
               {t('trade.history')}
             </button>
           </div>
-          <button
-            onClick={() => activeTab === 'open' ? fetchActiveOrders() : fetchOrderHistory()}
-            className="p-1 text-gray-400 hover:text-white transition"
-            aria-label={t('trade.refresh')}
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowWithdrawPinModal(true)}
+              className="text-xs px-2.5 py-1 rounded-lg bg-primary-500/10 text-primary-400 hover:bg-primary-500/20 transition font-medium"
+            >
+              {t('trade.withdraw', { defaultValue: '수익 인출' })}
+            </button>
+            <button
+              onClick={() => activeTab === 'open' ? fetchActiveOrders() : fetchOrderHistory()}
+              className="p-1 text-gray-400 hover:text-white transition"
+              aria-label={t('trade.refresh')}
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Tab: Open Orders */}
@@ -788,6 +814,19 @@ function TradeContent() {
           setCancelPinError('');
         }}
         error={cancelPinError}
+      />
+
+      {/* PIN Modal for withdraw signing */}
+      <PinModal
+        isOpen={showWithdrawPinModal}
+        title={t('trade.withdraw', { defaultValue: '수익 인출' })}
+        subtitle={t('trade.pinSubtitle')}
+        onConfirm={handleWithdrawExecute}
+        onCancel={() => {
+          setShowWithdrawPinModal(false);
+          setWithdrawPinError('');
+        }}
+        error={withdrawPinError}
       />
     </main>
   );

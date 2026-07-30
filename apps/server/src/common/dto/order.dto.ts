@@ -23,3 +23,8 @@ export class SubmitOrderDto {
   @IsString()
   signedTx!: string;
 }
+
+export class WithdrawTxDto {
+  @IsUUID()
+  walletId!: string;
+}

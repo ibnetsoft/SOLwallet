@@ -72,6 +72,7 @@ interface TradeState {
   // Order actions
   createAndSubmitOrder: (pin: string) => Promise<{ txSignature?: string }>;
   cancelOrder: (orderId: string, pin: string) => Promise<{ txSignature?: string }>;
+  withdrawFunds: (pin: string) => Promise<{ txSignature?: string }>;
 }
 
 export const useTradeStore = create<TradeState>((set, get) => ({
@@ -362,6 +363,48 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       // 5. 메모리에서 키 해제
       useWalletStore.getState().lockWallets();
 
+      return result;
+    } catch (err) {
+      useWalletStore.getState().lockWallets();
+      throw err;
+    }
+  },
+
+  withdrawFunds: async (pin) => {
+    const wallets = useWalletStore.getState().wallets;
+    const activeWallet = wallets.find((w) => w.isActive) || wallets[0];
+    if (!activeWallet) {
+      throw new Error(getMsg('error.noActiveWallet'));
+    }
+
+    // 지갑 잠금 해제
+    await useWalletStore.getState().unlockWallet(activeWallet.id, pin);
+
+    const secretKey = useWalletStore.getState().wallets.find((w) => w.id === activeWallet.id)?.secretKey;
+    if (!secretKey) {
+      useWalletStore.getState().lockWallets();
+      throw new Error(getMsg('error.walletUnlockFailed'));
+    }
+
+    try {
+      // 1. Manifest에서 fresh withdraw tx 획득
+      console.log('[withdrawFunds] fetching withdraw tx...');
+      const { unsignedTx } = await ordersApi.getWithdrawTx(activeWallet.id);
+
+      // 2. 온디바이스 서명 (withdraw = legacy)
+      const { signTransaction } = await import('@/lib/wallet');
+      console.log('[withdrawFunds] signing...');
+      const signedTx = signTransaction(unsignedTx, secretKey, 'legacy');
+
+      // 3. 서명된 withdraw tx 제출
+      console.log('[withdrawFunds] submitting...');
+      const result = await ordersApi.submitWithdrawTx(signedTx);
+      console.log('[withdrawFunds] done —', result.txSignature?.slice(0, 12));
+
+      // 4. 잔액 새로고침 (잔액 표시 컴포넌트가 감지)
+      get().fetchActiveOrders();
+
+      useWalletStore.getState().lockWallets();
       return result;
     } catch (err) {
       useWalletStore.getState().lockWallets();

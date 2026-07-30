@@ -11,7 +11,7 @@ import {
 import { OrdersService } from './orders.service';
 import { JwtAuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../common/interfaces/authenticated-request';
-import { CreateOrderDto, SubmitOrderDto } from '../common/dto/order.dto';
+import { CreateOrderDto, SubmitOrderDto, WithdrawTxDto } from '../common/dto/order.dto';
 
 @Controller('orders')
 @UseGuards(JwtAuthGuard)
@@ -51,6 +51,31 @@ export class OrdersController {
     @Body() dto: SubmitOrderDto,
   ) {
     const result = await this.ordersService.submitWrapTx(dto.signedTx, userId);
+    return { success: true, data: result };
+  }
+
+  /**
+   * POST /api/orders/withdraw-tx — Manifest 잔액 인출 tx 획득 (fresh blockhash)
+   * 체결된 수익을 Manifest wrapper에서 사용자 ATA로 인출
+   */
+  @Post('withdraw-tx')
+  async getWithdrawTx(
+    @CurrentUser() userId: string,
+    @Body() dto: WithdrawTxDto,
+  ) {
+    const result = await this.ordersService.getWithdrawTx(userId, dto.walletId);
+    return { success: true, data: result };
+  }
+
+  /**
+   * POST /api/orders/withdraw/submit — 서명된 인출 트랜잭션 제출 + 컨펌
+   */
+  @Post('withdraw/submit')
+  async submitWithdrawTx(
+    @CurrentUser() userId: string,
+    @Body() dto: SubmitOrderDto,
+  ) {
+    const result = await this.ordersService.submitWithdrawTx(dto.signedTx, userId);
     return { success: true, data: result };
   }
 
