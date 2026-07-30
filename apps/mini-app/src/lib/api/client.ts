@@ -3,8 +3,8 @@ import { getMsg } from '@/lib/i18n';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
-/** 요청 타임아웃 (10초) */
-const REQUEST_TIMEOUT = 10_000;
+/** 요청 타임아웃 (30초) — 거래 제출/확인은 RPC 응답 대기로 오래 걸릴 수 있음 */
+const REQUEST_TIMEOUT = 30_000;
 
 interface ApiResponse<T> {
   success: boolean;

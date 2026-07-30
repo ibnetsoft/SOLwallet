@@ -276,8 +276,8 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         try {
           const signedWrapTx = signTransaction(result.wrapTx, secretKey, 'legacy');
           await ordersApi.submitSetupTx(signedWrapTx);
-          // wSOL 래핑 트랜잭션이 컨펌될 때까지 대기
-          await new Promise((r) => setTimeout(r, 2000));
+          // wSOL 래핑 트랜잭션이 반영될 때까지 짧게 대기
+          await new Promise((r) => setTimeout(r, 1000));
         } catch (wrapErr) {
           console.error('[createOrder] wSOL wrap failed:', wrapErr);
           useWalletStore.getState().lockWallets();
