@@ -26,6 +26,10 @@ function UserRow({
         if (!mounted) return;
         const newBalances: Record<string, number> = {};
         res.wallets.forEach((w) => {
+          // SOL 잔고는 w.sol에 별도 저장 (SPL 토큰이 아님)
+          const SOL_MINT = 'So11111111111111111111111111111111111111112';
+          newBalances[SOL_MINT] = (newBalances[SOL_MINT] || 0) + (w.sol || 0);
+          // SPL 토큰 잔고
           w.tokens?.forEach((t: any) => {
             newBalances[t.mint] = (newBalances[t.mint] || 0) + t.balance;
           });
