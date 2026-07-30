@@ -259,12 +259,13 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       // 2. ATA setup tx가 있으면 먼저 서명/제출 (첫 거래 전 토큰 계정 생성)
       const { signTransaction } = await import('@/lib/wallet');
       if (result.setupTx) {
+        console.log('[trade] step 2: signing + submitting setupTx (ATA creation)');
         try {
           const signedSetupTx = signTransaction(result.setupTx, secretKey, 'legacy');
           await ordersApi.submitSetupTx(signedSetupTx);
-          // 서버에서 confirmTransaction 완료 후 반환되므로 별도 대기 불필요
+          console.log('[trade] step 2: setupTx submitted');
         } catch (setupErr) {
-          console.error('[createOrder] ATA setup failed:', setupErr);
+          console.error('[trade] step 2 FAILED: setupTx:', setupErr);
           useWalletStore.getState().lockWallets();
           throw new Error('지갑 초기 설정(토큰 계정 생성)에 실패했습니다. 잠시 후 다시 시도해주세요.');
         }
@@ -273,25 +274,33 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       // 3. SOL 매도 시 fresh wSOL 래핑 tx 획득 + 서명/제출
       // createOrder에서 미리 만들지 않고 서명 직전 fresh하게 생성하여 blockhash 만료 방지
       if (side === 'sell' && selectedToken.symbol === 'SOL') {
+        console.log('[trade] step 3: SOL sell → fetching fresh wrapTx');
         try {
           const { wrapTx } = await ordersApi.getWrapTx(result.order.id as string);
+          console.log('[trade] step 3: got wrapTx, signing...');
           const signedWrapTx = signTransaction(wrapTx, secretKey, 'legacy');
+          console.log('[trade] step 3: submitting wrapTx...');
           await ordersApi.submitWrapTx(signedWrapTx);
+          console.log('[trade] step 3: wrapTx submitted + confirmed');
         } catch (wrapErr) {
-          console.error('[createOrder] wSOL wrap failed:', wrapErr);
+          console.error('[trade] step 3 FAILED: wrapTx:', wrapErr);
           useWalletStore.getState().lockWallets();
           throw new Error('SOL을 wSOL으로 래핑하는 데 실패했습니다. 잠시 후 다시 시도해주세요.');
         }
       }
 
       // 4. 서명 직전 fresh tx 획득 — Manifest blockhash 만료 방지
+      console.log('[trade] step 4: fetching fresh order tx');
       const freshResult = await ordersApi.getFreshTx(result.order.id as string);
 
       // 4. 온디바이스 서명 (Manifest = versioned)
+      console.log('[trade] step 5: signing order tx');
       const signedTx = signTransaction(freshResult.unsignedTx, secretKey, 'versioned');
 
       // 5. 서명된 트랜잭션 제출
+      console.log('[trade] step 6: submitting order tx');
       const submitResult = await ordersApi.submitOrder(result.order.id as string, signedTx);
+      console.log('[trade] step 6: order submitted —', submitResult.txSignature?.slice(0, 12));
 
       // 6. 활성 주문 새로고침
       get().fetchActiveOrders();

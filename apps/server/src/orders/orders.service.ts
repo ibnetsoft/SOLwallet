@@ -116,8 +116,11 @@ export class OrdersService {
     userId: string,
     dto: CreateOrderDto,
   ): Promise<{ order: Record<string, unknown>; unsignedTx: string; setupTx?: string }> {
+    this.logger.log(`[createOrder] START — user=${userId.slice(0, 8)} side=${dto.side} token=${dto.tokenId} price=${dto.price} qty=${dto.quantity}`);
+
     // 지갑 소유권 검증 + public key 획득
     const walletPublicKey = await this.verifyWalletOwnership(dto.walletId, userId);
+    this.logger.log(`[createOrder] wallet=${walletPublicKey.slice(0, 8)}...`);
 
     // 토큰 정보 조회 (base)
     const { data: token } = await this.client
@@ -260,12 +263,14 @@ export class OrdersService {
 
     // order.id(UUID) 기반으로 Manifest 호환 clientOrderId 생성 (31-bit int)
     const clientOrderId = this.generateClientOrderId(order.id);
+    this.logger.log(`[createOrder] order saved: id=${order.id} clientOrderId=${clientOrderId}`);
 
     // Manifest API에 unsigned 트랜잭션 요청 (문서 스펙 준수)
     let unsignedTx = '';
     let requestId = '';
     try {
       const quoteMint = token.symbol === 'SOL' ? USDC_MINT : USDT_MINT;
+      this.logger.log(`[createOrder] calling Manifest POST /orders — baseMint=${token.mint_address.slice(0, 8)} quoteMint=${quoteMint.slice(0, 8)}`);
       // Manifest API requires valid tick size and step size. 
       // Ensure we don't pass excessive decimals that cause errors.
       const formattedSize = Number(dto.quantity).toFixed(token.decimals);
@@ -297,17 +302,19 @@ export class OrdersService {
       if (manifestRes.ok && manifestData.transaction) {
         unsignedTx = manifestData.transaction;
         requestId = manifestData.requestId || '';
+        this.logger.log(`[createOrder] Manifest OK — requestId=${requestId} txLen=${unsignedTx.length}`);
       } else {
         this.logger.warn(
-          `Manifest API call failed: ${manifestRes.status} — ${manifestData.error || ''}: ${manifestData.cause || ''}`,
+          `[createOrder] Manifest failed: ${manifestRes.status} — ${manifestData.error || ''}: ${manifestData.cause || ''}`,
         );
       }
     } catch (err) {
-      this.logger.error(`Manifest API error: ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.error(`[createOrder] Manifest API error: ${err instanceof Error ? err.message : String(err)}`);
     }
 
     // Manifest 실패 시 주문을 'failed' 상태로 업데이트
     if (!unsignedTx) {
+      this.logger.error(`[createOrder] FAIL — no unsignedTx, order=${order.id} → status=failed`);
       await this.client
         .from('orders')
         .update({ status: 'failed', updated_at: new Date().toISOString() })
@@ -337,6 +344,7 @@ export class OrdersService {
     signedTx: string,
     _userId: string,
   ): Promise<{ txSignature: string }> {
+    this.logger.log(`[submitSetupTx] START — txLen=${signedTx.length}`);
     let txSignature = '';
     try {
       const rpcRes = await fetch(this.rpcUrl, {
@@ -366,7 +374,7 @@ export class OrdersService {
       throw new BadRequestException('트랜잭션 제출에 실패했습니다.');
     }
 
-    this.logger.log(`Setup tx submitted: ${txSignature.slice(0, 12)}...`);
+    this.logger.log(`[submitSetupTx] DONE — tx=${txSignature.slice(0, 12)}... (fire-and-forget)`);
     return { txSignature };
   }
 
@@ -378,6 +386,7 @@ export class OrdersService {
     signedTx: string,
     _userId: string,
   ): Promise<{ txSignature: string }> {
+    this.logger.log(`[submitWrapTx] START — txLen=${signedTx.length}`);
     let txSignature = '';
     try {
       const rpcRes = await fetch(this.rpcUrl, {
@@ -402,31 +411,31 @@ export class OrdersService {
       if (!txSignature) {
         throw new Error(rpcData.error?.message || 'RPC 전송 실패');
       }
-      this.logger.log(`Wrap tx sent to RPC: ${txSignature.slice(0, 12)}...`);
+      this.logger.log(`[submitWrapTx] tx sent to RPC: ${txSignature.slice(0, 12)}...`);
     } catch (err) {
-      this.logger.error(`Wrap tx submit error: ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.error(`[submitWrapTx] RPC error: ${err instanceof Error ? err.message : String(err)}`);
       throw new BadRequestException('wSOL 래핑 트랜잭션 제출에 실패했습니다.');
     }
 
     // wSOL 래핑이 온체인에 반영되었는지 확인
     try {
       const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
-      this.logger.log(`Waiting for wrap tx confirm: ${txSignature.slice(0, 12)}...`);
+      this.logger.log(`[submitWrapTx] waiting for confirm: ${txSignature.slice(0, 12)}...`);
       const confirmed = await this.connection.confirmTransaction(
         { signature: txSignature, blockhash, lastValidBlockHeight },
         'confirmed',
       );
       if (!confirmed.value || confirmed.value.err) {
-        this.logger.warn(`Wrap tx ${txSignature.slice(0, 12)}... not confirmed. err=${JSON.stringify(confirmed.value?.err)}`);
+        this.logger.warn(`[submitWrapTx] NOT CONFIRMED — tx=${txSignature} err=${JSON.stringify(confirmed.value?.err)}`);
         throw new BadRequestException('wSOL 래핑이 체인에 반영되지 않았습니다. 다시 시도해주세요.');
       }
     } catch (err) {
       if (err instanceof BadRequestException) throw err;
-      this.logger.warn(`Wrap tx ${txSignature.slice(0, 12)}... confirm timeout: ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.warn(`[submitWrapTx] confirm timeout: ${txSignature} — ${err instanceof Error ? err.message : String(err)}`);
       throw new BadRequestException('wSOL 래핑 컨펌이 지연되었습니다. 다시 시도해주세요.');
     }
 
-    this.logger.log(`Wrap tx confirmed: ${txSignature.slice(0, 12)}...`);
+    this.logger.log(`[submitWrapTx] CONFIRMED — tx=${txSignature.slice(0, 12)}...`);
     return { txSignature };
   }
 
@@ -437,6 +446,7 @@ export class OrdersService {
    * 클라이언트가 서명 직전 이 엔드포인트를 호출하여 fresh wrap tx를 획득.
    */
   async getWrapTx(orderId: string, userId: string): Promise<{ wrapTx: string }> {
+    this.logger.log(`[getWrapTx] START — order=${orderId}`);
     // 주문 소유자 확인
     const { data: order, error: fetchError } = await this.client
       .from('orders')
@@ -500,7 +510,7 @@ export class OrdersService {
       verifySignatures: false,
     }).toString('base64');
 
-    this.logger.log(`Fresh wrap tx created: ${wrapAmount / LAMPORTS_PER_SOL} SOL (wallet ${wallet.public_key.slice(0, 8)}...)`);
+    this.logger.log(`[getWrapTx] DONE — ${wrapAmount / LAMPORTS_PER_SOL} SOL (wallet ${wallet.public_key.slice(0, 8)}...)`);
     return { wrapTx };
   }
 
@@ -512,6 +522,8 @@ export class OrdersService {
     signedTx: string,
     userId: string,
   ): Promise<{ txSignature: string }> {
+    this.logger.log(`[submitOrder] START — order=${orderId} txLen=${signedTx.length}`);
+
     // 주문 소유자 + 상태 확인
     const { data: order, error: fetchError } = await this.client
       .from('orders')
@@ -521,12 +533,16 @@ export class OrdersService {
       .single();
 
     if (fetchError || !order) {
+      this.logger.error(`[submitOrder] order not found: ${orderId}`);
       throw new NotFoundException('주문을 찾을 수 없습니다.');
     }
 
     if (order.status !== 'active') {
+      this.logger.warn(`[submitOrder] invalid status: ${order.status} (order=${orderId})`);
       throw new BadRequestException('이미 처리되었거나 유효하지 않은 주문입니다.');
     }
+
+    this.logger.log(`[submitOrder] order status=active, sending to RPC...`);
 
     // Solana RPC로 트랜잭션 전송
     // skipPreflight: true — Manifest tx의 blockhash가 preflight simulation에서
@@ -556,9 +572,13 @@ export class OrdersService {
         const rpcData = await rpcRes.json() as { result?: string; error?: { message?: string } };
         txSignature = rpcData.result || '';
 
-        if (txSignature) break; // 성공
+        if (txSignature) {
+          this.logger.log(`[submitOrder] RPC accepted: ${txSignature.slice(0, 12)}... (attempt ${attempt + 1})`);
+          break; // 성공
+        }
 
         lastError = rpcData.error?.message || 'RPC 전송 실패';
+        this.logger.warn(`[submitOrder] RPC attempt ${attempt + 1} failed: ${lastError}`);
         // blockhash 만료/슬롯 관련 에러는 재시도 의미 없음 → 즉시 중단
         if (/blockhash|BlockhashNotFound|not found/i.test(lastError)) {
           throw new Error(lastError);
@@ -591,6 +611,7 @@ export class OrdersService {
     const connection = new Connection(this.rpcUrl, 'confirmed');
     try {
       const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+      this.logger.log(`[submitOrder] waiting for confirm: ${txSignature.slice(0, 12)}...`);
       const confirmed = await connection.confirmTransaction(
         { signature: txSignature, blockhash, lastValidBlockHeight },
         'confirmed',
@@ -599,14 +620,15 @@ export class OrdersService {
       if (!confirmed.value || confirmed.value.err) {
         // 트랜잭션이 드롭되거나 실패 — DB에 기록하지 않고 에러 반환
         this.logger.warn(
-          `Tx ${txSignature} not confirmed (dropped or failed). err=${JSON.stringify(confirmed.value?.err)}`,
+          `[submitOrder] NOT CONFIRMED — tx=${txSignature} err=${JSON.stringify(confirmed.value?.err)}`,
         );
         throw new BadRequestException('트랜잭션이 체인에 반영되지 않았습니다. 다시 시도해주세요.');
       }
+      this.logger.log(`[submitOrder] CONFIRMED — tx=${txSignature.slice(0, 12)}...`);
     } catch (err) {
       // TimeoutError(confirm 실패)도 포함
       if (err instanceof BadRequestException) throw err;
-      this.logger.warn(`Tx confirmation timeout or error: ${txSignature} — ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.warn(`[submitOrder] confirm timeout: ${txSignature} — ${err instanceof Error ? err.message : String(err)}`);
       throw new BadRequestException('트랜잭션 컨펌 대기 시간 초과. 체인 상태를 확인 후 다시 시도해주세요.');
     }
 
@@ -621,9 +643,10 @@ export class OrdersService {
       .eq('id', orderId);
 
     if (updateError) {
-      this.logger.error(`Failed to update order: ${updateError.message}`);
+      this.logger.error(`[submitOrder] DB update failed: ${updateError.message}`);
     }
 
+    this.logger.log(`[submitOrder] DONE — order=${orderId} tx=${txSignature.slice(0, 12)}... status=submitted`);
     return { txSignature };
   }
 
@@ -638,6 +661,7 @@ export class OrdersService {
     orderId: string,
     userId: string,
   ): Promise<{ unsignedTx: string }> {
+    this.logger.log(`[getFreshOrderTx] START — order=${orderId}`);
     // 주문 + 토큰 + 지갑 조회
     const { data: order, error: fetchError } = await this.client
       .from('orders')
@@ -717,6 +741,7 @@ export class OrdersService {
         .eq('id', orderId);
     }
 
+    this.logger.log(`[getFreshOrderTx] DONE — order=${orderId} txLen=${manifestData.transaction.length}`);
     return { unsignedTx: manifestData.transaction };
   }
 
