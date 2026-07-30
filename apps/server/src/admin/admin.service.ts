@@ -133,11 +133,18 @@ export class AdminService {
         referralCounts[r.referrer_id] = (referralCounts[r.referrer_id] || 0) + 1;
       });
 
-      // 4. 총 추천인 수 (RPC 호출)
+      // 4. 총 추천인 수 (get_referral_subtree RPC로 depth>=1 카운트)
       await Promise.all(
         userIds.map(async (uid) => {
-          const { data: tCount } = await this.client.rpc('get_total_referrals_count', { root_user_id: uid });
-          totalReferrals[uid] = tCount || 0;
+          try {
+            const { data: subtree } = await this.client.rpc('get_referral_subtree', {
+              root_user_id: uid,
+              max_depth: 10,
+            });
+            totalReferrals[uid] = (subtree || []).filter((n: any) => n.depth >= 1).length;
+          } catch {
+            totalReferrals[uid] = referralCounts[uid] || 0;
+          }
         })
       );
     }
