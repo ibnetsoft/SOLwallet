@@ -172,6 +172,8 @@ const ja: Record<string, string> = {
   'settings.copied': '紹介コードとリンクをコピーしました。',
   'settings.copyFailed': 'コピーに失敗しました。',
   'settings.friendsInvited': '招待した友達',
+  'settings.directReferrals': '直接紹介 (1次)',
+  'settings.totalReferrals': '総紹介 (全員)',
   'settings.friendsCount': '{count}',
   'settings.myReferrer': '紹介者',
   'settings.version': 'バージョン',

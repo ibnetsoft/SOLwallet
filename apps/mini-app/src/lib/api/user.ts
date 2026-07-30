@@ -8,7 +8,8 @@ export interface UserProfile {
   last_name: string;
   referred_by: string | null;
   referrer: { username: string; first_name: string } | null;
-  referralCount: number;
+  referralCount: number;       // 1대 추천 수 (직접 추천)
+  totalReferralCount: number;  // 총 추천 수 (하위 전체)
   referralCode: string;
   created_at: string;
 }

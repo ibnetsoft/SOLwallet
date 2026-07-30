@@ -267,16 +267,30 @@ export class UserService {
       referrer = ref;
     }
 
-    // 내가 추천한 유저 수
+    // 내가 추천한 유저 수 (1대 추천)
     const { count: refCount } = await this.client
       .from('referrals')
       .select('*', { count: 'exact', head: true })
       .eq('referrer_id', userId);
 
+    // 총 추천인 수 (하위 전체) — get_referral_subtree RPC
+    let totalReferralCount = refCount || 0;
+    try {
+      const { data: subtree } = await this.client
+        .rpc('get_referral_subtree', { root_user_id: userId, max_depth: 10 });
+      if (subtree) {
+        // depth >= 1 = 본인 제외 하위 전체
+        totalReferralCount = subtree.filter((n: any) => n.depth >= 1).length;
+      }
+    } catch {
+      // RPC 함수 없으면 1대 추천수만 사용
+    }
+
     return {
       ...user,
       referrer,
-      referralCount: refCount || 0,
+      referralCount: refCount || 0,        // 1대 추천 수 (직접 추천)
+      totalReferralCount,                   // 총 추천 수 (하위 전체)
       referralCode: user.referral_code || user.id, // 8자리 코드 우선, 없으면 ID fallback
     };
   }

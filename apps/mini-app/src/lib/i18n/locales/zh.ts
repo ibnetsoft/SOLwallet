@@ -172,6 +172,8 @@ const zh: Record<string, string> = {
   'settings.copied': '推荐码和链接已复制。',
   'settings.copyFailed': '复制失败。',
   'settings.friendsInvited': '已邀请好友',
+  'settings.directReferrals': '直接推荐 (1代)',
+  'settings.totalReferrals': '总推荐 (全部)',
   'settings.friendsCount': '{count}',
   'settings.myReferrer': '我的推荐人',
   'settings.version': '版本',

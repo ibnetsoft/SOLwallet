@@ -174,6 +174,8 @@ const ko: Record<string, string> = {
   'settings.copied': '추천코드와 링크가 복사되었습니다.',
   'settings.copyFailed': '복사에 실패했습니다.',
   'settings.friendsInvited': '초대한 친구',
+  'settings.directReferrals': '직접 추천인 (1대)',
+  'settings.totalReferrals': '총 추천인 (전체)',
   'settings.friendsCount': '{count}명',
   'settings.myReferrer': '내 추천인',
   'settings.version': '버전',

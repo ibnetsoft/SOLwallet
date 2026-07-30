@@ -36,16 +36,26 @@ export function getUserBalance(userId: string): Promise<{ wallets: any[]; totalU
 export interface ReferralStat {
   referrerId: string;
   referrerName: string;
-  weeklyCount: number;
-  totalCount: number;
+  referrerTeleId: number;
+  directCount: number;   // 1대 추천 수 (직접 추천)
+  totalCount: number;    // 총 추천 수 (하위 전체)
+  weeklyCount: number;   // 최근 7일 신규 하위 가입자
 }
 
 /**
- * 방장 7일 실적 리더보드
+ * 방장 목록 + 추천 통계
  * GET /admin/referrals/stats
  */
 export function getReferralStats(): Promise<ReferralStat[]> {
   return apiFetch('/admin/referrals/stats');
+}
+
+/**
+ * 방장(스폰서) 지정/해제 토글
+ * POST /admin/users/:id/toggle-sponsor
+ */
+export function toggleSponsor(userId: string): Promise<{ isSponsor: boolean }> {
+  return apiFetch(`/admin/users/${userId}/toggle-sponsor`, { method: 'POST' });
 }
 
 // ─── 추천 조직도 ───

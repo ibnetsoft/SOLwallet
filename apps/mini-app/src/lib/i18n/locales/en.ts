@@ -174,6 +174,8 @@ const en: Record<TranslationKey, string> = {
   'settings.copied': 'Referral code and link copied.',
   'settings.copyFailed': 'Failed to copy.',
   'settings.friendsInvited': 'Friends Invited',
+  'settings.directReferrals': 'Direct Referrals',
+  'settings.totalReferrals': 'Total Referrals',
   'settings.friendsCount': '{count}',
   'settings.myReferrer': 'My Referrer',
   'settings.version': 'Version',

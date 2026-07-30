@@ -71,6 +71,16 @@ export class AdminController {
     return { success: true, data: stats };
   }
 
+  /**
+   * 방장(스폰서) 지정/해제 토글
+   * POST /api/admin/users/:id/toggle-sponsor
+   */
+  @Post('users/:id/toggle-sponsor')
+  async toggleSponsor(@Param('id') userId: string) {
+    const result = await this.adminService.toggleSponsor(userId);
+    return { success: true, data: result };
+  }
+
   // ─── 토큰 관리 ───
 
   @Get('tokens')

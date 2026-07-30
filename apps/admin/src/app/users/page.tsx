@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getUsers, getUserWallets, getReferralStats, getTokens, getUserBalance } from '@/lib/api/admin';
+import { getUsers, getUserWallets, getReferralStats, getTokens, getUserBalance, toggleSponsor } from '@/lib/api/admin';
 import type { ReferralStat, AdminWalletDetail } from '@/lib/api/admin';
 import type { AdminUserDetail, AdminTokenDetail } from '@solwallet/shared-types';
 
@@ -10,14 +10,17 @@ function UserRow({
   tokens,
   selectedUserId,
   onViewWallets,
+  onToggleSponsor,
 }: {
   user: AdminUserDetail;
   tokens: AdminTokenDetail[];
   selectedUserId: string | null;
   onViewWallets: (id: string) => void;
+  onToggleSponsor: (userId: string) => Promise<void>;
 }) {
   const [balances, setBalances] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  const [isSponsor, setIsSponsor] = useState((user as any).isSponsor ?? false);
 
   useEffect(() => {
     let mounted = true;
@@ -68,12 +71,29 @@ function UserRow({
           {loading ? '...' : (balances[t.mintAddress] || 0).toFixed(4)}
         </td>
       ))}
-      <td className="py-3 px-4 text-right">
+      <td className="py-3 px-4 text-right whitespace-nowrap">
         <button
           onClick={() => onViewWallets(user.id)}
-          className="text-xs px-3 py-1.5 rounded-lg bg-primary-600/20 text-primary-400 hover:bg-primary-600/30 transition whitespace-nowrap"
+          className="text-xs px-3 py-1.5 rounded-lg bg-primary-600/20 text-primary-400 hover:bg-primary-600/30 transition"
         >
           {selectedUserId === user.id ? '닫기' : '지갑보기'}
+        </button>
+        <button
+          onClick={async () => {
+            try {
+              await toggleSponsor(user.id);
+              setIsSponsor(!isSponsor);
+            } catch (e) {
+              alert(e instanceof Error ? e.message : '방장 지정 실패');
+            }
+          }}
+          className={`text-xs px-3 py-1.5 rounded-lg ml-1 transition ${
+            isSponsor
+              ? 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30'
+              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+          }`}
+        >
+          {isSponsor ? '🏆 방장' : '방장 지정'}
         </button>
       </td>
     </tr>
@@ -140,6 +160,11 @@ export default function UsersPage() {
     fetchReferralStats();
   }, [page, pageSize]);
 
+  const handleToggleSponsor = async (_userId: string) => {
+    // 방장 통계 새로고침
+    fetchReferralStats();
+  };
+
   const handleViewWallets = async (userId: string) => {
     setSelectedUserId(selectedUserId === userId ? null : userId);
     if (selectedUserId === userId) {
@@ -167,11 +192,11 @@ export default function UsersPage() {
         </div>
       )}
 
-      {/* 방장 7일 실적 리더보드 */}
+      {/* 방장(스폰서) 실적 리더보드 */}
       <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 mb-6">
         <div className="p-6 pb-0 flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold">🏆 방장 7일 실적</h2>
-          <span className="text-sm text-gray-400">추천 리더보드</span>
+          <h2 className="text-lg font-bold">🏆 방장 실적</h2>
+          <span className="text-sm text-gray-400">어드민 지정 방장</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -179,22 +204,24 @@ export default function UsersPage() {
               <tr className="border-b border-gray-700">
                 <th className="text-center py-3 px-6 text-gray-400 font-medium w-16">순위</th>
                 <th className="text-left py-3 px-6 text-gray-400 font-medium">방장(추천코드)</th>
+                <th className="text-center py-3 px-6 text-gray-400 font-medium">1대 추천</th>
+                <th className="text-center py-3 px-6 text-gray-400 font-medium">총 추천(하위 전체)</th>
                 <th className="text-center py-3 px-6 text-gray-400 font-medium">7일 신규</th>
-                <th className="text-center py-3 px-6 text-gray-400 font-medium">총 하위 유저</th>
+                <th className="text-center py-3 px-6 text-gray-400 font-medium">방장 해제</th>
               </tr>
             </thead>
             <tbody>
               {referralError ? (
                 <tr>
-                  <td colSpan={4} className="text-center py-8 text-danger text-sm">{referralError}</td>
+                  <td colSpan={6} className="text-center py-8 text-danger text-sm">{referralError}</td>
                 </tr>
               ) : referralLoading ? (
                 <tr>
-                  <td colSpan={4} className="text-center py-8 text-gray-400">로딩 중...</td>
+                  <td colSpan={6} className="text-center py-8 text-gray-400">로딩 중...</td>
                 </tr>
               ) : referralStats.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="text-center py-8 text-gray-400">데이터가 없습니다</td>
+                  <td colSpan={6} className="text-center py-8 text-gray-400">지정된 방장이 없습니다. 유저 목록에서 방장을 지정하세요.</td>
                 </tr>
               ) : (
                 referralStats.map((stat, idx) => (
@@ -216,12 +243,31 @@ export default function UsersPage() {
                       {stat.referrerName || '—'}
                     </td>
                     <td className="py-3 px-6 text-center">
-                      <span className="text-success font-bold">{stat.weeklyCount}</span>
+                      <span className="text-blue-400 font-bold">{stat.directCount}</span>
                       <span className="text-gray-400 text-xs">명</span>
                     </td>
                     <td className="py-3 px-6 text-center">
                       <span className="text-primary-400 font-bold">{stat.totalCount}</span>
                       <span className="text-gray-400 text-xs">명</span>
+                    </td>
+                    <td className="py-3 px-6 text-center">
+                      <span className="text-success font-bold">{stat.weeklyCount}</span>
+                      <span className="text-gray-400 text-xs">명</span>
+                    </td>
+                    <td className="py-3 px-6 text-center">
+                      <button
+                        onClick={async () => {
+                          try {
+                            await toggleSponsor(stat.referrerId);
+                            fetchReferralStats();
+                          } catch (e) {
+                            alert(e instanceof Error ? e.message : '방장 해제 실패');
+                          }
+                        }}
+                        className="text-xs px-3 py-1.5 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition"
+                      >
+                        해제
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -288,6 +334,7 @@ export default function UsersPage() {
                     tokens={tokens} 
                     selectedUserId={selectedUserId} 
                     onViewWallets={handleViewWallets} 
+                    onToggleSponsor={handleToggleSponsor}
                   />
                 ))
               )}

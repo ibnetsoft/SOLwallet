@@ -183,59 +183,111 @@ export class AdminService {
   }
 
   /**
-   * 방장(추천인) 7일 실적 통계
+   * 방장 목록 + 추천 통계
+   *
+   * 방장(is_sponsor=true)으로 지정된 유저만 조회.
+   * 각 방장별:
+   *   - directCount: 1대 추천 수 (직접 추천)
+   *   - totalCount: 총 추천 수 (직접 + 하위 전체, 재귀)
+   *   - weeklyCount: 최근 7일간 신규 가입한 하위 회원 수
    */
   async getReferralStats() {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    // 지난 7일간의 추천 기록 조회
-    const { data: recentReferrals, error } = await this.client
-      .from('referrals')
-      .select(`
-        referrer_id,
-        referee_id,
-        created_at,
-        users!referrals_referrer_id_fkey(username, first_name, referral_code),
-        referee:users!referrals_referee_id_fkey(created_at)
-      `)
-      .gte('created_at', sevenDaysAgo.toISOString())
+    // 방장으로 지정된 유저 조회
+    const { data: sponsors, error } = await this.client
+      .from('users')
+      .select('id, username, first_name, referral_code, telegram_uid')
+      .eq('is_sponsor', true)
       .order('created_at', { ascending: false });
 
     if (error) {
-      this.logger.error(`Failed to get referral stats: ${error.message}`);
+      this.logger.error(`Failed to get sponsors: ${error.message}`);
+      // is_sponsor 컬럼이 아직 없는 경우 → 빈 배열 반환
+      if (/column.*is_sponsor|does not exist/i.test(error.message)) {
+        return [];
+      }
       throw error;
     }
 
-    // 방장별 집계
-    const stats: Record<string, {
+    const result: Array<{
       referrerId: string;
       referrerName: string;
-      weeklyCount: number;
+      referrerTeleId: number;
+      directCount: number;
       totalCount: number;
-    }> = {};
+      weeklyCount: number;
+    }> = [];
 
-    for (const ref of recentReferrals || []) {
-      const refId = ref.referrer_id;
-      if (!stats[refId]) {
-        // 전체 추천 수 조회
-        const { count: totalCount } = await this.client
-          .from('referrals')
-          .select('*', { count: 'exact', head: true })
-          .eq('referrer_id', refId);
+    for (const sponsor of sponsors || []) {
+      // 1대 추천 수 (직접 추천한 유저 수)
+      const { count: directCount } = await this.client
+        .from('referrals')
+        .select('*', { count: 'exact', head: true })
+        .eq('referrer_id', sponsor.id);
 
-        const referrerUser = ref.users as unknown as { username: string; first_name: string; referral_code: string };
-        stats[refId] = {
-          referrerId: refId,
-          referrerName: referrerUser?.referral_code || referrerUser?.username || referrerUser?.first_name || '—',
-          weeklyCount: 0,
-          totalCount: totalCount || 0,
-        };
+      // 총 추천 수 (하위 전체) — get_referral_subtree RPC 활용
+      let totalCount = directCount || 0;
+      let weeklyCount = 0;
+      try {
+        const { data: subtree, error: subErr } = await this.client
+          .rpc('get_referral_subtree', { root_user_id: sponsor.id, max_depth: 10 });
+        if (!subErr && subtree) {
+          // depth >= 1 = 본인 제외 하위 전체
+          const descendants = subtree.filter((n: any) => n.depth >= 1);
+          totalCount = descendants.length;
+          // 최근 7일 가입자
+          weeklyCount = descendants.filter((n: any) =>
+            n.created_at && new Date(n.created_at) >= sevenDaysAgo,
+          ).length;
+        }
+      } catch {
+        // RPC 함수 없으면 directCount만 사용
       }
-      stats[refId].weeklyCount++;
+
+      result.push({
+        referrerId: sponsor.id,
+        referrerName: sponsor.referral_code || sponsor.username || sponsor.first_name || '—',
+        referrerTeleId: sponsor.telegram_uid,
+        directCount: directCount || 0,
+        totalCount,
+        weeklyCount,
+      });
     }
 
-    return Object.values(stats).sort((a, b) => b.weeklyCount - a.weeklyCount);
+    // 총 추천 수 내림차순 정렬
+    return result.sort((a, b) => b.totalCount - a.totalCount);
+  }
+
+  /**
+   * 방장 지정/해제 토글
+   */
+  async toggleSponsor(userId: string): Promise<{ isSponsor: boolean }> {
+    // 현재 상태 조회
+    const { data: user, error: fetchErr } = await this.client
+      .from('users')
+      .select('is_sponsor')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (fetchErr || !user) {
+      throw new Error('유저를 찾을 수 없습니다.');
+    }
+
+    const newValue = !user.is_sponsor;
+
+    const { error } = await this.client
+      .from('users')
+      .update({ is_sponsor: newValue })
+      .eq('id', userId);
+
+    if (error) {
+      this.logger.error(`Failed to toggle sponsor: ${error.message}`);
+      throw error;
+    }
+
+    return { isSponsor: newValue };
   }
 
   /**
