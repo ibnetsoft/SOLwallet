@@ -262,8 +262,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         try {
           const signedSetupTx = signTransaction(result.setupTx, secretKey, 'legacy');
           await ordersApi.submitSetupTx(signedSetupTx);
-          // ATA 생성 트랜잭션이 컨펌될 때까지 잠시 대기
-          await new Promise((r) => setTimeout(r, 2000));
+          // 서버에서 confirmTransaction 완료 후 반환되므로 별도 대기 불필요
         } catch (setupErr) {
           console.error('[createOrder] ATA setup failed:', setupErr);
           useWalletStore.getState().lockWallets();
@@ -276,8 +275,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         try {
           const signedWrapTx = signTransaction(result.wrapTx, secretKey, 'legacy');
           await ordersApi.submitSetupTx(signedWrapTx);
-          // wSOL 래핑 트랜잭션이 반영될 때까지 짧게 대기
-          await new Promise((r) => setTimeout(r, 1000));
+          // 서버에서 confirmTransaction 완료 후 반환되므로 별도 대기 불필요
         } catch (wrapErr) {
           console.error('[createOrder] wSOL wrap failed:', wrapErr);
           useWalletStore.getState().lockWallets();

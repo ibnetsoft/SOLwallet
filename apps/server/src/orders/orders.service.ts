@@ -376,8 +376,8 @@ export class OrdersService {
   }
 
   /**
-   * ATA setup 트랜잭션 제출 — 첫 거래 전 토큰 계정 생성
-   * 검증 없이 단순히 RPC로 전송 (ATA 생성은 idempotent)
+   * Setup 트랜잭션 제출 — ATA 생성 또는 wSOL 래핑
+   * RPC 전송 후 confirmTransaction으로 온체인 반영을 확인
    */
   async submitSetupTx(
     signedTx: string,
@@ -394,7 +394,8 @@ export class OrdersService {
           method: 'sendTransaction',
           params: [signedTx, {
             encoding: 'base64',
-            skipPreflight: false,
+            skipPreflight: true,
+            maxRetries: 3,
             preflightCommitment: 'confirmed',
           }],
         }),
@@ -408,10 +409,27 @@ export class OrdersService {
       }
     } catch (err) {
       this.logger.error(`Setup tx submit error: ${err instanceof Error ? err.message : String(err)}`);
-      throw new BadRequestException('토큰 계정 생성에 실패했습니다.');
+      throw new BadRequestException('트랜잭션 제출에 실패했습니다.');
     }
 
-    this.logger.log(`ATA setup tx submitted: ${txSignature.slice(0, 12)}...`);
+    // 트랜잭션이 온체인에 반영되었는지 확인 (최대 10초 대기)
+    try {
+      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
+      const confirmed = await this.connection.confirmTransaction(
+        { signature: txSignature, blockhash, lastValidBlockHeight },
+        'confirmed',
+      );
+      if (!confirmed.value || confirmed.value.err) {
+        this.logger.warn(`Setup tx ${txSignature.slice(0, 12)}... not confirmed. err=${JSON.stringify(confirmed.value?.err)}`);
+        throw new BadRequestException('트랜잭션이 체인에 반영되지 않았습니다. 다시 시도해주세요.');
+      }
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      this.logger.warn(`Setup tx ${txSignature.slice(0, 12)}... confirm timeout`);
+      throw new BadRequestException('트랜잭션 컨펌이 지연되었습니다. 다시 시도해주세요.');
+    }
+
+    this.logger.log(`Setup tx confirmed: ${txSignature.slice(0, 12)}...`);
     return { txSignature };
   }
 
