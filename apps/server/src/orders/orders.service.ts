@@ -1004,6 +1004,7 @@ export class OrdersService {
     const quoteMint = token.symbol === 'SOL' ? USDC_MINT : USDT_MINT;
 
     // Manifest DELETE 재호출 — 동일 파라미터로 fresh cancel tx 획득
+    // setupIxs: true — wrapper setup ix를 cancel tx에 포함 (미체결 주문 취소 시 필수)
     const cancelRes = await fetch(`${this.manifestBaseUrl}/orders`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
@@ -1017,6 +1018,7 @@ export class OrdersService {
             : { clientOrderId: clientOrderId ?? 0 },
         ],
         computeUnitPrice: MANIFEST.computeUnitPrice,
+        setupIxs: true,
       }),
     });
 
@@ -1029,16 +1031,18 @@ export class OrdersService {
         `[cancelOrder] Manifest cancel-tx failed: ${cancelRes.status} — ${errMsg}: ${cause}`,
       );
 
-      // 주문이 온체인에 없거나 취소 tx 생성 불가 → DB에서 조용히 삭제
-      // (이미 드롭된 tx, 만료된 주문 등 — 온체인에 존재하지 않으므로 취소 불필요)
-      this.logger.log(`[cancelOrder] silently removing order ${orderId} from DB (not on-chain)`);
-      await this.client
-        .from('orders')
-        .delete()
-        .eq('id', orderId);
+      // 주문이 온체인에 없음 (이미 만료/드롭) → DB에서 삭제
+      if (/not found|no such order|order not found|already/i.test(errMsg + ' ' + cause)) {
+        this.logger.log(`[cancelOrder] order not on-chain, removing from DB: ${orderId}`);
+        await this.client
+          .from('orders')
+          .delete()
+          .eq('id', orderId);
+        return { cancelled: true };
+      }
 
-      // 클라이언트에게는 주문이 취소(삭제)된 것으로 응답
-      return { cancelled: true };
+      // 그 외 에러 (setup ixs, network 등) → 사용자에게 재시도 안내
+      throw new BadRequestException('취소 트랜잭션 생성에 실패했습니다. 잠시 후 다시 시도해주세요.');
     }
 
     return { unsignedTx: cancelData.transaction };
@@ -1175,6 +1179,7 @@ export class OrdersService {
               : { clientOrderId: clientOrderId ?? 0 },
           ],
           computeUnitPrice: MANIFEST.computeUnitPrice,
+          setupIxs: true,
         }),
       });
 
@@ -1188,13 +1193,13 @@ export class OrdersService {
         this.logger.warn(
           `Manifest cancel failed: ${cancelRes.status} — ${errMsg}: ${cause}`,
         );
-        // on-chain에 주문이 존재하지 않는 경우 → DB를 expired 처리
-        if (/setup ixs|not found|no such order|order not found/i.test(errMsg + ' ' + cause)) {
+        // 주문이 온체인에 없음 → expired 처리
+        if (/not found|no such order|order not found|already/i.test(errMsg + ' ' + cause)) {
           await this.client
             .from('orders')
             .update({ status: 'expired', updated_at: new Date().toISOString() })
             .eq('id', order.id);
-          throw new BadRequestException('이 주문은 체인에 등록되지 않았습니다. 이미 만료된 주문입니다.');
+          throw new BadRequestException('이미 만료된 주문입니다.');
         }
       }
     } catch (err) {
