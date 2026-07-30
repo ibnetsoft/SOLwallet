@@ -544,6 +544,45 @@ export class OrdersService {
 
     this.logger.log(`[submitOrder] order status=active, sending to RPC...`);
 
+    // 전송 전 시뮬레이션 — tx가 왜 드롭되는지 원인 파악
+    try {
+      const simRes = await fetch(this.rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'simulateTransaction',
+          params: [signedTx, {
+            encoding: 'base64',
+            sigVerify: true,
+            commitment: 'confirmed',
+            replaceRecentBlockhash: false,
+          }],
+        }),
+      });
+      const simData = await simRes.json() as {
+        result?: {
+          value?: {
+            err?: unknown;
+            logs?: string[];
+            unitsConsumed?: number;
+          };
+        };
+      };
+      const sim = simData.result?.value;
+      if (sim?.err) {
+        this.logger.error(`[submitOrder] SIMULATION FAILED — err=${JSON.stringify(sim.err)}`);
+        if (sim.logs?.length) {
+          this.logger.error(`[submitOrder] SIM LOGS:\n${sim.logs.join('\n')}`);
+        }
+      } else {
+        this.logger.log(`[submitOrder] simulation OK — units=${sim?.unitsConsumed}`);
+      }
+    } catch (simErr) {
+      this.logger.warn(`[submitOrder] simulate error (non-fatal): ${simErr instanceof Error ? simErr.message : String(simErr)}`);
+    }
+
     // Solana RPC로 트랜잭션 전송
     // skipPreflight: true — Manifest tx의 blockhash가 preflight simulation에서
     // 만료 판정되는 것을 방지. 실제 네트워크 제출은 fresh blockhash로 처리됨.
