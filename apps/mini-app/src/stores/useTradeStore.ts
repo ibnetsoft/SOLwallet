@@ -270,12 +270,13 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         }
       }
 
-      // 2b. SOL 매도 시 wrapTx가 있으면 서명/제출 (SOL → wSOL 래핑)
-      if (result.wrapTx) {
+      // 3. SOL 매도 시 fresh wSOL 래핑 tx 획득 + 서명/제출
+      // createOrder에서 미리 만들지 않고 서명 직전 fresh하게 생성하여 blockhash 만료 방지
+      if (side === 'sell' && selectedToken.symbol === 'SOL') {
         try {
-          const signedWrapTx = signTransaction(result.wrapTx, secretKey, 'legacy');
+          const { wrapTx } = await ordersApi.getWrapTx(result.order.id as string);
+          const signedWrapTx = signTransaction(wrapTx, secretKey, 'legacy');
           await ordersApi.submitSetupTx(signedWrapTx);
-          // 서버에서 confirmTransaction 완료 후 반환되므로 별도 대기 불필요
         } catch (wrapErr) {
           console.error('[createOrder] wSOL wrap failed:', wrapErr);
           useWalletStore.getState().lockWallets();
@@ -283,9 +284,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         }
       }
 
-      // 3. 서명 직전 fresh tx 획득 — Manifest blockhash 만료 방지
-      // createOrder에서 반환된 unsignedTx는 시간 경과로 blockhash 만료 가능
-      // 서명 직전 서버에서 Manifest를 재호출하여 fresh blockhash의 tx를 가져옴
+      // 4. 서명 직전 fresh tx 획득 — Manifest blockhash 만료 방지
       const freshResult = await ordersApi.getFreshTx(result.order.id as string);
 
       // 4. 온디바이스 서명 (Manifest = versioned)

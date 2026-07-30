@@ -113,7 +113,7 @@ export class OrdersService {
   async createOrder(
     userId: string,
     dto: CreateOrderDto,
-  ): Promise<{ order: Record<string, unknown>; unsignedTx: string; setupTx?: string; wrapTx?: string }> {
+  ): Promise<{ order: Record<string, unknown>; unsignedTx: string; setupTx?: string }> {
     // 지갑 소유권 검증 + public key 획득
     const walletPublicKey = await this.verifyWalletOwnership(dto.walletId, userId);
 
@@ -227,54 +227,6 @@ export class OrdersService {
       }
     }
 
-    // ── SOL 매도 시 wSOL 래핑 tx — SOL을 wSOL ATA로 전송 + syncNative ──
-    // Manifest 주문 tx는 wSOL deposit을 요구하므로, SOL → wSOL 래핑이 선행되어야 함.
-    // wrapTx는 단순한 legacy transaction이라 클라이언트에서 온디바이스 서명.
-    let wrapTx: string | undefined;
-    if (isNativeSol && dto.side === 'sell') {
-      try {
-        const wsolAta = getAssociatedTokenAddressSync(NATIVE_MINT, traderPubkey, true);
-        // 주문 수량만큼 래핑 (lamports 단위, 소수점 9자리)
-        const wrapAmount = Math.floor(Number(dto.quantity) * LAMPORTS_PER_SOL);
-
-        // SystemProgram.transfer: SOL → wSOL ATA (래핑)
-        const transferIx = SystemProgram.transfer({
-          fromPubkey: traderPubkey,
-          toPubkey: wsolAta,
-          lamports: wrapAmount,
-        });
-        // syncNative: wSOL ATA 잔액 동기화 (SPL Token이 SOL 입금을 인식)
-        const syncIx = createSyncNativeInstruction(wsolAta);
-
-        const bhRes = await fetch(this.rpcUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestBlockhash', params: [] }),
-        });
-        const bhData = await bhRes.json() as { result?: { value?: { blockhash: string; lastValidBlockHeight: number } } };
-        const blockhash = bhData.result?.value?.blockhash;
-        const lastValidBlockHeight = bhData.result?.value?.lastValidBlockHeight ?? 0;
-
-        if (blockhash) {
-          const wrapTransaction = new Transaction({
-            feePayer: traderPubkey,
-            blockhash,
-            lastValidBlockHeight,
-          }).add(transferIx, syncIx);
-
-          wrapTx = wrapTransaction.serialize({
-            requireAllSignatures: false,
-            verifySignatures: false,
-          }).toString('base64');
-
-          this.logger.log(`wSOL wrap tx created: ${wrapAmount / LAMPORTS_PER_SOL} SOL (wallet ${walletPublicKey.slice(0, 8)}...)`);
-        }
-      } catch (err) {
-        this.logger.error(`Failed to build wSOL wrap tx: ${err instanceof Error ? err.message : String(err)}`);
-        throw new BadRequestException('wSOL 래핑 트랜잭션 생성에 실패했습니다.');
-      }
-    }
-
     // 수수료 계산 — DB에서 동적 수수료율 조회 (실패 시 기본값 1%)
     const feeRate = await this.settingsService.getFeeRate();
     const total = dto.price * dto.quantity;
@@ -372,7 +324,7 @@ export class OrdersService {
       })
       .eq('id', order.id);
 
-    return { order: order as Record<string, unknown>, unsignedTx, setupTx, wrapTx };
+    return { order: order as Record<string, unknown>, unsignedTx, setupTx };
   }
 
   /**
@@ -431,6 +383,80 @@ export class OrdersService {
 
     this.logger.log(`Setup tx confirmed: ${txSignature.slice(0, 12)}...`);
     return { txSignature };
+  }
+
+  /**
+   * SOL 매도 시 wSOL 래핑 tx 생성 — 서명 직전 fresh blockhash로 생성
+   *
+   * createOrder에서는 wrapTx를 반환하지 않음 (blockhash 만료 우려).
+   * 클라이언트가 서명 직전 이 엔드포인트를 호출하여 fresh wrap tx를 획득.
+   */
+  async getWrapTx(orderId: string, userId: string): Promise<{ wrapTx: string }> {
+    // 주문 소유자 확인
+    const { data: order, error: fetchError } = await this.client
+      .from('orders')
+      .select('*, tokens!inner(mint_address, symbol, decimals)')
+      .eq('id', orderId)
+      .eq('user_id', userId)
+      .single();
+
+    if (fetchError || !order) {
+      throw new NotFoundException('주문을 찾을 수 없습니다.');
+    }
+
+    // SOL 매도인지 확인
+    const token = order.tokens as { mint_address: string; symbol: string; decimals: number };
+    const isNativeSol = new PublicKey(token.mint_address).equals(NATIVE_MINT);
+
+    if (!isNativeSol || order.side !== 'sell') {
+      throw new BadRequestException('이 주문은 wSOL 래핑이 필요하지 않습니다.');
+    }
+
+    // 지갑 public key 획득
+    const { data: wallet } = await this.client
+      .from('wallets')
+      .select('public_key')
+      .eq('id', order.wallet_id)
+      .eq('user_id', userId)
+      .single();
+
+    if (!wallet?.public_key) {
+      throw new BadRequestException('지갑 정보를 찾을 수 없습니다.');
+    }
+
+    const traderPubkey = new PublicKey(wallet.public_key);
+    const wsolAta = getAssociatedTokenAddressSync(NATIVE_MINT, traderPubkey, true);
+    const wrapAmount = Math.floor(Number(order.quantity) * LAMPORTS_PER_SOL);
+
+    // ATA 존재 확인 (없으면 생성 필요 — setupTx로 먼저 처리되어야 함)
+    const acctInfo = await this.connection.getAccountInfo(wsolAta);
+    if (!acctInfo) {
+      throw new BadRequestException('wSOL 토큰 계정이 없습니다. 다시 시도하면 자동 생성됩니다.');
+    }
+
+    // Fresh blockhash로 wrap tx 생성
+    const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
+
+    const transferIx = SystemProgram.transfer({
+      fromPubkey: traderPubkey,
+      toPubkey: wsolAta,
+      lamports: wrapAmount,
+    });
+    const syncIx = createSyncNativeInstruction(wsolAta);
+
+    const wrapTransaction = new Transaction({
+      feePayer: traderPubkey,
+      blockhash,
+      lastValidBlockHeight,
+    }).add(transferIx, syncIx);
+
+    const wrapTx = wrapTransaction.serialize({
+      requireAllSignatures: false,
+      verifySignatures: false,
+    }).toString('base64');
+
+    this.logger.log(`Fresh wrap tx created: ${wrapAmount / LAMPORTS_PER_SOL} SOL (wallet ${wallet.public_key.slice(0, 8)}...)`);
+    return { wrapTx };
   }
 
   /**

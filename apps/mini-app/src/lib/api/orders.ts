@@ -13,8 +13,6 @@ export interface CreateOrderResult {
   unsignedTx: string;
   /** 첫 거래 전 필요한 ATA 생성 트랜잭션 (없으면 undefined) */
   setupTx?: string;
-  /** SOL 매도 시 wSOL 래핑 트랜잭션 (없으면 undefined) */
-  wrapTx?: string;
 }
 
 /**
@@ -44,6 +42,14 @@ export async function submitOrder(orderId: string, signedTx: string): Promise<{ 
  */
 export async function getFreshTx(orderId: string): Promise<{ unsignedTx: string }> {
   return apiFetch(`/orders/${orderId}/fresh-tx`, { method: 'POST' });
+}
+
+/**
+ * SOL 매도 시 fresh wSOL 래핑 tx 획득 — 서명 직전 fresh blockhash로 생성
+ * SOL 매도 주문에서 createOrder 후, 서명하기 직전 이 함수를 호출
+ */
+export async function getWrapTx(orderId: string): Promise<{ wrapTx: string }> {
+  return apiFetch(`/orders/${orderId}/wrap-tx`, { method: 'POST' });
 }
 
 /**

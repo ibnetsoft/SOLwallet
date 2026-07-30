@@ -58,6 +58,19 @@ export class OrdersController {
   }
 
   /**
+   * POST /api/orders/:id/wrap-tx — SOL 매도 시 fresh wSOL 래핑 tx 획득
+   * createOrder 후 서명 직전 호출하여 fresh blockhash의 wrap tx 반환
+   */
+  @Post(':id/wrap-tx')
+  async getWrapTx(
+    @CurrentUser() userId: string,
+    @Param('id', ParseUUIDPipe) orderId: string,
+  ) {
+    const result = await this.ordersService.getWrapTx(orderId, userId);
+    return { success: true, data: result };
+  }
+
+  /**
    * POST /api/orders/:id/submit — 서명된 주문 트랜잭션 제출
    */
   @Post(':id/submit')
