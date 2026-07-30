@@ -5,7 +5,7 @@ import { OrderStatusService } from './order-status.service';
 /**
  * 주문 체결 상태 폴링 스케줄러
  *
- * 30초마다 submitted 주문의 tx_signature를 확인하여 체결/실패/만료 처리.
+ * 10초마다 submitted 주문의 tx_signature를 확인하여 체결/실패/만료 처리.
  */
 @Injectable()
 export class OrderStatusScheduler {
@@ -15,10 +15,10 @@ export class OrderStatusScheduler {
   constructor(private readonly orderStatusService: OrderStatusService) {}
 
   /**
-   * 30초마다 submitted 주문 체결 확인
+   * 10초마다 submitted 주문 체결 확인
    * 중복 실행 방지 (이전 실행이 진행 중이면 스킵)
    */
-  @Cron('*/30 * * * * *')
+  @Cron('*/10 * * * * *')
   async handleOrderStatusCheck() {
     if (this.isRunning) return;
     this.isRunning = true;

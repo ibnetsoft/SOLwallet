@@ -307,10 +307,12 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       const submitResult = await ordersApi.submitOrder(result.order.id as string, signedTx);
       console.log('[trade] step 6: order submitted —', submitResult.txSignature?.slice(0, 12));
 
-      // 6. 활성 주문 새로고침
+      // 6. 활성 주문 새로고침 — 즉시 + 10초/20초 뒤 폴링 (체결 반영)
       get().fetchActiveOrders();
+      setTimeout(() => get().fetchActiveOrders(), 10_000);
+      setTimeout(() => get().fetchActiveOrders(), 20_000);
 
-      // 6. 메모리에서 키 해제
+      // 7. 메모리에서 키 해제
       useWalletStore.getState().lockWallets();
 
       return submitResult;

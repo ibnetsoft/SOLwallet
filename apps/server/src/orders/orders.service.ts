@@ -6,6 +6,7 @@ import {
   PublicKey,
   Transaction,
   SystemProgram,
+  Keypair,
   LAMPORTS_PER_SOL,
 } from '@solana/web3.js';
 import {
@@ -556,6 +557,10 @@ export class OrdersService {
       const marketAddress = markets[0].address;
       this.logger.log(`[getWithdrawTx] market=${marketAddress.toBase58().slice(0, 8)}...`);
 
+      // wrapper setup 필요 여부 확인 — withdraw 전에 wrapper가 있어야 함
+      const setupData = await ManifestClient.getSetupIxs(this.connection, marketAddress, traderPubkey);
+      this.logger.log(`[getWithdrawTx] setupNeeded=${setupData.setupNeeded}`);
+
       // private key 없이 client 생성 (instruction만 필요)
       const client = await ManifestClient.getClientForMarketNoPrivateKey(
         this.connection,
@@ -574,11 +579,29 @@ export class OrdersService {
 
       // fresh blockhash로 legacy transaction 빌드
       const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
+
+      // setup이 필요하면 setup ix를 withdraw 앞에 포함
+      // wrapperKeypair가 있으면 (wrapper 생성) 서버에서 pre-sign
+      const allIxs = [...withdrawIxs];
+      let wrapperKeypair: Keypair | null = null;
+
+      if (setupData.setupNeeded) {
+        this.logger.log(`[getWithdrawTx] adding ${setupData.instructions.length} setup ixs`);
+        allIxs.unshift(...setupData.instructions);
+        wrapperKeypair = setupData.wrapperKeypair;
+      }
+
       const withdrawTx = new Transaction({
         feePayer: traderPubkey,
         blockhash,
         lastValidBlockHeight,
-      }).add(...withdrawIxs);
+      }).add(...allIxs);
+
+      // wrapper 생성 키페어가 있으면 서버에서 partial sign (wrapper는 system account라 클라이언트 키로 서명 불가)
+      if (wrapperKeypair) {
+        withdrawTx.partialSign(wrapperKeypair);
+        this.logger.log(`[getWithdrawTx] wrapper keypair pre-signed`);
+      }
 
       const unsignedTx = withdrawTx.serialize({
         requireAllSignatures: false,
@@ -944,7 +967,7 @@ export class OrdersService {
 
     // 이미 체결(filled)되었거나 완료된 주문 → 명확한 안내
     if (order.status === 'filled') {
-      throw new BadRequestException('이미 체결된 주문은 취소할 수 없습니다.');
+      throw new BadRequestException('이미 성사된 주문입니다.');
     }
     if (['cancelled', 'expired', 'failed'].includes(order.status)) {
       throw new BadRequestException('이미 완료된 주문입니다.');
