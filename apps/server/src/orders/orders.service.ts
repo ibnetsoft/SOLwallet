@@ -811,8 +811,12 @@ export class OrdersService {
       throw new NotFoundException('주문을 찾을 수 없습니다.');
     }
 
-    if (!['active', 'submitted'].includes(order.status)) {
-      throw new BadRequestException('취소할 수 없는 주문입니다.');
+    // 이미 체결(filled)되었거나 완료된 주문 → 명확한 안내
+    if (order.status === 'filled') {
+      throw new BadRequestException('이미 체결된 주문은 취소할 수 없습니다.');
+    }
+    if (['cancelled', 'expired', 'failed'].includes(order.status)) {
+      throw new BadRequestException('이미 완료된 주문입니다.');
     }
 
     const { data: token } = await this.client
