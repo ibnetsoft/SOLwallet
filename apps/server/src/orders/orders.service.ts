@@ -52,7 +52,9 @@ export class OrdersService {
   ) {
     this.manifestBaseUrl = MANIFEST.baseUrl;
     this.rpcUrl = this.configService.get<string>('SOLANA_RPC_URL') || '';
-    this.connection = new Connection(this.rpcUrl);
+    this.connection = new Connection(this.rpcUrl, {
+      confirmTransactionInitialTimeout: 30_000, // 컨펌 대기 30초
+    });
   }
 
   private get client() {
@@ -400,6 +402,7 @@ export class OrdersService {
       if (!txSignature) {
         throw new Error(rpcData.error?.message || 'RPC 전송 실패');
       }
+      this.logger.log(`Wrap tx sent to RPC: ${txSignature.slice(0, 12)}...`);
     } catch (err) {
       this.logger.error(`Wrap tx submit error: ${err instanceof Error ? err.message : String(err)}`);
       throw new BadRequestException('wSOL 래핑 트랜잭션 제출에 실패했습니다.');
@@ -408,6 +411,7 @@ export class OrdersService {
     // wSOL 래핑이 온체인에 반영되었는지 확인
     try {
       const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
+      this.logger.log(`Waiting for wrap tx confirm: ${txSignature.slice(0, 12)}...`);
       const confirmed = await this.connection.confirmTransaction(
         { signature: txSignature, blockhash, lastValidBlockHeight },
         'confirmed',
@@ -418,7 +422,7 @@ export class OrdersService {
       }
     } catch (err) {
       if (err instanceof BadRequestException) throw err;
-      this.logger.warn(`Wrap tx ${txSignature.slice(0, 12)}... confirm timeout`);
+      this.logger.warn(`Wrap tx ${txSignature.slice(0, 12)}... confirm timeout: ${err instanceof Error ? err.message : String(err)}`);
       throw new BadRequestException('wSOL 래핑 컨펌이 지연되었습니다. 다시 시도해주세요.');
     }
 
