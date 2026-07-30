@@ -51,6 +51,11 @@ export class OrderStatusService {
 
   /**
    * submitted 주문들의 체결 상태를 확인하고 DB 업데이트
+   *
+   * Manifest 주문 tx가 온체인 성공(err=null)해도 그것은 "주문이 orderbook에
+   * 등록되었다"는 의미이지 "체결되었다"는 의미가 아님.
+   * tx 성공 → status='open' (orderbook 등록됨, 체결 대기)
+   * 실제 체결 여부는 별도 폴링 필요 (현재는 사용자가 withdraw로 확인)
    */
   async checkPendingOrders(): Promise<{ filled: number; failed: number; expired: number; pending: number }> {
     // submitted 주문 조회
@@ -84,7 +89,9 @@ export class OrderStatusService {
       const result = await this.checkTransactionStatus(order.tx_signature);
 
       if (result === 'success') {
-        await this.updateOrderStatus(order.id, 'filled', order.quantity);
+        // tx 성공 = orderbook에 등록됨 → 'active' 상태로 (체결 대기)
+        // 주문이 orderbook에 있으므로 사용자가 취소할 수 있어야 함
+        await this.updateOrderStatus(order.id, 'active');
         filled++;
       } else if (result === 'failed') {
         await this.updateOrderStatus(order.id, 'failed');
@@ -97,7 +104,7 @@ export class OrderStatusService {
 
     if (filled + failed + expired > 0) {
       this.logger.log(
-        `Order status check: ${filled} filled, ${failed} failed, ${expired} expired, ${pending} pending`,
+        `Order status check: ${filled} confirmed (active), ${failed} failed, ${expired} expired, ${pending} pending`,
       );
     }
 
