@@ -525,19 +525,16 @@ export class OrdersService {
   }
 
   /**
-   * Manifest에서 보유 잔액(base+quote) 전액 인출 tx 생성 — fresh blockhash
+   * Manifest에서 보유 잔액 전액 인출 tx 생성 — fresh blockhash
    *
-   * 체결된 주문의 수익(USDC 등)은 Manifest wrapper 내부에 보관되므로,
-   * 사용자가 명시적으로 withdraw해야 자기 지갑 ATA로 들어옴.
-   *
-   * 2단계 플로우:
-   * - wrapper setup이 필요하면 setupTx 반환 (클라이언트가 서명+제출 후 재호출)
-   * - setup 완료 후 withdrawTx 반환
+   * Manifest는 체결 수익을 Global account에 보관하므로,
+   * globalWithdrawIx()로 base(SOL)와 quote(USDC) 잔액을 인출.
+   * Global 모델은 wrapper 불필요 — 모든 토큰에 통합 적용.
    */
   async getWithdrawTx(
     userId: string,
     walletId: string,
-  ): Promise<{ unsignedTx?: string; setupTx?: string }> {
+  ): Promise<{ unsignedTx: string }> {
     this.logger.log(`[getWithdrawTx] START — user=${userId.slice(0, 8)} wallet=${walletId.slice(0, 8)}`);
 
     // 지갑 소유권 검증 + public key 획득
@@ -546,67 +543,71 @@ export class OrdersService {
 
     try {
       // Manifest SDK 동적 로드
-      const { Market, ManifestClient } = await import('@cks-systems/manifest-sdk');
+      const { Global, ManifestClient } = await import('@cks-systems/manifest-sdk');
 
-      // SOL/USDC 마켓 조회 (현재 지원하는 유일한 마켓)
-      const baseMint = new PublicKey(NATIVE_MINT.toBase58());
-      const quoteMint = new PublicKey(USDC_MINT);
-      const markets = await Market.findByMints(this.connection, baseMint, quoteMint);
+      // Manifest program ID (상수)
+      const MANIFEST_PROGRAM_ID = new PublicKey('MNFSTqtC93rEfYHB6hF82sKdZpUDFWkViLByLd1k1Ms');
 
-      if (!markets || markets.length === 0) {
-        throw new BadRequestException('거래 가능한 마켓을 찾을 수 없습니다.');
-      }
+      // Global PDA 파생 헬퍼 — ['global', mint] seeds
+      const deriveGlobalAddress = (mint: PublicKey): PublicKey => {
+        const [addr] = PublicKey.findProgramAddressSync(
+          [Buffer.from('global'), mint.toBuffer()],
+          MANIFEST_PROGRAM_ID,
+        );
+        return addr;
+      };
 
-      const marketAddress = markets[0].address;
-      this.logger.log(`[getWithdrawTx] market=${marketAddress.toBase58().slice(0, 8)}...`);
+      // 인출할 mint 목록 — Manifest에 잔액이 있을 수 있는 모든 토큰
+      const mintsToCheck = [
+        { mint: new PublicKey(USDC_MINT), symbol: 'USDC' },
+        { mint: new PublicKey(NATIVE_MINT.toBase58()), symbol: 'SOL' },
+      ];
 
-      // wrapper setup 필요 여부 확인 — withdraw 전에 wrapper가 있어야 함
-      const setupData = await ManifestClient.getSetupIxs(this.connection, marketAddress, traderPubkey);
-      this.logger.log(`[getWithdrawTx] setupNeeded=${setupData.setupNeeded}`);
+      const withdrawIxs = [];
+      const balancesFound = [];
 
-      // fresh blockhash
-      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
+      for (const { mint, symbol } of mintsToCheck) {
+        try {
+          const globalAddress = deriveGlobalAddress(mint);
 
-      // setup이 필요하면 setupTx만 반환 (클라이언트가 서명+제출 후 재호출해야 함)
-      if (setupData.setupNeeded) {
-        this.logger.log(`[getWithdrawTx] setup needed — returning setupTx (${setupData.instructions.length} ixs)`);
+          // Global account 로드 — 잔액 확인
+          let globalObj: { getGlobalBalanceTokens: (conn: Connection, trader: PublicKey) => Promise<number> } | null = null;
+          try {
+            globalObj = await Global.loadFromAddress({ connection: this.connection, address: globalAddress });
+          } catch {
+            // Global account가 없으면 스킵
+            continue;
+          }
 
-        const setupTx = new Transaction({
-          feePayer: traderPubkey,
-          blockhash,
-          lastValidBlockHeight,
-        }).add(...setupData.instructions);
+          if (!globalObj) continue;
 
-        // wrapper 생성 키페어가 있으면 서버에서 partial sign
-        if (setupData.wrapperKeypair) {
-          setupTx.partialSign(setupData.wrapperKeypair);
-          this.logger.log(`[getWithdrawTx] wrapper keypair pre-signed`);
+          const balance = await globalObj.getGlobalBalanceTokens(this.connection, traderPubkey);
+          this.logger.log(`[getWithdrawTx] ${symbol} global balance=${balance}`);
+
+          if (balance > 0) {
+            // globalWithdrawIx로 인출 instruction 생성 (wrapper 불필요)
+            const ix = await ManifestClient.globalWithdrawIx(
+              this.connection,
+              traderPubkey,
+              mint,
+              balance,
+            );
+            withdrawIxs.push(ix);
+            balancesFound.push({ symbol, balance });
+          }
+        } catch (e) {
+          this.logger.warn(`[getWithdrawTx] ${symbol} check failed: ${e instanceof Error ? e.message : String(e)}`);
         }
-
-        const setupTxBase64 = setupTx.serialize({
-          requireAllSignatures: false,
-          verifySignatures: false,
-        }).toString('base64');
-
-        return { setupTx: setupTxBase64 };
       }
 
-      // setup 완료 — 이제 client 생성 가능, withdraw ix 획득
-      const client = await ManifestClient.getClientForMarketNoPrivateKey(
-        this.connection,
-        marketAddress,
-        traderPubkey,
-      );
-
-      // 모든 잔액(base + quote) 인출 instruction
-      const withdrawIxs = client.withdrawAllIx();
-
-      if (!withdrawIxs || withdrawIxs.length === 0) {
+      if (withdrawIxs.length === 0) {
         throw new BadRequestException('인출할 잔액이 없습니다.');
       }
 
-      this.logger.log(`[getWithdrawTx] withdrawAllIx count=${withdrawIxs.length}`);
+      this.logger.log(`[getWithdrawTx] withdrawing: ${balancesFound.map((b) => `${b.symbol}=${b.balance}`).join(', ')}`);
 
+      // fresh blockhash로 legacy transaction 빌드
+      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
       const withdrawTx = new Transaction({
         feePayer: traderPubkey,
         blockhash,
@@ -618,7 +619,7 @@ export class OrdersService {
         verifySignatures: false,
       }).toString('base64');
 
-      this.logger.log(`[getWithdrawTx] DONE — wallet ${walletPublicKey.slice(0, 8)}...`);
+      this.logger.log(`[getWithdrawTx] DONE — ${withdrawIxs.length} ixs, wallet ${walletPublicKey.slice(0, 8)}...`);
       return { unsignedTx };
     } catch (err) {
       if (err instanceof BadRequestException) throw err;
