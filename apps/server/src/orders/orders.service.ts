@@ -610,14 +610,14 @@ export class OrdersService {
             method: 'sendTransaction',
             params: [signedTx, {
               encoding: 'base64',
-              skipPreflight: true,
-              maxRetries: 3,
-              preflightCommitment: 'confirmed',
+              skipPreflight: false,
+              preflightCommitment: 'processed',
+              maxRetries: 5,
             }],
           }),
         });
 
-        const rpcData = await rpcRes.json() as { result?: string; error?: { message?: string } };
+        const rpcData = await rpcRes.json() as { result?: string; error?: { message?: string; code?: number } };
         txSignature = rpcData.result || '';
 
         if (txSignature) {
@@ -626,7 +626,7 @@ export class OrdersService {
         }
 
         lastError = rpcData.error?.message || 'RPC 전송 실패';
-        this.logger.warn(`[submitOrder] RPC attempt ${attempt + 1} failed: ${lastError}`);
+        this.logger.warn(`[submitOrder] RPC attempt ${attempt + 1} failed: code=${rpcData.error?.code} msg=${lastError}`);
         // blockhash 만료/슬롯 관련 에러는 재시도 의미 없음 → 즉시 중단
         if (/blockhash|BlockhashNotFound|not found/i.test(lastError)) {
           throw new Error(lastError);
