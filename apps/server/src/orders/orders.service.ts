@@ -448,7 +448,32 @@ export class OrdersService {
       throw new BadRequestException('트랜잭션 제출에 실패했습니다.');
     }
 
-    // DB 업데이트 — 'submitted' 상태로 (active와 구분)
+    // tx 전송 후 on-chain confirm 대기
+    // skipPreflight: true로 RPC가 tx를 받아도 실제로 드롭될 수 있음
+    // confirmTransaction으로 실제 블록 포함 여부를 확인
+    const connection = new Connection(this.rpcUrl, 'confirmed');
+    try {
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+      const confirmed = await connection.confirmTransaction(
+        { signature: txSignature, blockhash, lastValidBlockHeight },
+        'confirmed',
+      );
+
+      if (!confirmed.value || confirmed.value.err) {
+        // 트랜잭션이 드롭되거나 실패 — DB에 기록하지 않고 에러 반환
+        this.logger.warn(
+          `Tx ${txSignature} not confirmed (dropped or failed). err=${JSON.stringify(confirmed.value?.err)}`,
+        );
+        throw new BadRequestException('트랜잭션이 체인에 반영되지 않았습니다. 다시 시도해주세요.');
+      }
+    } catch (err) {
+      // TimeoutError(confirm 실패)도 포함
+      if (err instanceof BadRequestException) throw err;
+      this.logger.warn(`Tx confirmation timeout or error: ${txSignature} — ${err instanceof Error ? err.message : String(err)}`);
+      throw new BadRequestException('트랜잭션 컨펌 대기 시간 초과. 체인 상태를 확인 후 다시 시도해주세요.');
+    }
+
+    // DB 업데이트 — on-chain confirm 확인 후 'submitted' 상태로
     const { error: updateError } = await this.client
       .from('orders')
       .update({
@@ -843,7 +868,12 @@ export class OrdersService {
           jsonrpc: '2.0',
           id: 1,
           method: 'sendTransaction',
-          params: [signedTx, { encoding: 'base64' }],
+          params: [signedTx, {
+            encoding: 'base64',
+            skipPreflight: true,
+            maxRetries: 3,
+            preflightCommitment: 'confirmed',
+          }],
         }),
       });
 
@@ -856,6 +886,25 @@ export class OrdersService {
     } catch (err) {
       this.logger.error(`RPC cancel submit error: ${err instanceof Error ? err.message : String(err)}`);
       throw new BadRequestException('취소 트랜잭션 제출에 실패했습니다.');
+    }
+
+    // cancel tx on-chain confirm 대기
+    const connection = new Connection(this.rpcUrl, 'confirmed');
+    try {
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+      const confirmed = await connection.confirmTransaction(
+        { signature: txSignature, blockhash, lastValidBlockHeight },
+        'confirmed',
+      );
+
+      if (!confirmed.value || confirmed.value.err) {
+        this.logger.warn(`Cancel tx ${txSignature} not confirmed. err=${JSON.stringify(confirmed.value?.err)}`);
+        throw new BadRequestException('취소 트랜잭션이 체인에 반영되지 않았습니다. 다시 시도해주세요.');
+      }
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      this.logger.warn(`Cancel tx confirmation timeout: ${txSignature}`);
+      throw new BadRequestException('취소 컨펌 대기 시간 초과. 다시 시도해주세요.');
     }
 
     // DB 업데이트 — 'cancelled' 상태로
