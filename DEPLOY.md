@@ -8,6 +8,29 @@
 
 ---
 
+## 현재 운영 환경 (실젯값)
+
+| 항목 | 값 |
+|------|-----|
+| **EC2 퍼블릭 IP (Elastic IP)** | `13.113.246.134` |
+| **키페어 파일** | `solwallet.pem` (저장소 루트; `*.pem` gitignore됨) |
+| **SSH 사용자** | `ubuntu` |
+| **리전** | ap-northeast-1 (도쿄) |
+| **도메인** | `aoiwallet.com` (+ `www.aoiwallet.com`) |
+
+### SSH 접속
+
+```bash
+# 저장소 루트에서 실행
+ssh -i solwallet.pem ubuntu@13.113.246.134
+```
+
+> ⚠️ `.pem` 파일은 저장소에 커밋되지 않습니다(`*.pem` gitignore). 키 파일이
+> 없는 환경에서는 AWS 콘솔에서 새 키페어를 발급받아야 합니다.
+> Linux/macOS에서 권한 오류 시: `chmod 400 solwallet.pem`
+
+---
+
 ## 목차
 
 1. [아키텍처 개요](#1-아키텍처-개요)
