@@ -259,10 +259,16 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       // 2. ATA setup tx가 있으면 먼저 서명/제출 (첫 거래 전 토큰 계정 생성)
       const { signTransaction } = await import('@/lib/wallet');
       if (result.setupTx) {
-        const signedSetupTx = signTransaction(result.setupTx, secretKey, 'legacy');
-        await ordersApi.submitSetupTx(signedSetupTx);
-        // ATA 생성 트랜잭션이 컨펌될 때까지 잠시 대기
-        await new Promise((r) => setTimeout(r, 2000));
+        try {
+          const signedSetupTx = signTransaction(result.setupTx, secretKey, 'legacy');
+          await ordersApi.submitSetupTx(signedSetupTx);
+          // ATA 생성 트랜잭션이 컨펌될 때까지 잠시 대기
+          await new Promise((r) => setTimeout(r, 2000));
+        } catch (setupErr) {
+          console.error('[createOrder] ATA setup failed:', setupErr);
+          useWalletStore.getState().lockWallets();
+          throw new Error('지갑 초기 설정(토큰 계정 생성)에 실패했습니다. 잠시 후 다시 시도해주세요.');
+        }
       }
 
       // 3. 온디바이스 서명 (Manifest = versioned)
