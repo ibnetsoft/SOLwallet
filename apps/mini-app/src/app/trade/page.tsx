@@ -67,7 +67,7 @@ function TradeContent() {
     cancelOrder,
   } = useTradeStore();
 
-  const { wallets } = useWalletStore();
+  const { wallets, initialize } = useWalletStore();
   const { showToast } = useToast();
   const searchParams = useSearchParams();
 
@@ -81,6 +81,12 @@ function TradeContent() {
 
   // 무한 스크롤 — History 탭에서 sentinel이 보이면 다음 페이지 로드
   const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // wallet store 초기화 보장 — 홈을 거치지 않고 trade로 직진한 경우 대응
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
+
   useEffect(() => {
     if (activeTab !== 'history') return;
     const sentinel = sentinelRef.current;
