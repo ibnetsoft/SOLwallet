@@ -11,6 +11,7 @@ export default function DevLoginPage() {
   const router = useRouter();
   const { showToast } = useToast();
   const [username, setUsername] = useState('');
+  const [telegramUid, setTelegramUid] = useState('');
   const [devSecret, setDevSecret] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -19,7 +20,12 @@ export default function DevLoginPage() {
     e.preventDefault();
     setIsLoading(true);
     try {
-      const token = await devLogin(username.trim() || 'dev_user', devSecret.trim());
+      const uid = telegramUid.trim() ? Number(telegramUid.trim()) : undefined;
+      const token = await devLogin(
+        username.trim() || 'dev_user',
+        devSecret.trim(),
+        uid,
+      );
       if (token && isLoggedIn()) {
         showToast(t('login.success'));
         setTimeout(() => router.replace('/'), 500);
@@ -52,6 +58,14 @@ export default function DevLoginPage() {
             onChange={(e) => setUsername(e.target.value)}
             placeholder={t('login.usernamePlaceholder')}
             className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 outline-none focus:border-primary-500 transition mb-4"
+          />
+
+          <input
+            type="text"
+            value={telegramUid}
+            onChange={(e) => setTelegramUid(e.target.value)}
+            placeholder="Telegram UID (특정 계정 로그인용, 예: 338505911)"
+            className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 outline-none focus:border-primary-500 transition mb-4 font-mono text-sm"
           />
 
           <input
