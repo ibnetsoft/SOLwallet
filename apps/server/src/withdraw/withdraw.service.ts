@@ -101,6 +101,8 @@ export class WithdrawService {
     }
 
     // 트랜잭션 RPC 전송
+    // skipPreflight: true — 클라이언트가 서명한 tx의 blockhash가 preflight
+    // simulation에서 만료 판정되는 것을 방지. 실제 네트워크 제출은 정상 처리됨.
     let txSignature = '';
     try {
       const rpcRes = await fetch(this.rpcUrl, {
@@ -110,7 +112,12 @@ export class WithdrawService {
           jsonrpc: '2.0',
           id: 1,
           method: 'sendTransaction',
-          params: [signedTx, { encoding: 'base64' }],
+          params: [signedTx, {
+            encoding: 'base64',
+            skipPreflight: true,
+            maxRetries: 3,
+            preflightCommitment: 'confirmed',
+          }],
         }),
       });
 
@@ -121,7 +128,12 @@ export class WithdrawService {
         throw new Error(rpcData.error?.message || 'RPC 전송 실패');
       }
     } catch (err) {
-      this.logger.error(`Withdraw RPC error: ${err instanceof Error ? err.message : String(err)}`);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Withdraw RPC error: ${errMsg}`);
+      // blockhash 만료 에러는 사용자에게 명확한 안내
+      if (/blockhash|BlockhashNotFound/i.test(errMsg)) {
+        throw new BadRequestException('트랜잭션이 만료되었습니다. 다시 시도해주세요.');
+      }
       throw new BadRequestException('출금 트랜잭션 전송에 실패했습니다.');
     }
 
