@@ -529,12 +529,15 @@ export class OrdersService {
    *
    * 체결된 주문의 수익(USDC 등)은 Manifest wrapper 내부에 보관되므로,
    * 사용자가 명시적으로 withdraw해야 자기 지갑 ATA로 들어옴.
-   * Manifest SDK의 withdrawAllIx()로 base+quote 모든 잔액을 인출.
+   *
+   * 2단계 플로우:
+   * - wrapper setup이 필요하면 setupTx 반환 (클라이언트가 서명+제출 후 재호출)
+   * - setup 완료 후 withdrawTx 반환
    */
   async getWithdrawTx(
     userId: string,
     walletId: string,
-  ): Promise<{ unsignedTx: string }> {
+  ): Promise<{ unsignedTx?: string; setupTx?: string }> {
     this.logger.log(`[getWithdrawTx] START — user=${userId.slice(0, 8)} wallet=${walletId.slice(0, 8)}`);
 
     // 지갑 소유권 검증 + public key 획득
@@ -561,7 +564,34 @@ export class OrdersService {
       const setupData = await ManifestClient.getSetupIxs(this.connection, marketAddress, traderPubkey);
       this.logger.log(`[getWithdrawTx] setupNeeded=${setupData.setupNeeded}`);
 
-      // private key 없이 client 생성 (instruction만 필요)
+      // fresh blockhash
+      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
+
+      // setup이 필요하면 setupTx만 반환 (클라이언트가 서명+제출 후 재호출해야 함)
+      if (setupData.setupNeeded) {
+        this.logger.log(`[getWithdrawTx] setup needed — returning setupTx (${setupData.instructions.length} ixs)`);
+
+        const setupTx = new Transaction({
+          feePayer: traderPubkey,
+          blockhash,
+          lastValidBlockHeight,
+        }).add(...setupData.instructions);
+
+        // wrapper 생성 키페어가 있으면 서버에서 partial sign
+        if (setupData.wrapperKeypair) {
+          setupTx.partialSign(setupData.wrapperKeypair);
+          this.logger.log(`[getWithdrawTx] wrapper keypair pre-signed`);
+        }
+
+        const setupTxBase64 = setupTx.serialize({
+          requireAllSignatures: false,
+          verifySignatures: false,
+        }).toString('base64');
+
+        return { setupTx: setupTxBase64 };
+      }
+
+      // setup 완료 — 이제 client 생성 가능, withdraw ix 획득
       const client = await ManifestClient.getClientForMarketNoPrivateKey(
         this.connection,
         marketAddress,
@@ -577,31 +607,11 @@ export class OrdersService {
 
       this.logger.log(`[getWithdrawTx] withdrawAllIx count=${withdrawIxs.length}`);
 
-      // fresh blockhash로 legacy transaction 빌드
-      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
-
-      // setup이 필요하면 setup ix를 withdraw 앞에 포함
-      // wrapperKeypair가 있으면 (wrapper 생성) 서버에서 pre-sign
-      const allIxs = [...withdrawIxs];
-      let wrapperKeypair: Keypair | null = null;
-
-      if (setupData.setupNeeded) {
-        this.logger.log(`[getWithdrawTx] adding ${setupData.instructions.length} setup ixs`);
-        allIxs.unshift(...setupData.instructions);
-        wrapperKeypair = setupData.wrapperKeypair;
-      }
-
       const withdrawTx = new Transaction({
         feePayer: traderPubkey,
         blockhash,
         lastValidBlockHeight,
-      }).add(...allIxs);
-
-      // wrapper 생성 키페어가 있으면 서버에서 partial sign (wrapper는 system account라 클라이언트 키로 서명 불가)
-      if (wrapperKeypair) {
-        withdrawTx.partialSign(wrapperKeypair);
-        this.logger.log(`[getWithdrawTx] wrapper keypair pre-signed`);
-      }
+      }).add(...withdrawIxs);
 
       const unsignedTx = withdrawTx.serialize({
         requireAllSignatures: false,

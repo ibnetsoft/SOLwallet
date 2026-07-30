@@ -75,8 +75,9 @@ export async function submitWrapTx(signedTx: string): Promise<{ txSignature: str
 /**
  * Manifest 잔액 인출 tx 획득 (fresh blockhash)
  * 체결된 수익(USDC 등)을 Manifest wrapper에서 사용자 ATA로 인출
+ * wrapper setup이 필요하면 setupTx 반환, 아니면 unsignedTx 반환
  */
-export async function getWithdrawTx(walletId: string): Promise<{ unsignedTx: string }> {
+export async function getWithdrawTx(walletId: string): Promise<{ unsignedTx?: string; setupTx?: string }> {
   return apiFetch('/orders/withdraw-tx', {
     method: 'POST',
     body: JSON.stringify({ walletId }),

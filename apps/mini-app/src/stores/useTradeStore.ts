@@ -389,13 +389,32 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     }
 
     try {
-      // 1. Manifest에서 fresh withdraw tx 획득
+      const { signTransaction } = await import('@/lib/wallet');
+
+      // 1. Manifest에서 withdraw tx 획득
       console.log('[withdrawFunds] fetching withdraw tx...');
-      const { unsignedTx } = await ordersApi.getWithdrawTx(activeWallet.id);
+      let { unsignedTx, setupTx } = await ordersApi.getWithdrawTx(activeWallet.id);
+
+      // 1b. wrapper setup이 필요하면 먼저 setup tx 서명+제출
+      if (setupTx) {
+        console.log('[withdrawFunds] setup needed — signing + submitting setupTx...');
+        const signedSetup = signTransaction(setupTx, secretKey, 'legacy');
+        await ordersApi.submitWithdrawTx(signedSetup);
+        console.log('[withdrawFunds] setup done, re-fetching withdraw tx...');
+        // setup 완료 후 withdraw tx 재요청
+        const retry = await ordersApi.getWithdrawTx(activeWallet.id);
+        unsignedTx = retry.unsignedTx;
+        if (!unsignedTx) {
+          throw new Error('인출 트랜잭션 생성에 실패했습니다. 잠시 후 다시 시도해주세요.');
+        }
+      }
+
+      if (!unsignedTx) {
+        throw new Error('인출할 잔액이 없습니다.');
+      }
 
       // 2. 온디바이스 서명 (withdraw = legacy)
-      const { signTransaction } = await import('@/lib/wallet');
-      console.log('[withdrawFunds] signing...');
+      console.log('[withdrawFunds] signing withdraw tx...');
       const signedTx = signTransaction(unsignedTx, secretKey, 'legacy');
 
       // 3. 서명된 withdraw tx 제출
