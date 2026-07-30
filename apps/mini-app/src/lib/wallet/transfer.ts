@@ -21,6 +21,7 @@ export async function buildSolTransferTx(
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
 
   const transaction = new Transaction({
+    feePayer: new PublicKey(from),
     blockhash,
     lastValidBlockHeight,
   }).add(
