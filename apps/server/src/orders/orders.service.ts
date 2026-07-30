@@ -236,27 +236,59 @@ export class OrdersService {
     }
 
     // Solana RPC로 트랜잭션 전송
+    // skipPreflight: true — Manifest tx의 blockhash가 preflight simulation에서
+    // 만료 판정되는 것을 방지. 실제 네트워크 제출은 fresh blockhash로 처리됨.
+    // maxRetries: RPC 노드가 자동 재시도하도록 설정.
     let txSignature = '';
-    try {
-      const rpcRes = await fetch(this.rpcUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'sendTransaction',
-          params: [signedTx, { encoding: 'base64' }],
-        }),
-      });
+    let lastError = '';
+    const maxAttempts = 3;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const rpcRes = await fetch(this.rpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'sendTransaction',
+            params: [signedTx, {
+              encoding: 'base64',
+              skipPreflight: true,
+              maxRetries: 3,
+              preflightCommitment: 'confirmed',
+            }],
+          }),
+        });
 
-      const rpcData = await rpcRes.json() as { result?: string; error?: { message?: string } };
-      txSignature = rpcData.result || '';
+        const rpcData = await rpcRes.json() as { result?: string; error?: { message?: string } };
+        txSignature = rpcData.result || '';
 
-      if (!txSignature) {
-        throw new Error(rpcData.error?.message || 'RPC 전송 실패');
+        if (txSignature) break; // 성공
+
+        lastError = rpcData.error?.message || 'RPC 전송 실패';
+        // blockhash 만료/슬롯 관련 에러는 재시도 의미 없음 → 즉시 중단
+        if (/blockhash|BlockhashNotFound|not found/i.test(lastError)) {
+          throw new Error(lastError);
+        }
+        // 기타 에러는 잠시 대기 후 재시도
+        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+        if (/blockhash|BlockhashNotFound/i.test(lastError)) {
+          break; // blockhash 에러는 재시도 불가
+        }
+        if (attempt < maxAttempts - 1) {
+          await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+        }
       }
-    } catch (err) {
-      this.logger.error(`RPC submit error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    if (!txSignature) {
+      this.logger.error(`RPC submit error: ${lastError}`);
+      // blockhash 만료 에러는 사용자에게 명확한 안내
+      if (/blockhash|BlockhashNotFound/i.test(lastError)) {
+        throw new BadRequestException('트랜잭션이 만료되었습니다. 다시 시도해주세요.');
+      }
       throw new BadRequestException('트랜잭션 제출에 실패했습니다.');
     }
 
