@@ -543,68 +543,57 @@ export class OrdersService {
 
     try {
       // Manifest SDK 동적 로드
-      const { Global, ManifestClient } = await import('@cks-systems/manifest-sdk');
+      const { Market, ManifestClient } = await import('@cks-systems/manifest-sdk');
 
-      // Manifest program ID (상수)
-      const MANIFEST_PROGRAM_ID = new PublicKey('MNFSTqtC93rEfYHB6hF82sKdZpUDFWkViLByLd1k1Ms');
+      // SOL/USDC 마켓 조회
+      const baseMint = new PublicKey(NATIVE_MINT.toBase58());
+      const quoteMint = new PublicKey(USDC_MINT);
+      const markets = await Market.findByMints(this.connection, baseMint, quoteMint);
 
-      // Global PDA 파생 헬퍼 — ['global', mint] seeds
-      const deriveGlobalAddress = (mint: PublicKey): PublicKey => {
-        const [addr] = PublicKey.findProgramAddressSync(
-          [Buffer.from('global'), mint.toBuffer()],
-          MANIFEST_PROGRAM_ID,
-        );
-        return addr;
-      };
-
-      // 인출할 mint 목록 — Manifest에 잔액이 있을 수 있는 모든 토큰
-      const mintsToCheck = [
-        { mint: new PublicKey(USDC_MINT), symbol: 'USDC' },
-        { mint: new PublicKey(NATIVE_MINT.toBase58()), symbol: 'SOL' },
-      ];
-
-      const withdrawIxs = [];
-      const balancesFound = [];
-
-      for (const { mint, symbol } of mintsToCheck) {
-        try {
-          const globalAddress = deriveGlobalAddress(mint);
-
-          // Global account 로드 — 잔액 확인
-          let globalObj: { getGlobalBalanceTokens: (conn: Connection, trader: PublicKey) => Promise<number> } | null = null;
-          try {
-            globalObj = await Global.loadFromAddress({ connection: this.connection, address: globalAddress });
-          } catch {
-            // Global account가 없으면 스킵
-            continue;
-          }
-
-          if (!globalObj) continue;
-
-          const balance = await globalObj.getGlobalBalanceTokens(this.connection, traderPubkey);
-          this.logger.log(`[getWithdrawTx] ${symbol} global balance=${balance}`);
-
-          if (balance > 0) {
-            // globalWithdrawIx로 인출 instruction 생성 (wrapper 불필요)
-            const ix = await ManifestClient.globalWithdrawIx(
-              this.connection,
-              traderPubkey,
-              mint,
-              balance,
-            );
-            withdrawIxs.push(ix);
-            balancesFound.push({ symbol, balance });
-          }
-        } catch (e) {
-          this.logger.warn(`[getWithdrawTx] ${symbol} check failed: ${e instanceof Error ? e.message : String(e)}`);
-        }
+      if (!markets || markets.length === 0) {
+        throw new BadRequestException('거래 가능한 마켓을 찾을 수 없습니다.');
       }
 
-      if (withdrawIxs.length === 0) {
+      const marketAddress = markets[0].address;
+      this.logger.log(`[getWithdrawTx] market=${marketAddress.toBase58().slice(0, 8)}...`);
+
+      // ReadOnly client로 market의 withdrawable balance 직접 읽기
+      const readOnlyClient = await ManifestClient.getClientReadOnly(
+        this.connection,
+        marketAddress,
+        traderPubkey,
+      );
+
+      const baseBalance = readOnlyClient.market.getWithdrawableBalanceTokens(traderPubkey, true);
+      const quoteBalance = readOnlyClient.market.getWithdrawableBalanceTokens(traderPubkey, false);
+      this.logger.log(`[getWithdrawTx] market withdrawable — base(SOL)=${baseBalance} quote(USDC)=${quoteBalance}`);
+
+      if (baseBalance <= 0 && quoteBalance <= 0) {
         throw new BadRequestException('인출할 잔액이 없습니다.');
       }
 
-      this.logger.log(`[getWithdrawTx] withdrawing: ${balancesFound.map((b) => `${b.symbol}=${b.balance}`).join(', ')}`);
+      // withdraw ix 생성 — wrapper client 필요 (getClientForMarketNoPrivateKey)
+      const setupData = await ManifestClient.getSetupIxs(this.connection, marketAddress, traderPubkey);
+      this.logger.log(`[getWithdrawTx] setupNeeded=${setupData.setupNeeded}`);
+
+      const withdrawIxs = [];
+
+      // setup이 필요하면 setup ix를 포함 (wrapper 생성)
+      if (setupData.setupNeeded) {
+        this.logger.log(`[getWithdrawTx] adding ${setupData.instructions.length} setup ixs`);
+        withdrawIxs.push(...setupData.instructions);
+      }
+
+      // wrapper client 생성 후 withdraw ix 획득
+      const client = await ManifestClient.getClientForMarketNoPrivateKey(
+        this.connection,
+        marketAddress,
+        traderPubkey,
+      );
+      const ixs = client.withdrawAllIx();
+      withdrawIxs.push(...ixs);
+
+      this.logger.log(`[getWithdrawTx] total ixs=${withdrawIxs.length}`);
 
       // fresh blockhash로 legacy transaction 빌드
       const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
@@ -614,12 +603,18 @@ export class OrdersService {
         lastValidBlockHeight,
       }).add(...withdrawIxs);
 
+      // wrapper 생성 키페어가 있으면 서버에서 partial sign
+      if (setupData.setupNeeded && setupData.wrapperKeypair) {
+        withdrawTx.partialSign(setupData.wrapperKeypair);
+        this.logger.log(`[getWithdrawTx] wrapper keypair pre-signed`);
+      }
+
       const unsignedTx = withdrawTx.serialize({
         requireAllSignatures: false,
         verifySignatures: false,
       }).toString('base64');
 
-      this.logger.log(`[getWithdrawTx] DONE — ${withdrawIxs.length} ixs, wallet ${walletPublicKey.slice(0, 8)}...`);
+      this.logger.log(`[getWithdrawTx] DONE — wallet ${walletPublicKey.slice(0, 8)}...`);
       return { unsignedTx };
     } catch (err) {
       if (err instanceof BadRequestException) throw err;
