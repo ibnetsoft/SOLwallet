@@ -339,13 +339,14 @@ export const useTradeStore = create<TradeState>((set, get) => ({
 
     try {
       // 1. Manifest에서 fresh cancel tx 획득 (취소 요청 + fresh blockhash 한 번에 처리)
-      // cancelOrder + getFreshCancelTx를 분리하면 Manifest DELETE가 두 번 호출되어
-      // 두 번째 요청에서 에러 발생 가능하므로, getFreshCancelTx 하나로 통합
       const freshCancel = await ordersApi.getFreshCancelTx(orderId);
 
-      if (!freshCancel.unsignedTx) {
+      // 주문이 온체인에 없어 DB에서 삭제된 경우 → 성공으로 처리
+      if (freshCancel.cancelled || !freshCancel.unsignedTx) {
+        console.log('[cancelOrder] order was not on-chain, already removed from DB');
+        get().fetchActiveOrders();
         useWalletStore.getState().lockWallets();
-        throw new Error(getMsg('error.txBuildFailed'));
+        return { txSignature: '' };
       }
 
       // 2. 온디바이스 서명 (Manifest 취소 = versioned)

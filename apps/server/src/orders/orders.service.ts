@@ -799,7 +799,7 @@ export class OrdersService {
   async getFreshCancelTx(
     orderId: string,
     userId: string,
-  ): Promise<{ unsignedTx: string }> {
+  ): Promise<{ unsignedTx?: string; cancelled?: boolean }> {
     const { data: order, error: fetchError } = await this.client
       .from('orders')
       .select('*')
@@ -862,19 +862,19 @@ export class OrdersService {
       const errMsg = cancelData.error || '';
       const cause = cancelData.cause || '';
       this.logger.warn(
-        `Manifest fresh cancel-tx failed: ${cancelRes.status} — ${errMsg}: ${cause}`,
+        `[cancelOrder] Manifest cancel-tx failed: ${cancelRes.status} — ${errMsg}: ${cause}`,
       );
 
-      // on-chain에 주문이 존재하지 않는 경우 → DB를 expired 처리
-      if (/setup ixs|not found|no such order|order not found/i.test(errMsg + ' ' + cause)) {
-        await this.client
-          .from('orders')
-          .update({ status: 'expired', updated_at: new Date().toISOString() })
-          .eq('id', orderId);
-        throw new BadRequestException('이 주문은 체인에 등록되지 않았습니다. 이미 만료된 주문입니다.');
-      }
+      // 주문이 온체인에 없거나 취소 tx 생성 불가 → DB에서 조용히 삭제
+      // (이미 드롭된 tx, 만료된 주문 등 — 온체인에 존재하지 않으므로 취소 불필요)
+      this.logger.log(`[cancelOrder] silently removing order ${orderId} from DB (not on-chain)`);
+      await this.client
+        .from('orders')
+        .delete()
+        .eq('id', orderId);
 
-      throw new BadRequestException('취소 트랜잭션 생성에 실패했습니다. 다시 시도해주세요.');
+      // 클라이언트에게는 주문이 취소(삭제)된 것으로 응답
+      return { cancelled: true };
     }
 
     return { unsignedTx: cancelData.transaction };

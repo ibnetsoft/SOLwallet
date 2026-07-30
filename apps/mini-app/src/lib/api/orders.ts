@@ -83,8 +83,9 @@ export async function cancelOrder(orderId: string): Promise<{ order: Record<stri
 
 /**
  * 취소 서명 직전 fresh unsigned cancel tx 획득 — Manifest blockhash 만료 방지
+ * 주문이 온체인에 없으면 cancelled:true 로 DB 삭제 후 반환
  */
-export async function getFreshCancelTx(orderId: string): Promise<{ unsignedTx: string }> {
+export async function getFreshCancelTx(orderId: string): Promise<{ unsignedTx?: string; cancelled?: boolean }> {
   return apiFetch(`/orders/${orderId}/cancel/fresh-tx`, { method: 'POST' });
 }
 
