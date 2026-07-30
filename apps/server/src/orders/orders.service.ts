@@ -466,6 +466,174 @@ export class OrdersService {
   }
 
   /**
+   * 주문 생성 직후 서명 전 — Manifest에서 fresh blockhash의 unsigned tx 재요청
+   *
+   * createOrder에서 반환된 unsignedTx는 시간 경과로 blockhash가 만료될 수 있음.
+   * 클라이언트가 서명 직전 이 엔드포인트를 호출하면, 동일 파라미터로 Manifest를 재호출하여
+   * fresh blockhash가 포함된 새 unsigned tx를 반환.
+   */
+  async getFreshOrderTx(
+    orderId: string,
+    userId: string,
+  ): Promise<{ unsignedTx: string }> {
+    // 주문 + 토큰 + 지갑 조회
+    const { data: order, error: fetchError } = await this.client
+      .from('orders')
+      .select('*')
+      .eq('id', orderId)
+      .eq('user_id', userId)
+      .single();
+
+    if (fetchError || !order) {
+      throw new NotFoundException('주문을 찾을 수 없습니다.');
+    }
+
+    if (order.status !== 'active') {
+      throw new BadRequestException('유효하지 않은 주문입니다.');
+    }
+
+    const { data: token } = await this.client
+      .from('tokens')
+      .select('*')
+      .eq('id', order.token_id)
+      .single();
+
+    if (!token) {
+      throw new BadRequestException('토큰 정보를 찾을 수 없습니다.');
+    }
+
+    const { data: wallet } = await this.client
+      .from('wallets')
+      .select('public_key')
+      .eq('id', order.wallet_id)
+      .single();
+
+    if (!wallet) {
+      throw new BadRequestException('지갑 정보를 찾을 수 없습니다.');
+    }
+
+    const clientOrderId = order.manifest_client_order_id as number;
+    const quoteMint = token.symbol === 'SOL' ? USDC_MINT : USDT_MINT;
+    const formattedSize = Number(order.quantity).toFixed(token.decimals);
+    const formattedPrice = Number(order.price).toFixed(6);
+
+    // Manifest POST 재호출 — 동일 clientOrderId 사용
+    const manifestRes = await fetch(`${this.manifestBaseUrl}/orders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        maker: wallet.public_key,
+        baseMint: token.mint_address,
+        quoteMint,
+        orders: [
+          {
+            size: formattedSize,
+            price: formattedPrice,
+            side: order.side,
+            orderType: 'limit',
+            clientOrderId,
+          },
+        ],
+        computeUnitPrice: MANIFEST.computeUnitPrice,
+      }),
+    });
+
+    const manifestData = (await manifestRes.json()) as ManifestCreateResponse;
+
+    if (!manifestRes.ok || !manifestData.transaction) {
+      this.logger.warn(
+        `Manifest fresh-tx failed: ${manifestRes.status} — ${manifestData.error || ''}: ${manifestData.cause || ''}`,
+      );
+      throw new BadRequestException('fresh 트랜잭션 생성에 실패했습니다. 다시 시도해주세요.');
+    }
+
+    // requestId가 새로 오면 업데이트 (선택적)
+    if (manifestData.requestId) {
+      await this.client
+        .from('orders')
+        .update({ manifest_request_id: manifestData.requestId })
+        .eq('id', orderId);
+    }
+
+    return { unsignedTx: manifestData.transaction };
+  }
+
+  /**
+   * 취소 서명 전 — Manifest에서 fresh blockhash의 unsigned cancel tx 재요청
+   */
+  async getFreshCancelTx(
+    orderId: string,
+    userId: string,
+  ): Promise<{ unsignedTx: string }> {
+    const { data: order, error: fetchError } = await this.client
+      .from('orders')
+      .select('*')
+      .eq('id', orderId)
+      .eq('user_id', userId)
+      .single();
+
+    if (fetchError || !order) {
+      throw new NotFoundException('주문을 찾을 수 없습니다.');
+    }
+
+    if (!['active', 'submitted'].includes(order.status)) {
+      throw new BadRequestException('취소할 수 없는 주문입니다.');
+    }
+
+    const { data: token } = await this.client
+      .from('tokens')
+      .select('*')
+      .eq('id', order.token_id)
+      .single();
+
+    if (!token) {
+      throw new BadRequestException('토큰 정보를 찾을 수 없습니다.');
+    }
+
+    const { data: wallet } = await this.client
+      .from('wallets')
+      .select('public_key')
+      .eq('id', order.wallet_id)
+      .single();
+
+    if (!wallet) {
+      throw new BadRequestException('지갑 정보를 찾을 수 없습니다.');
+    }
+
+    const clientOrderId = order.manifest_client_order_id as number | null;
+    const sequenceNumber = order.manifest_sequence_number as number | null;
+    const quoteMint = token.symbol === 'SOL' ? USDC_MINT : USDT_MINT;
+
+    // Manifest DELETE 재호출 — 동일 파라미터로 fresh cancel tx 획득
+    const cancelRes = await fetch(`${this.manifestBaseUrl}/orders`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        maker: wallet.public_key,
+        baseMint: token.mint_address,
+        quoteMint,
+        orders: [
+          sequenceNumber != null
+            ? { sequenceNumber }
+            : { clientOrderId: clientOrderId ?? 0 },
+        ],
+        computeUnitPrice: MANIFEST.computeUnitPrice,
+      }),
+    });
+
+    const cancelData = (await cancelRes.json()) as ManifestCancelResponse;
+
+    if (!cancelRes.ok || !cancelData.transaction) {
+      this.logger.warn(
+        `Manifest fresh cancel-tx failed: ${cancelRes.status} — ${cancelData.error || ''}: ${cancelData.cause || ''}`,
+      );
+      throw new BadRequestException('fresh 취소 트랜잭션 생성에 실패했습니다. 다시 시도해주세요.');
+    }
+
+    return { unsignedTx: cancelData.transaction };
+  }
+
+  /**
    * 활성 주문 목록 (active + submitted 포함)
    */
   async getActiveOrders(userId: string) {

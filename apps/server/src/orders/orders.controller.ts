@@ -45,6 +45,19 @@ export class OrdersController {
   }
 
   /**
+   * POST /api/orders/:id/fresh-tx — 서명 직전 fresh unsigned tx 획득
+   * Manifest blockhash 만료 방지: 서명 직전에 호출하여 fresh blockhash의 tx 반환
+   */
+  @Post(':id/fresh-tx')
+  async getFreshOrderTx(
+    @CurrentUser() userId: string,
+    @Param('id', ParseUUIDPipe) orderId: string,
+  ) {
+    const result = await this.ordersService.getFreshOrderTx(orderId, userId);
+    return { success: true, data: result };
+  }
+
+  /**
    * POST /api/orders/:id/submit — 서명된 주문 트랜잭션 제출
    */
   @Post(':id/submit')
@@ -66,6 +79,18 @@ export class OrdersController {
     @Param('id', ParseUUIDPipe) orderId: string,
   ) {
     const result = await this.ordersService.cancelOrder(orderId, userId);
+    return { success: true, data: result };
+  }
+
+  /**
+   * POST /api/orders/:id/cancel/fresh-tx — 취소 서명 직전 fresh unsigned cancel tx 획득
+   */
+  @Post(':id/cancel/fresh-tx')
+  async getFreshCancelTx(
+    @CurrentUser() userId: string,
+    @Param('id', ParseUUIDPipe) orderId: string,
+  ) {
+    const result = await this.ordersService.getFreshCancelTx(orderId, userId);
     return { success: true, data: result };
   }
 

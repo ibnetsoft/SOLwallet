@@ -36,6 +36,15 @@ export async function submitOrder(orderId: string, signedTx: string): Promise<{ 
 }
 
 /**
+ * 서명 직전 fresh unsigned tx 획득 — Manifest blockhash 만료 방지
+ * createOrder로 주문을 생성한 후, 서명하기 직전에 이 함수를 호출하여
+ * fresh blockhash가 포함된 최신 unsigned tx를 가져옵니다.
+ */
+export async function getFreshTx(orderId: string): Promise<{ unsignedTx: string }> {
+  return apiFetch(`/orders/${orderId}/fresh-tx`, { method: 'POST' });
+}
+
+/**
  * ATA setup 트랜잭션 제출 (첫 거래 전 토큰 계정 생성)
  */
 export async function submitSetupTx(signedTx: string): Promise<{ txSignature: string }> {
@@ -52,6 +61,13 @@ export async function cancelOrder(orderId: string): Promise<{ order: Record<stri
   return apiFetch(`/orders/${orderId}/cancel`, {
     method: 'POST',
   });
+}
+
+/**
+ * 취소 서명 직전 fresh unsigned cancel tx 획득 — Manifest blockhash 만료 방지
+ */
+export async function getFreshCancelTx(orderId: string): Promise<{ unsignedTx: string }> {
+  return apiFetch(`/orders/${orderId}/cancel/fresh-tx`, { method: 'POST' });
 }
 
 /**

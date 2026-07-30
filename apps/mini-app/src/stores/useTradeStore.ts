@@ -271,13 +271,18 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         }
       }
 
-      // 3. 온디바이스 서명 (Manifest = versioned)
-      const signedTx = signTransaction(result.unsignedTx, secretKey, 'versioned');
+      // 3. 서명 직전 fresh tx 획득 — Manifest blockhash 만료 방지
+      // createOrder에서 반환된 unsignedTx는 시간 경과로 blockhash 만료 가능
+      // 서명 직전 서버에서 Manifest를 재호출하여 fresh blockhash의 tx를 가져옴
+      const freshResult = await ordersApi.getFreshTx(result.order.id as string);
 
-      // 4. 서명된 트랜잭션 제출
+      // 4. 온디바이스 서명 (Manifest = versioned)
+      const signedTx = signTransaction(freshResult.unsignedTx, secretKey, 'versioned');
+
+      // 5. 서명된 트랜잭션 제출
       const submitResult = await ordersApi.submitOrder(result.order.id as string, signedTx);
 
-      // 5. 활성 주문 새로고침
+      // 6. 활성 주문 새로고침
       get().fetchActiveOrders();
 
       // 6. 메모리에서 키 해제
@@ -309,17 +314,19 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     }
 
     try {
-      // 1. Manifest에서 unsigned cancel tx 획득
-      const { unsignedTx } = await ordersApi.cancelOrder(orderId);
+      // 1. Manifest에서 fresh cancel tx 획득 (취소 요청 + fresh blockhash 한 번에 처리)
+      // cancelOrder + getFreshCancelTx를 분리하면 Manifest DELETE가 두 번 호출되어
+      // 두 번째 요청에서 에러 발생 가능하므로, getFreshCancelTx 하나로 통합
+      const freshCancel = await ordersApi.getFreshCancelTx(orderId);
 
-      if (!unsignedTx) {
+      if (!freshCancel.unsignedTx) {
         useWalletStore.getState().lockWallets();
         throw new Error(getMsg('error.txBuildFailed'));
       }
 
       // 2. 온디바이스 서명 (Manifest 취소 = versioned)
       const { signTransaction } = await import('@/lib/wallet');
-      const signedTx = signTransaction(unsignedTx, secretKey, 'versioned');
+      const signedTx = signTransaction(freshCancel.unsignedTx, secretKey, 'versioned');
 
       // 3. 서명된 cancel tx 제출
       const result = await ordersApi.submitCancelOrder(orderId, signedTx);
