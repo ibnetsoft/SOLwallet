@@ -967,7 +967,7 @@ export class OrdersService {
 
     // 이미 체결(filled)되었거나 완료된 주문 → 명확한 안내
     if (order.status === 'filled') {
-      throw new BadRequestException('이미 성사된 주문입니다.');
+      throw new BadRequestException('이미 체결된 주문입니다.');
     }
     if (['cancelled', 'expired', 'failed'].includes(order.status)) {
       throw new BadRequestException('이미 완료된 주문입니다.');
