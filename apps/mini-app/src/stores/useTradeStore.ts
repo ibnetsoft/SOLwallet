@@ -256,17 +256,25 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         throw new Error(getMsg('error.txBuildFailed'));
       }
 
-      // 2. 온디바이스 서명 (Manifest = versioned)
+      // 2. ATA setup tx가 있으면 먼저 서명/제출 (첫 거래 전 토큰 계정 생성)
       const { signTransaction } = await import('@/lib/wallet');
+      if (result.setupTx) {
+        const signedSetupTx = signTransaction(result.setupTx, secretKey, 'legacy');
+        await ordersApi.submitSetupTx(signedSetupTx);
+        // ATA 생성 트랜잭션이 컨펌될 때까지 잠시 대기
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+
+      // 3. 온디바이스 서명 (Manifest = versioned)
       const signedTx = signTransaction(result.unsignedTx, secretKey, 'versioned');
 
-      // 3. 서명된 트랜잭션 제출
+      // 4. 서명된 트랜잭션 제출
       const submitResult = await ordersApi.submitOrder(result.order.id as string, signedTx);
 
-      // 4. 활성 주문 새로고침
+      // 5. 활성 주문 새로고침
       get().fetchActiveOrders();
 
-      // 5. 메모리에서 키 해제
+      // 6. 메모리에서 키 해제
       useWalletStore.getState().lockWallets();
 
       return submitResult;

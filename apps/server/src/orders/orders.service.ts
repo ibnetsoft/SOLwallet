@@ -1,7 +1,20 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { ConfigService } from '@nestjs/config';
-import { Connection, PublicKey } from '@solana/web3.js';
+import {
+  Connection,
+  PublicKey,
+  Transaction,
+  SystemProgram,
+  LAMPORTS_PER_SOL,
+} from '@solana/web3.js';
+import {
+  createAssociatedTokenAccountIdempotentInstruction,
+  getAssociatedTokenAddressSync,
+  TOKEN_PROGRAM_ID,
+  NATIVE_MINT,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+} from '@solana/spl-token';
 import { MANIFEST, USDT_MINT, USDC_MINT } from '@solwallet/config';
 import { SettingsService } from '../settings/settings.service';
 import type { CreateOrderDto } from '../common/dto/order.dto';
@@ -91,11 +104,15 @@ export class OrdersService {
    *   → { transaction, requestId }
    *
    * base는 항상 토큰, quote는 항상 USDT (side 무관 — 같은 마켓에서 매수/매도 매칭)
+   *
+   * 매도(side=sell) 시: base 토큰의 ATA 필요. 없으면 setupTx에 ATA 생성 tx 반환.
+   * 매수(side=buy) 시: quote 토큰(USDT/USDC)의 ATA 필요. 없으면 setupTx에 ATA 생성 tx 반환.
+   * 클라이언트는 setupTx가 있으면 먼저 서명/제출 후 주문 tx를 진행해야 함.
    */
   async createOrder(
     userId: string,
     dto: CreateOrderDto,
-  ): Promise<{ order: Record<string, unknown>; unsignedTx: string }> {
+  ): Promise<{ order: Record<string, unknown>; unsignedTx: string; setupTx?: string }> {
     // 지갑 소유권 검증 + public key 획득
     const walletPublicKey = await this.verifyWalletOwnership(dto.walletId, userId);
 
@@ -109,6 +126,105 @@ export class OrdersService {
 
     if (!token) {
       throw new BadRequestException('유효하지 않은 토큰입니다.');
+    }
+
+    // ── 필요한 ATA 존재 여부 확인 ──
+    // 매도: base 토큰(예: SOL→wSOL) ATA 필요
+    // 매수: quote 토큰(USDT/USDC) ATA 필요 (SOL 매수 시엔 USDT/USDC ATA)
+    // SOL의 경우 Manifest는 wSOL(NATIVE_MINT) ATA를 사용
+    const quoteMintAddress = token.symbol === 'SOL' ? USDC_MINT : USDT_MINT;
+    const baseMintAddress = token.mint_address;
+    const traderPubkey = new PublicKey(walletPublicKey);
+
+    // 거래에 필요한 deposit mint 결정
+    // 매도면 base 토큰을 deposit, 매수면 quote 토큰을 deposit
+    const depositMint = dto.side === 'sell'
+      ? new PublicKey(baseMintAddress)
+      : new PublicKey(quoteMintAddress);
+
+    // SOL 매도의 경우 Manifest는 wSOL ATA 사용
+    const isNativeSol = depositMint.equals(NATIVE_MINT);
+
+    // ATA가 존재하는지 RPC로 확인
+    let needsAtaSetup = false;
+    try {
+      if (isNativeSol) {
+        // wSOL ATA — getAccountInfo로 직접 확인
+        const wsolAta = getAssociatedTokenAddressSync(NATIVE_MINT, traderPubkey, true);
+        const acctRes = await fetch(this.rpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0', id: 1,
+            method: 'getAccountInfo',
+            params: [wsolAta.toBase58(), { encoding: 'base64' }],
+          }),
+        });
+        const acctData = await acctRes.json() as { result?: { value: unknown } };
+        if (!acctData.result?.value) needsAtaSetup = true;
+      } else {
+        // 일반 SPL 토큰 ATA
+        const ata = getAssociatedTokenAddressSync(depositMint, traderPubkey);
+        const acctRes = await fetch(this.rpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0', id: 1,
+            method: 'getAccountInfo',
+            params: [ata.toBase58(), { encoding: 'base64' }],
+          }),
+        });
+        const acctData = await acctRes.json() as { result?: { value: unknown } };
+        if (!acctData.result?.value) needsAtaSetup = true;
+      }
+    } catch (err) {
+      this.logger.warn(`ATA check failed, assuming setup needed: ${err instanceof Error ? err.message : String(err)}`);
+      needsAtaSetup = true;
+    }
+
+    // ATA가 없으면 setup tx 생성 — idempotent create ATA instruction 포함
+    let setupTx: string | undefined;
+    if (needsAtaSetup) {
+      try {
+        const ataAddress = isNativeSol
+          ? getAssociatedTokenAddressSync(NATIVE_MINT, traderPubkey, true)
+          : getAssociatedTokenAddressSync(depositMint, traderPubkey);
+
+        const createAtaIx = createAssociatedTokenAccountIdempotentInstruction(
+          traderPubkey, // payer
+          ataAddress,   // associated token account
+          traderPubkey, // owner
+          isNativeSol ? NATIVE_MINT : depositMint,
+        );
+
+        // fresh blockhash로 legacy 트랜잭션 빌드 (ATA 생성은 단순)
+        const bhRes = await fetch(this.rpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestBlockhash', params: [] }),
+        });
+        const bhData = await bhRes.json() as { result?: { value?: { blockhash: string; lastValidBlockHeight: number } } };
+        const blockhash = bhData.result?.value?.blockhash;
+        const lastValidBlockHeight = bhData.result?.value?.lastValidBlockHeight ?? 0;
+
+        if (blockhash) {
+          const setupTransaction = new Transaction({
+            feePayer: traderPubkey,
+            blockhash,
+            lastValidBlockHeight,
+          }).add(createAtaIx);
+
+          // SOL 매도 시 wSOL ATA는 생성만 하고 자금은 deposit에서 wrapping됨
+          setupTx = setupTransaction.serialize({
+            requireAllSignatures: false,
+            verifySignatures: false,
+          }).toString('base64');
+
+          this.logger.log(`ATA setup tx created for ${dto.side} ${token.symbol} (wallet ${walletPublicKey.slice(0, 8)}...)`);
+        }
+      } catch (err) {
+        this.logger.error(`Failed to build ATA setup tx: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
 
     // 수수료 계산 — DB에서 동적 수수료율 조회 (실패 시 기본값 1%)
@@ -208,7 +324,47 @@ export class OrdersService {
       })
       .eq('id', order.id);
 
-    return { order: order as Record<string, unknown>, unsignedTx };
+    return { order: order as Record<string, unknown>, unsignedTx, setupTx };
+  }
+
+  /**
+   * ATA setup 트랜잭션 제출 — 첫 거래 전 토큰 계정 생성
+   * 검증 없이 단순히 RPC로 전송 (ATA 생성은 idempotent)
+   */
+  async submitSetupTx(
+    signedTx: string,
+    _userId: string,
+  ): Promise<{ txSignature: string }> {
+    let txSignature = '';
+    try {
+      const rpcRes = await fetch(this.rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'sendTransaction',
+          params: [signedTx, {
+            encoding: 'base64',
+            skipPreflight: false,
+            preflightCommitment: 'confirmed',
+          }],
+        }),
+      });
+
+      const rpcData = await rpcRes.json() as { result?: string; error?: { message?: string } };
+      txSignature = rpcData.result || '';
+
+      if (!txSignature) {
+        throw new Error(rpcData.error?.message || 'RPC 전송 실패');
+      }
+    } catch (err) {
+      this.logger.error(`Setup tx submit error: ${err instanceof Error ? err.message : String(err)}`);
+      throw new BadRequestException('토큰 계정 생성에 실패했습니다.');
+    }
+
+    this.logger.log(`ATA setup tx submitted: ${txSignature.slice(0, 12)}...`);
+    return { txSignature };
   }
 
   /**

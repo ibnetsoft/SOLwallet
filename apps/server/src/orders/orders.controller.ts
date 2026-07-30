@@ -44,6 +44,19 @@ export class OrdersController {
   }
 
   /**
+   * POST /api/orders/setup/submit — 첫 거래 전 ATA 생성 트랜잭션 제출
+   * createOrder가 setupTx를 반환한 경우, 주문 tx 전에 먼저 이 엔드포인트로 제출
+   */
+  @Post('setup/submit')
+  async submitSetupTx(
+    @CurrentUser() userId: string,
+    @Body() dto: SubmitOrderDto,
+  ) {
+    const result = await this.ordersService.submitSetupTx(dto.signedTx, userId);
+    return { success: true, data: result };
+  }
+
+  /**
    * POST /api/orders/:id/cancel — 주문 취소 (1단계: unsigned cancel tx 반환)
    */
   @Post(':id/cancel')

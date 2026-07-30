@@ -11,6 +11,8 @@ export interface CreateOrderParams {
 export interface CreateOrderResult {
   order: Record<string, unknown>;
   unsignedTx: string;
+  /** 첫 거래 전 필요한 ATA 생성 트랜잭션 (없으면 undefined) */
+  setupTx?: string;
 }
 
 /**
@@ -28,6 +30,16 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
  */
 export async function submitOrder(orderId: string, signedTx: string): Promise<{ txSignature: string }> {
   return apiFetch(`/orders/${orderId}/submit`, {
+    method: 'POST',
+    body: JSON.stringify({ signedTx }),
+  });
+}
+
+/**
+ * ATA setup 트랜잭션 제출 (첫 거래 전 토큰 계정 생성)
+ */
+export async function submitSetupTx(signedTx: string): Promise<{ txSignature: string }> {
+  return apiFetch('/orders/setup/submit', {
     method: 'POST',
     body: JSON.stringify({ signedTx }),
   });
