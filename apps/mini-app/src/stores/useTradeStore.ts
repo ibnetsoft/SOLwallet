@@ -276,7 +276,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         try {
           const { wrapTx } = await ordersApi.getWrapTx(result.order.id as string);
           const signedWrapTx = signTransaction(wrapTx, secretKey, 'legacy');
-          await ordersApi.submitSetupTx(signedWrapTx);
+          await ordersApi.submitWrapTx(signedWrapTx);
         } catch (wrapErr) {
           console.error('[createOrder] wSOL wrap failed:', wrapErr);
           useWalletStore.getState().lockWallets();

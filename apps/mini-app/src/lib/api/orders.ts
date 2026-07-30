@@ -63,6 +63,16 @@ export async function submitSetupTx(signedTx: string): Promise<{ txSignature: st
 }
 
 /**
+ * wSOL 래핑 트랜잭션 제출 + 컨펌 확인
+ */
+export async function submitWrapTx(signedTx: string): Promise<{ txSignature: string }> {
+  return apiFetch('/orders/wrap/submit', {
+    method: 'POST',
+    body: JSON.stringify({ signedTx }),
+  });
+}
+
+/**
  * 주문 취소 — 1단계: unsigned cancel tx 반환
  */
 export async function cancelOrder(orderId: string): Promise<{ order: Record<string, unknown>; unsignedTx: string }> {

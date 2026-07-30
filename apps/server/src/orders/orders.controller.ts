@@ -31,9 +31,7 @@ export class OrdersController {
   }
 
   /**
-   * POST /api/orders/setup/submit — 첫 거래 전 ATA 생성 트랜잭션 제출
-   * ⚠️ :id/submit 보다 먼저 정의해야 함 (안 그러면 'setup'이 :id로 매칭됨)
-   * createOrder가 setupTx를 반환한 경우, 주문 tx 전에 먼저 이 엔드포인트로 제출
+   * POST /api/orders/setup/submit — 첫 거래 전 ATA 생성 트랜잭션 제출 (fire-and-forget)
    */
   @Post('setup/submit')
   async submitSetupTx(
@@ -41,6 +39,18 @@ export class OrdersController {
     @Body() dto: SubmitOrderDto,
   ) {
     const result = await this.ordersService.submitSetupTx(dto.signedTx, userId);
+    return { success: true, data: result };
+  }
+
+  /**
+   * POST /api/orders/wrap/submit — wSOL 래핑 트랜잭션 제출 + 컨펌 확인
+   */
+  @Post('wrap/submit')
+  async submitWrapTx(
+    @CurrentUser() userId: string,
+    @Body() dto: SubmitOrderDto,
+  ) {
+    const result = await this.ordersService.submitWrapTx(dto.signedTx, userId);
     return { success: true, data: result };
   }
 

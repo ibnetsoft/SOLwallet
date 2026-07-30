@@ -328,8 +328,8 @@ export class OrdersService {
   }
 
   /**
-   * Setup 트랜잭션 제출 — ATA 생성 또는 wSOL 래핑
-   * RPC 전송 후 confirmTransaction으로 온체인 반영을 확인
+   * Setup 트랜잭션 제출 — ATA 생성 (fire-and-forget)
+   * ATA 생성은 idempotent하므로 컨펌 대기 불필요
    */
   async submitSetupTx(
     signedTx: string,
@@ -364,7 +364,48 @@ export class OrdersService {
       throw new BadRequestException('트랜잭션 제출에 실패했습니다.');
     }
 
-    // 트랜잭션이 온체인에 반영되었는지 확인 (최대 10초 대기)
+    this.logger.log(`Setup tx submitted: ${txSignature.slice(0, 12)}...`);
+    return { txSignature };
+  }
+
+  /**
+   * wSOL 래핑 트랜잭션 제출 — RPC 전송 후 온체인 컨펌 확인
+   * wrapTx가 컨펌되어야 이후 Manifest 주문 tx의 wSOL deposit이 성공함
+   */
+  async submitWrapTx(
+    signedTx: string,
+    _userId: string,
+  ): Promise<{ txSignature: string }> {
+    let txSignature = '';
+    try {
+      const rpcRes = await fetch(this.rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'sendTransaction',
+          params: [signedTx, {
+            encoding: 'base64',
+            skipPreflight: true,
+            maxRetries: 3,
+            preflightCommitment: 'confirmed',
+          }],
+        }),
+      });
+
+      const rpcData = await rpcRes.json() as { result?: string; error?: { message?: string } };
+      txSignature = rpcData.result || '';
+
+      if (!txSignature) {
+        throw new Error(rpcData.error?.message || 'RPC 전송 실패');
+      }
+    } catch (err) {
+      this.logger.error(`Wrap tx submit error: ${err instanceof Error ? err.message : String(err)}`);
+      throw new BadRequestException('wSOL 래핑 트랜잭션 제출에 실패했습니다.');
+    }
+
+    // wSOL 래핑이 온체인에 반영되었는지 확인
     try {
       const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
       const confirmed = await this.connection.confirmTransaction(
@@ -372,16 +413,16 @@ export class OrdersService {
         'confirmed',
       );
       if (!confirmed.value || confirmed.value.err) {
-        this.logger.warn(`Setup tx ${txSignature.slice(0, 12)}... not confirmed. err=${JSON.stringify(confirmed.value?.err)}`);
-        throw new BadRequestException('트랜잭션이 체인에 반영되지 않았습니다. 다시 시도해주세요.');
+        this.logger.warn(`Wrap tx ${txSignature.slice(0, 12)}... not confirmed. err=${JSON.stringify(confirmed.value?.err)}`);
+        throw new BadRequestException('wSOL 래핑이 체인에 반영되지 않았습니다. 다시 시도해주세요.');
       }
     } catch (err) {
       if (err instanceof BadRequestException) throw err;
-      this.logger.warn(`Setup tx ${txSignature.slice(0, 12)}... confirm timeout`);
-      throw new BadRequestException('트랜잭션 컨펌이 지연되었습니다. 다시 시도해주세요.');
+      this.logger.warn(`Wrap tx ${txSignature.slice(0, 12)}... confirm timeout`);
+      throw new BadRequestException('wSOL 래핑 컨펌이 지연되었습니다. 다시 시도해주세요.');
     }
 
-    this.logger.log(`Setup tx confirmed: ${txSignature.slice(0, 12)}...`);
+    this.logger.log(`Wrap tx confirmed: ${txSignature.slice(0, 12)}...`);
     return { txSignature };
   }
 
