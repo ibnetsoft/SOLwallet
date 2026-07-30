@@ -65,6 +65,6 @@ export const MANIFEST = {
     getOrders: '/orders',
     cancelOrder: '/orders',
   } as const,
-  /** 컴퓨트 유닛 가격 — "auto"는 자동 우선순위 */
-  computeUnitPrice: 'auto' as const,
+  /** 컴퓨트 유닛 가격 — 마이크로 lamport per CU. 무료 RPC 드롭 방지를 위해 명시적 priority fee */
+  computeUnitPrice: 500_000,
 } as const;

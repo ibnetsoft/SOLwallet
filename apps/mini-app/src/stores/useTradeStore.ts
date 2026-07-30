@@ -277,11 +277,15 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         console.log('[trade] step 3: SOL sell → fetching fresh wrapTx');
         try {
           const { wrapTx } = await ordersApi.getWrapTx(result.order.id as string);
-          console.log('[trade] step 3: got wrapTx, signing...');
-          const signedWrapTx = signTransaction(wrapTx, secretKey, 'legacy');
-          console.log('[trade] step 3: submitting wrapTx...');
-          await ordersApi.submitWrapTx(signedWrapTx);
-          console.log('[trade] step 3: wrapTx submitted + confirmed');
+          if (wrapTx) {
+            console.log('[trade] step 3: got wrapTx, signing...');
+            const signedWrapTx = signTransaction(wrapTx, secretKey, 'legacy');
+            console.log('[trade] step 3: submitting wrapTx...');
+            await ordersApi.submitWrapTx(signedWrapTx);
+            console.log('[trade] step 3: wrapTx submitted + confirmed');
+          } else {
+            console.log('[trade] step 3: wrapTx skipped — sufficient wSOL balance');
+          }
         } catch (wrapErr) {
           console.error('[trade] step 3 FAILED: wrapTx:', wrapErr);
           useWalletStore.getState().lockWallets();

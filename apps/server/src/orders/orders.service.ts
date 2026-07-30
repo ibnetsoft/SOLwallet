@@ -489,6 +489,15 @@ export class OrdersService {
       throw new BadRequestException('wSOL 토큰 계정이 없습니다. 다시 시도하면 자동 생성됩니다.');
     }
 
+    // 이미 충분한 wSOL 잔액이 있으면 추가 래핑 불필요
+    const ataInfo = await this.connection.getParsedAccountInfo(wsolAta);
+    const currentBalance = (ataInfo.value?.data as { parsed?: { info?: { tokenAmount?: { amount: string } } } })
+      ?.parsed?.info?.tokenAmount?.amount || '0';
+    if (BigInt(currentBalance) >= BigInt(wrapAmount)) {
+      this.logger.log(`[getWrapTx] SKIP — wSOL balance ${Number(currentBalance) / LAMPORTS_PER_SOL} already >= ${wrapAmount / LAMPORTS_PER_SOL}`);
+      return { wrapTx: '' };
+    }
+
     // Fresh blockhash로 wrap tx 생성
     const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
 
