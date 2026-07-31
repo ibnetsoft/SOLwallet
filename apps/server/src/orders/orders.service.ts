@@ -290,9 +290,9 @@ export class OrdersService {
               size: formattedSize,
               price: formattedPrice,
               side: dto.side,
-              // 시장가 = timeInForce + expirySlots (3슬롯 후 자동 만료 = IOC 효과)
+              // 시장가 = timeInForce + expirySlots (150슬롯 ≈ 60초 후 자동 만료)
               orderType: dto.orderType === 'market' ? 'timeInForce' : 'limit',
-              ...(dto.orderType === 'market' ? { expirySlots: 3 } : {}),
+              ...(dto.orderType === 'market' ? { expirySlots: 150 } : {}),
               clientOrderId,
             },
           ],
@@ -928,7 +928,7 @@ export class OrdersService {
             price: formattedPrice,
             side: order.side,
             orderType: order.order_type === 'market' ? 'timeInForce' : 'limit',
-            ...(order.order_type === 'market' ? { expirySlots: 3 } : {}),
+            ...(order.order_type === 'market' ? { expirySlots: 150 } : {}),
             clientOrderId,
           },
         ],
