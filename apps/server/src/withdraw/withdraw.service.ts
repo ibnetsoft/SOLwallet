@@ -100,9 +100,7 @@ export class WithdrawService {
       // 잔액 검증 실패해도 일단 시도 (서명 트랜잭션을 클라이언트가 만들었으므로)
     }
 
-    // 트랜잭션 RPC 전송
-    // skipPreflight: true — 클라이언트가 서명한 tx의 blockhash가 preflight
-    // simulation에서 만료 판정되는 것을 방지. 실제 네트워크 제출은 정상 처리됨.
+    // 트랜잭션 RPC 전송 + 컨펌 확인
     let txSignature = '';
     try {
       const rpcRes = await fetch(this.rpcUrl, {
@@ -114,27 +112,48 @@ export class WithdrawService {
           method: 'sendTransaction',
           params: [signedTx, {
             encoding: 'base64',
-            skipPreflight: true,
+            skipPreflight: false,
+            preflightCommitment: 'processed',
             maxRetries: 3,
-            preflightCommitment: 'confirmed',
           }],
         }),
       });
 
-      const rpcData = await rpcRes.json() as { result?: string; error?: { message?: string } };
+      const rpcData = await rpcRes.json() as { result?: string; error?: { message?: string; code?: number } };
       txSignature = rpcData.result || '';
 
       if (!txSignature) {
         throw new Error(rpcData.error?.message || 'RPC 전송 실패');
       }
+      this.logger.log(`Withdraw tx sent: ${txSignature.slice(0, 12)}... (${amount} ${isSol ? 'SOL' : 'token'})`);
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       this.logger.error(`Withdraw RPC error: ${errMsg}`);
-      // blockhash 만료 에러는 사용자에게 명확한 안내
       if (/blockhash|BlockhashNotFound/i.test(errMsg)) {
         throw new BadRequestException('트랜잭션이 만료되었습니다. 다시 시도해주세요.');
       }
       throw new BadRequestException('출금 트랜잭션 전송에 실패했습니다.');
+    }
+
+    // 컨펌 확인 — RPC accepted 후 실제 블록 포함 여부
+    try {
+      const { Connection } = await import('@solana/web3.js');
+      const conn = new Connection(this.rpcUrl, { confirmTransactionInitialTimeout: 30_000 });
+      const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
+      this.logger.log(`Withdraw waiting for confirm: ${txSignature.slice(0, 12)}...`);
+      const confirmed = await conn.confirmTransaction(
+        { signature: txSignature, blockhash, lastValidBlockHeight },
+        'confirmed',
+      );
+      if (!confirmed.value || confirmed.value.err) {
+        this.logger.error(`Withdraw NOT CONFIRMED — tx=${txSignature} err=${JSON.stringify(confirmed.value?.err)}`);
+        throw new BadRequestException('출금이 체인에 반영되지 않았습니다. 다시 시도해주세요.');
+      }
+      this.logger.log(`Withdraw CONFIRMED: ${txSignature.slice(0, 12)}...`);
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      this.logger.error(`Withdraw confirm timeout: ${txSignature} — ${err instanceof Error ? err.message : String(err)}`);
+      throw new BadRequestException('출금 컨펌이 지연되었습니다. 잠시 후 잔액을 확인해주세요.');
     }
 
     this.logger.log(`Withdraw successful: ${txSignature.slice(0, 12)}... (${amount} ${isSol ? 'SOL' : 'token'})`);

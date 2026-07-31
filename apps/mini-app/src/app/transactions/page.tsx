@@ -211,12 +211,24 @@ export default function TransactionsPage() {
                           })
                         : '-'}
                     </p>
+                    {o.txSignature && (
+                      <a
+                        href={`https://solscan.io/tx/${o.txSignature}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-[9px] text-gray-600 hover:text-primary-400 transition mt-0.5 block font-mono truncate max-w-[120px]"
+                        title={o.txSignature}
+                      >
+                        {o.txSignature.slice(0, 8)}...{o.txSignature.slice(-4)} ↗
+                      </a>
+                    )}
                   </div>
                 </div>
                 <div className="text-right">
                   <p className={`text-sm font-medium tabular-nums ${isPositive ? 'text-green-400' : ''}`}>
                     {isPositive ? '+' : '-'}
-                    {isDeposit || isWithdraw ? o.amount?.toFixed(4) : o.quantity?.toFixed(4)}
+                    {isDeposit || isWithdraw ? o.amount?.toFixed(5) : o.quantity?.toFixed(5)}
                   </p>
                   {(isBuy || isSell) && (
                     <p className="text-[10px] text-gray-500 tabular-nums mt-0.5">
