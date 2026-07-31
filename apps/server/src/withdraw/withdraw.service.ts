@@ -34,6 +34,8 @@ export class WithdrawService {
     },
   ): Promise<{ txSignature: string }> {
     const { walletId, toAddress, mint, amount, signedTx } = params;
+    this.logger.log(`[withdraw] START — user=${userId.slice(0,8)} amount=${amount} to=${toAddress.slice(0,8)}...`);
+
     // 지갑 소유권 검증
     const { data: wallet, error: walletErr } = await this.client
       .from('wallets')
@@ -125,12 +127,15 @@ export class WithdrawService {
       if (!txSignature) {
         throw new Error(rpcData.error?.message || 'RPC 전송 실패');
       }
-      this.logger.log(`Withdraw tx sent: ${txSignature.slice(0, 12)}... (${amount} ${isSol ? 'SOL' : 'token'})`);
+      this.logger.log(`[withdraw] tx sent: ${txSignature.slice(0, 12)}... amount=${amount}`);
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Withdraw RPC error: ${errMsg}`);
+      this.logger.error(`[withdraw] RPC error: ${errMsg} (amount=${amount}, balance check skipped)`);
       if (/blockhash|BlockhashNotFound/i.test(errMsg)) {
         throw new BadRequestException('트랜잭션이 만료되었습니다. 다시 시도해주세요.');
+      }
+      if (/insufficient funds|rent/i.test(errMsg)) {
+        throw new BadRequestException('잔액이 부족합니다. 출금 수수료를 위해 약간의 SOL을 남겨두세요.');
       }
       throw new BadRequestException('출금 트랜잭션 전송에 실패했습니다.');
     }
