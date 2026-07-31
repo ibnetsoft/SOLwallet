@@ -6,6 +6,7 @@ export interface CreateOrderParams {
   side: 'buy' | 'sell';
   price: number;
   quantity: number;
+  orderType?: 'limit' | 'market';
 }
 
 export interface CreateOrderResult {

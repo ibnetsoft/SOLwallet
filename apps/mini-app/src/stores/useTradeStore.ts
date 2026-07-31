@@ -250,6 +250,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         side,
         price: Number(price),
         quantity: Number(quantity),
+        orderType: get().orderType,
       });
 
       if (!result.unsignedTx) {

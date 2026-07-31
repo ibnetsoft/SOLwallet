@@ -52,19 +52,19 @@ export class OrderStatusService {
   }
 
   /**
-   * fillDiscriminant lazy 로드 — Manifest SDK에서 가져옴
+   * fillDiscriminant lazy 로드 — Manifest SDK fillFeed 서브모듈에서 가져옴
    */
   private async getFillDiscriminant(): Promise<Buffer> {
     if (this.fillDiscriminant) return this.fillDiscriminant;
     try {
-      // fillDiscriminant는 타입 정의에 없지만 런타임에 존재
-      const sdk = await import('@cks-systems/manifest-sdk') as unknown as { fillDiscriminant?: Buffer };
-      if (sdk.fillDiscriminant) {
-        this.fillDiscriminant = sdk.fillDiscriminant;
+      // fillDiscriminant는 최상위 export에 없고 fillFeed 서브모듈에 있음
+      const fillFeed = await import('@cks-systems/manifest-sdk/dist/cjs/fillFeed') as { fillDiscriminant?: Buffer };
+      if (fillFeed.fillDiscriminant) {
+        this.fillDiscriminant = fillFeed.fillDiscriminant;
         this.logger.log(`[fillCheck] fillDiscriminant loaded: ${this.fillDiscriminant.toString('hex')}`);
         return this.fillDiscriminant;
       }
-      throw new Error('fillDiscriminant not found in SDK exports');
+      throw new Error('fillDiscriminant not found in fillFeed exports');
     } catch (err) {
       this.logger.error(`[fillCheck] Failed to load fillDiscriminant: ${err instanceof Error ? err.message : String(err)}`);
       this.fillDiscriminant = Buffer.alloc(0);
@@ -227,7 +227,7 @@ export class OrderStatusService {
           if (!buffer.subarray(0, 8).equals(discriminant)) continue;
 
           // fill 이벤트 발견 — FillLog 역직렬화
-          const { FillLog } = await import('@cks-systems/manifest-sdk');
+          const { FillLog } = await import('@cks-systems/manifest-sdk/dist/cjs/manifest/accounts/FillLog');
           const fillLog = FillLog.deserialize(buffer.subarray(8))[0];
 
           // baseAtoms / quoteAtoms를 토큰 단위로 변환

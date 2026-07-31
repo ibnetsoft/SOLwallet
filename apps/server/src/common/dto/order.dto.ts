@@ -17,6 +17,9 @@ export class CreateOrderDto {
   @IsNumber()
   @Min(0.000001, { message: '수량은 0보다 커야 합니다.' })
   quantity!: number;
+
+  @IsEnum(['limit', 'market'])
+  orderType?: 'limit' | 'market';
 }
 
 export class SubmitOrderDto {
