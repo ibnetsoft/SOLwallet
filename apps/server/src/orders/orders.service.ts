@@ -275,8 +275,40 @@ export class OrdersService {
       // Manifest API requires valid tick size and step size. 
       // Ensure we don't pass excessive decimals that cause errors.
       const formattedSize = Number(dto.quantity).toFixed(token.decimals);
-      // For price, quote token decimals (USDC/USDT is 6)
-      const formattedPrice = Number(dto.price).toFixed(6);
+
+      // 시장가일 때: orderbook 최상위 호가로 가격 설정하여 즉시 매칭 유도
+      // 매도면 최상위 매수 호가(bid), 매수면 최상위 매도 호가(ask)
+      let orderPrice = dto.price;
+      if (dto.orderType === 'market') {
+        try {
+          const { Market } = await import('@cks-systems/manifest-sdk');
+          const baseMintKey = new PublicKey(token.mint_address);
+          const quoteMintKey = new PublicKey(quoteMint);
+          const markets = await Market.findByMints(this.connection, baseMintKey, quoteMintKey);
+          if (markets && markets.length > 0) {
+            const market = markets[0];
+            if (dto.side === 'sell') {
+              // 매도: 최상위 매수 호가로 체결
+              const bestBid = market.bestBidPrice() ?? 0;
+              if (bestBid > 0) {
+                orderPrice = bestBid;
+                this.logger.log(`[createOrder] market sell — using best bid: ${orderPrice}`);
+              }
+            } else {
+              // 매수: 최상위 매도 호가로 체결
+              const bestAsk = market.bestAskPrice() ?? 0;
+              if (bestAsk > 0) {
+                orderPrice = bestAsk;
+                this.logger.log(`[createOrder] market buy — using best ask: ${orderPrice}`);
+              }
+            }
+          }
+        } catch (err) {
+          this.logger.warn(`[createOrder] failed to get market price for market order: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+
+      const formattedPrice = Number(orderPrice).toFixed(6);
 
       const manifestRes = await fetch(`${this.manifestBaseUrl}/orders`, {
         method: 'POST',
@@ -912,7 +944,33 @@ export class OrdersService {
     const clientOrderId = order.manifest_client_order_id as number;
     const quoteMint = token.symbol === 'SOL' ? USDC_MINT : USDT_MINT;
     const formattedSize = Number(order.quantity).toFixed(token.decimals);
-    const formattedPrice = Number(order.price).toFixed(6);
+
+    // 시장가일 때: orderbook 최상위 호가로 가격 재설정
+    let orderPrice = Number(order.price);
+    if (order.order_type === 'market') {
+      try {
+        const { Market } = await import('@cks-systems/manifest-sdk');
+        const markets = await Market.findByMints(
+          this.connection,
+          new PublicKey(token.mint_address),
+          new PublicKey(quoteMint),
+        );
+        if (markets && markets.length > 0) {
+          const market = markets[0];
+          if (order.side === 'sell') {
+            const bestBid = market.bestBidPrice() ?? 0;
+            if (bestBid > 0) orderPrice = bestBid;
+          } else {
+            const bestAsk = market.bestAskPrice() ?? 0;
+            if (bestAsk > 0) orderPrice = bestAsk;
+          }
+          this.logger.log(`[getFreshOrderTx] market ${order.side} — using best price: ${orderPrice}`);
+        }
+      } catch (err) {
+        this.logger.warn(`[getFreshOrderTx] failed to get market price: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    const formattedPrice = orderPrice.toFixed(6);
 
     // Manifest POST 재호출 — 동일 clientOrderId 사용
     const manifestRes = await fetch(`${this.manifestBaseUrl}/orders`, {
