@@ -50,38 +50,6 @@ export class WithdrawService {
 
     // 잔액 확인 (간이 검증 — 실제 잔액 체크는 온체인에서)
     const isSol = mint === this.solMint;
-
-    // SOL 출금 시 수신 주소 존재 여부 확인
-    // 새 계정(0 lamports)은 rent 예치금(890880 lamports ≈ 0.00089 SOL) 필요
-    if (isSol) {
-      try {
-        const acctRes = await fetch(this.rpcUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            jsonrpc: '2.0', id: 1,
-            method: 'getBalance',
-            params: [toAddress],
-          }),
-        });
-        const acctData = await acctRes.json() as { result?: { value?: number } };
-        const recipientBalance = acctData.result?.value || 0;
-        if (recipientBalance === 0) {
-          // 수신 주소가 새 계정 — rent 예치금 이상 필요
-          const RENT_EXEMPT = 890880; // lamports
-          const amountLamports = Math.floor(amount * 1e9);
-          if (amountLamports < RENT_EXEMPT) {
-            throw new BadRequestException(
-              `새 주소로는 최소 0.00089 SOL 이상 출금해야 합니다 (계정 생성 비용).`,
-            );
-          }
-        }
-      } catch (err) {
-        if (err instanceof BadRequestException) throw err;
-        // RPC 확인 실패 시 무시하고 진행
-      }
-    }
-
     try {
       if (isSol) {
         // SOL 잔액
