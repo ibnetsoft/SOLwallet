@@ -50,32 +50,6 @@ export class WithdrawService {
 
     // 잔액 확인 (간이 검증 — 실제 잔액 체크는 온체인에서)
     const isSol = mint === this.solMint;
-
-    // SOL 출금 시 수신 주소 검증
-    if (isSol) {
-      try {
-        const acctRes = await fetch(this.rpcUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            jsonrpc: '2.0', id: 1,
-            method: 'getBalance',
-            params: [toAddress],
-          }),
-        });
-        const acctData = await acctRes.json() as { result?: { value?: number } };
-        const recipientBalance = acctData.result?.value || 0;
-        if (recipientBalance === 0 && amount < 0.001) {
-          // 새 계정 — rent 예치금(0.00089 SOL) 이상 필요
-          throw new BadRequestException(
-            '새 주소로는 최소 0.001 SOL 이상 출금해야 합니다 (계정 생성 비용).',
-          );
-        }
-      } catch (err) {
-        if (err instanceof BadRequestException) throw err;
-      }
-    }
-
     try {
       if (isSol) {
         // SOL 잔액
@@ -140,8 +114,7 @@ export class WithdrawService {
           method: 'sendTransaction',
           params: [signedTx, {
             encoding: 'base64',
-            skipPreflight: false,
-            preflightCommitment: 'processed',
+            skipPreflight: true,
             maxRetries: 3,
           }],
         }),
