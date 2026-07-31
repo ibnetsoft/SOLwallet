@@ -26,6 +26,21 @@ interface UnifiedTx {
   amount?: number;
 }
 
+interface UnifiedTx {
+  id: string;
+  type: TransactionType;
+  status: string;
+  createdAt: string;
+  tokenSymbol: string;
+  // Order specific
+  price?: number;
+  quantity?: number;
+  // Transfer specific
+  amount?: number;
+  // Tx signature for Solscan link
+  txSignature?: string;
+}
+
 export default function TransactionsPage() {
   const { t, locale } = useT();
   const router = useRouter();
@@ -61,6 +76,7 @@ export default function TransactionsPage() {
           status: String(r.status ?? 'unknown'),
           createdAt: r.created_at ? String(r.created_at) : r.createdAt ? String(r.createdAt) : new Date().toISOString(),
           tokenSymbol: r.token_symbol ? String(r.token_symbol) : r.symbol ? String(r.symbol) : 'TOKEN',
+          txSignature: r.tx_signature ? String(r.tx_signature) : undefined,
         }));
         allTx.push(...normalizedOrders);
       } catch (err) {
@@ -78,6 +94,7 @@ export default function TransactionsPage() {
             status: tr.status,
             createdAt: tr.createdAt,
             tokenSymbol: tr.tokenSymbol,
+            txSignature: tr.id, // transfer의 id는 tx_signature
           }));
           allTx.push(...normalizedTransfers);
         } catch (err) {
@@ -160,11 +177,13 @@ export default function TransactionsPage() {
             const isPositive = isBuy || isDeposit;
             
             const total = (o.price || 0) * (o.quantity || 0);
+            const solscanUrl = o.txSignature ? `https://solscan.io/tx/${o.txSignature}` : null;
 
             return (
               <div
                 key={o.id}
-                className="bg-gray-800/50 rounded-xl p-3.5 flex items-center justify-between"
+                className={`bg-gray-800/50 rounded-xl p-3.5 flex items-center justify-between ${solscanUrl ? 'cursor-pointer hover:bg-gray-800 transition' : ''}`}
+                onClick={() => solscanUrl && window.open(solscanUrl, '_blank')}
               >
                 <div className="flex items-center gap-3">
                   <div

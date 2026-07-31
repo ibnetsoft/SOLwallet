@@ -139,6 +139,30 @@ export class WithdrawService {
 
     this.logger.log(`Withdraw successful: ${txSignature.slice(0, 12)}... (${amount} ${isSol ? 'SOL' : 'token'})`);
 
+    // DB에 출금 내역 저장 — 히스토리에서 안정적으로 표시
+    try {
+      const { data: token } = await this.client
+        .from('tokens')
+        .select('symbol')
+        .eq('mint_address', mint)
+        .single();
+
+      await this.client.from('transfers').insert({
+        user_id: userId,
+        wallet_id: walletId,
+        type: 'withdraw',
+        amount,
+        token_symbol: token?.symbol || (isSol ? 'SOL' : 'TOKEN'),
+        token_mint: mint,
+        to_address: toAddress,
+        tx_signature: txSignature,
+        status: 'completed',
+      });
+      this.logger.log(`Withdraw recorded in DB: ${txSignature.slice(0, 12)}...`);
+    } catch (dbErr) {
+      this.logger.error(`Failed to record withdraw in DB: ${dbErr instanceof Error ? dbErr.message : String(dbErr)}`);
+    }
+
     return { txSignature };
   }
 }

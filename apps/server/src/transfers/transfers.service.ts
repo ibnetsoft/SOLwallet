@@ -63,42 +63,107 @@ export class TransfersService {
   }
 
   /**
-   * 지갑 주소의 on-chain 입출금 내역 조회
-   * SOL + SPL 토큰 변동을 모두 감지
+   * 지갑 주소의 입출금 내역 조회
+   * 1. DB에 기록된 출금 내역 (안정적)
+   * 2. 온체인 입금 내역 (RPC에서 읽음)
    */
   async getTransferHistory(walletAddress: string, limit = 20): Promise<TransferItem[]> {
+    // 1. DB에서 출금 내역 조회 (walletAddress로 wallet_id 찾기)
+    const dbTransfers: TransferItem[] = [];
     try {
-      const pubkey = new PublicKey(walletAddress);
+      const { data: wallet } = await this.client
+        .from('wallets')
+        .select('id, user_id')
+        .eq('public_key', walletAddress)
+        .single();
 
-      // 1. 서명 목록 조회
-      const signatures = await this.connection.getSignaturesForAddress(pubkey, { limit });
-      if (signatures.length === 0) return [];
+      if (wallet) {
+        const { data: transfers } = await this.client
+          .from('transfers')
+          .select('*')
+          .eq('wallet_id', wallet.id)
+          .order('created_at', { ascending: false })
+          .limit(limit);
 
-      const sigs = signatures.map((s) => s.signature);
+        if (transfers && transfers.length > 0) {
+          for (const t of transfers) {
+            dbTransfers.push({
+              id: t.tx_signature || t.id,
+              type: t.type,
+              amount: Number(t.amount),
+              tokenSymbol: t.token_symbol,
+              status: t.status,
+              createdAt: t.created_at,
+              sender: walletAddress,
+              receiver: t.to_address,
+              preBalance: 0,
+              postBalance: 0,
+            });
+          }
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`DB transfer history query failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
 
-      // 2. 파싱된 트랜잭션 상세 조회
-      const txs = await this.connection.getParsedTransactions(sigs, { maxSupportedTransactionVersion: 0 });
+    // 2. 온체인에서 입금 내역 조회 (RPC) — 실패해도 DB 내역은 반환
+    let onchainTransfers: TransferItem[] = [];
+    try {
+      onchainTransfers = await this.getOnchainTransfers(walletAddress, limit);
+    } catch (err) {
+      this.logger.warn(`On-chain transfer history failed (returning DB-only): ${err instanceof Error ? err.message : String(err)}`);
+    }
 
-      const transfers: TransferItem[] = [];
+    // 3. 병합 + 중복 제거 (tx_signature 기준) + 최신순 정렬
+    const allTransfers = [...dbTransfers, ...onchainTransfers];
+    const seen = new Set<string>();
+    const unique = allTransfers.filter((t) => {
+      const key = t.id || '';
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 
-      for (let i = 0; i < txs.length; i++) {
-        const tx = txs[i];
-        const sigInfo = signatures[i];
-        if (!tx || !tx.meta) continue;
+    return unique
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, limit);
+  }
 
-        const accountIndex = tx.transaction.message.accountKeys.findIndex(
-          (k) => k.pubkey.toBase58() === walletAddress,
-        );
-        if (accountIndex === -1) continue;
+  /**
+   * 온체인 입출금 내역 조회 (RPC)
+   */
+  private async getOnchainTransfers(walletAddress: string, limit: number): Promise<TransferItem[]> {
+    const pubkey = new PublicKey(walletAddress);
 
-        // ── SOL 잔액 변동 체크 (항상 수행) ──
-        const preBal = tx.meta.preBalances[accountIndex] || 0;
-        const postBal = tx.meta.postBalances[accountIndex] || 0;
-        const solDiff = postBal - preBal;
+    // 1. 서명 목록 조회
+    const signatures = await this.connection.getSignaturesForAddress(pubkey, { limit });
+    if (signatures.length === 0) return [];
 
-        // SOL 입출금 시 sender/receiver 추출
-        const solSender = walletAddress;
-        const solReceiver = walletAddress;
+    const sigs = signatures.map((s) => s.signature);
+
+    // 2. 파싱된 트랜잭션 상세 조회
+    const txs = await this.connection.getParsedTransactions(sigs, { maxSupportedTransactionVersion: 0 });
+
+    const transfers: TransferItem[] = [];
+
+    for (let i = 0; i < txs.length; i++) {
+      const tx = txs[i];
+      const sigInfo = signatures[i];
+      if (!tx || !tx.meta) continue;
+
+      const accountIndex = tx.transaction.message.accountKeys.findIndex(
+        (k) => k.pubkey.toBase58() === walletAddress,
+      );
+      if (accountIndex === -1) continue;
+
+      // ── SOL 잔액 변동 체크 (항상 수행) ──
+      const preBal = tx.meta.preBalances[accountIndex] || 0;
+      const postBal = tx.meta.postBalances[accountIndex] || 0;
+      const solDiff = postBal - preBal;
+
+      // SOL 입출금 시 sender/receiver 추출
+      const solSender = walletAddress;
+      const solReceiver = walletAddress;
 
         // SOL 변동이 입/출금에 해당하면 기록
         if (solDiff > 0) {
@@ -192,10 +257,6 @@ export class TransfersService {
       transfers.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
       return transfers;
-    } catch (error) {
-      this.logger.error(`Failed to fetch transfer history: ${error instanceof Error ? error.message : String(error)}`);
-      return [];
-    }
   }
 
   /**
