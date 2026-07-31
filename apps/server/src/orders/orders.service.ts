@@ -276,36 +276,13 @@ export class OrdersService {
       // Ensure we don't pass excessive decimals that cause errors.
       const formattedSize = Number(dto.quantity).toFixed(token.decimals);
 
-      // 시장가일 때: orderbook 최상위 호가로 가격 설정하여 즉시 매칭 유도
-      // 매도면 최상위 매수 호가(bid), 매수면 최상위 매도 호가(ask)
+      // 시장가일 때: 매도는 매우 낮은 가격(0.01)으로 모든 매수 호가 매칭,
+      // 매수는 매우 높은 가격(999999)으로 모든 매도 호가 매칭
+      // Manifest는 가격 기반 매칭 — 극단 가격으로 전체 호가 스캔
       let orderPrice = dto.price;
       if (dto.orderType === 'market') {
-        try {
-          const { Market } = await import('@cks-systems/manifest-sdk');
-          const baseMintKey = new PublicKey(token.mint_address);
-          const quoteMintKey = new PublicKey(quoteMint);
-          const markets = await Market.findByMints(this.connection, baseMintKey, quoteMintKey);
-          if (markets && markets.length > 0) {
-            const market = markets[0];
-            if (dto.side === 'sell') {
-              // 매도: 최상위 매수 호가로 체결
-              const bestBid = market.bestBidPrice() ?? 0;
-              if (bestBid > 0) {
-                orderPrice = bestBid;
-                this.logger.log(`[createOrder] market sell — using best bid: ${orderPrice}`);
-              }
-            } else {
-              // 매수: 최상위 매도 호가로 체결
-              const bestAsk = market.bestAskPrice() ?? 0;
-              if (bestAsk > 0) {
-                orderPrice = bestAsk;
-                this.logger.log(`[createOrder] market buy — using best ask: ${orderPrice}`);
-              }
-            }
-          }
-        } catch (err) {
-          this.logger.warn(`[createOrder] failed to get market price for market order: ${err instanceof Error ? err.message : String(err)}`);
-        }
+        orderPrice = dto.side === 'sell' ? 0.01 : 999999;
+        this.logger.log(`[createOrder] market ${dto.side} — using extreme price: ${orderPrice}`);
       }
 
       const formattedPrice = Number(orderPrice).toFixed(6);
@@ -945,30 +922,11 @@ export class OrdersService {
     const quoteMint = token.symbol === 'SOL' ? USDC_MINT : USDT_MINT;
     const formattedSize = Number(order.quantity).toFixed(token.decimals);
 
-    // 시장가일 때: orderbook 최상위 호가로 가격 재설정
+    // 시장가일 때: 극단 가격으로 전체 호가 매칭 (매도=0.01, 매수=999999)
     let orderPrice = Number(order.price);
     if (order.order_type === 'market') {
-      try {
-        const { Market } = await import('@cks-systems/manifest-sdk');
-        const markets = await Market.findByMints(
-          this.connection,
-          new PublicKey(token.mint_address),
-          new PublicKey(quoteMint),
-        );
-        if (markets && markets.length > 0) {
-          const market = markets[0];
-          if (order.side === 'sell') {
-            const bestBid = market.bestBidPrice() ?? 0;
-            if (bestBid > 0) orderPrice = bestBid;
-          } else {
-            const bestAsk = market.bestAskPrice() ?? 0;
-            if (bestAsk > 0) orderPrice = bestAsk;
-          }
-          this.logger.log(`[getFreshOrderTx] market ${order.side} — using best price: ${orderPrice}`);
-        }
-      } catch (err) {
-        this.logger.warn(`[getFreshOrderTx] failed to get market price: ${err instanceof Error ? err.message : String(err)}`);
-      }
+      orderPrice = order.side === 'sell' ? 0.01 : 999999;
+      this.logger.log(`[getFreshOrderTx] market ${order.side} — using extreme price: ${orderPrice}`);
     }
     const formattedPrice = orderPrice.toFixed(6);
 
