@@ -218,6 +218,9 @@ const zh: Record<string, string> = {
   'withdraw.failed': '提现失败',
   'withdraw.pinTitle': '🔒 提现签名',
   'withdraw.pinSubtitle': '为提现交易签名',
+  'withdraw.invalidAddress': '无效的 Solana 地址格式。',
+  'withdraw.newAddressWarning': '这是新地址。最低提现 0.001 SOL。',
+  'withdraw.minWithdraw': '请输入至少 0.001 SOL。',
 
   // ─── Pin Modal ───
   'pin.minDigits': 'PIN 至少需要 {min} 位数字。',

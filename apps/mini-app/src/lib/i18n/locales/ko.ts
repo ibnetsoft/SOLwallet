@@ -220,6 +220,9 @@ const ko: Record<string, string> = {
   'withdraw.failed': '출금 실패',
   'withdraw.pinTitle': '🔒 출금 서명',
   'withdraw.pinSubtitle': '출금 트랜잭션에 서명합니다',
+  'withdraw.invalidAddress': '올바른 Solana 주소 형식이 아닙니다.',
+  'withdraw.newAddressWarning': '새 주소입니다. 최소 0.001 SOL 이상 출금해야 합니다.',
+  'withdraw.minWithdraw': '최소 0.001 SOL 이상 입력해 주세요.',
 
   // ─── Pin Modal ───
   'pin.minDigits': 'PIN은 최소 {min}자리입니다.',

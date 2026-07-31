@@ -220,6 +220,9 @@ const en: Record<TranslationKey, string> = {
   'withdraw.failed': 'Withdrawal failed',
   'withdraw.pinTitle': '🔒 Withdrawal Signing',
   'withdraw.pinSubtitle': 'Sign the withdrawal transaction',
+  'withdraw.invalidAddress': 'Invalid Solana address format.',
+  'withdraw.newAddressWarning': 'This is a new address. Minimum withdrawal is 0.001 SOL.',
+  'withdraw.minWithdraw': 'Please enter at least 0.001 SOL.',
 
   // ─── Pin Modal ───
   'pin.minDigits': 'PIN must be at least {min} digits.',

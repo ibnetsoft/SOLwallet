@@ -218,6 +218,9 @@ const ja: Record<string, string> = {
   'withdraw.failed': '出金失敗',
   'withdraw.pinTitle': '🔒 出金署名',
   'withdraw.pinSubtitle': '出金トランザクションに署名',
+  'withdraw.invalidAddress': '正しいSolanaアドレス形式ではありません。',
+  'withdraw.newAddressWarning': '新しいアドレスです。最低0.001 SOL以上の出金が必要です。',
+  'withdraw.minWithdraw': '0.001 SOL以上を入力してください。',
 
   // ─── Pin Modal ───
   'pin.minDigits': 'PINは{min}桁以上必要です。',

@@ -19,6 +19,39 @@ export class WithdrawService {
     return this.supabaseService.getClient();
   }
 
+  /** 새 계정 rent exemption 기준 (안전 마진 포함) */
+  private readonly NEW_ACCOUNT_MIN_WITHDRAW = 0.001; // SOL
+
+  /**
+   * 수신 주소가 새 계정(0 lamports)인지 확인
+   * 새 계정이면 rent exemption 때문에 최소 출금액이 필요함
+   */
+  async checkAddress(address: string): Promise<{ isNewAccount: boolean; minWithdraw: number }> {
+    try {
+      const res = await fetch(this.rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'getBalance',
+          params: [address],
+        }),
+      });
+      const data = await res.json() as { result?: { value?: number } };
+      const lamports = data.result?.value || 0;
+      const isNewAccount = lamports === 0;
+
+      return {
+        isNewAccount,
+        minWithdraw: isNewAccount ? this.NEW_ACCOUNT_MIN_WITHDRAW : 0,
+      };
+    } catch {
+      // RPC 실패 시 안전하게 기존 계정으로 간주 (출금은 항상 가능하게)
+      return { isNewAccount: false, minWithdraw: 0 };
+    }
+  }
+
   /**
    * 출금 — 클라이언트가 서명한 트랜잭션을 RPC로 전송
    * 클라이언트: 지갑 잠금 해제 → transfer 트랜잭션 빌드 → 서명 → 서버에 전송
