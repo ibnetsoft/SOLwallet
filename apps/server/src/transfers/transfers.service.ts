@@ -17,7 +17,6 @@ export interface TransferItem {
 }
 
 const USDT_MINT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
-const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
 @Injectable()
 export class TransfersService {
@@ -231,7 +230,7 @@ export class TransfersService {
 
           let symbol = 'Token';
           if (entry.mint === USDT_MINT) symbol = 'USDT';
-          else if (entry.mint === USDC_MINT) symbol = 'USDC';
+          else if (entry.mint === 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v') symbol = 'USDC';
 
           // SPL 토큰의 sender/receiver — pre/post token balances에서 owner가 다른 쪽을 찾기
           const { sender, receiver } = this.findSplCounterparties(

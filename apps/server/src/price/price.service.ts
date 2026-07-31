@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OrdersService } from '../orders/orders.service';
-import { WSOL_MINT, USDC_MINT } from '@solwallet/config';
+import { WSOL_MINT, USDT_MINT } from '@solwallet/config';
 
 const SOL_MINT = WSOL_MINT;
 const JUPITER_PRICE_URL = 'https://lite-api.jup.ag/price/v3';
@@ -42,9 +42,9 @@ export class PriceService {
    * SOL 시세 조회 — Manifest SOL/USDC 오더북 중간가 (Jupiter 폴백)
    */
   async getSolPrice(): Promise<SolPriceResult> {
-    // 1. Manifest SOL/USDC 오더북 시도
+    // 1. Manifest SOL/USDT 오더북 시도
     try {
-      const orderbook = await this.ordersService.getOrderbook(SOL_MINT, USDC_MINT);
+      const orderbook = await this.ordersService.getOrderbook(SOL_MINT, USDT_MINT);
 
       if (orderbook.bids.length > 0 && orderbook.asks.length > 0) {
         const bestBid = Math.max(...orderbook.bids.map((b) => b.price));

@@ -139,7 +139,7 @@ export class OrdersService {
     // 매도: base 토큰(예: SOL→wSOL) ATA 필요
     // 매수: quote 토큰(USDT/USDC) ATA 필요 (SOL 매수 시엔 USDT/USDC ATA)
     // SOL의 경우 Manifest는 wSOL(NATIVE_MINT) ATA를 사용
-    const quoteMintAddress = token.symbol === 'SOL' ? USDC_MINT : USDT_MINT;
+    const quoteMintAddress = USDT_MINT;
     const baseMintAddress = token.mint_address;
     const traderPubkey = new PublicKey(walletPublicKey);
 
@@ -270,7 +270,7 @@ export class OrdersService {
     let unsignedTx = '';
     let requestId = '';
     try {
-      const quoteMint = token.symbol === 'SOL' ? USDC_MINT : USDT_MINT;
+      const quoteMint = USDT_MINT;
       this.logger.log(`[createOrder] calling Manifest POST /orders — baseMint=${token.mint_address.slice(0, 8)} quoteMint=${quoteMint.slice(0, 8)}`);
       // Manifest API requires valid tick size and step size. 
       // Ensure we don't pass excessive decimals that cause errors.
@@ -557,9 +557,9 @@ export class OrdersService {
       // Manifest SDK 동적 로드
       const { Market, ManifestClient } = await import('@cks-systems/manifest-sdk');
 
-      // SOL/USDC 마켓 조회
+      // SOL/USDT 마켓 조회
       const baseMint = new PublicKey(NATIVE_MINT.toBase58());
-      const quoteMint = new PublicKey(USDC_MINT);
+      const quoteMint = new PublicKey(USDT_MINT);
       const markets = await Market.findByMints(this.connection, baseMint, quoteMint);
 
       if (!markets || markets.length === 0) {
@@ -919,7 +919,7 @@ export class OrdersService {
     }
 
     const clientOrderId = order.manifest_client_order_id as number;
-    const quoteMint = token.symbol === 'SOL' ? USDC_MINT : USDT_MINT;
+    const quoteMint = USDT_MINT;
     const formattedSize = Number(order.quantity).toFixed(token.decimals);
 
     // 시장가일 때: 극단 가격으로 전체 호가 매칭 (매도=0.01, 매수=999999)
@@ -1022,7 +1022,7 @@ export class OrdersService {
 
     const clientOrderId = order.manifest_client_order_id as number | null;
     const sequenceNumber = order.manifest_sequence_number as number | null;
-    const quoteMint = token.symbol === 'SOL' ? USDC_MINT : USDT_MINT;
+    const quoteMint = USDT_MINT;
 
     // Manifest DELETE 재호출 — 동일 파라미터로 fresh cancel tx 획득
     // setupIxs: true — wrapper setup ix를 cancel tx에 포함 (미체결 주문 취소 시 필수)

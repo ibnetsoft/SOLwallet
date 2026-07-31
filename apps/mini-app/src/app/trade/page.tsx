@@ -10,7 +10,7 @@ import { useToast } from '@/components/Toast';
 import PinModal from '@/components/PinModal';
 import { BottomNav } from '@/components/BottomNav';
 import { SkeletonCard } from '@/components/Skeleton';
-import { QUICK_AMOUNT_RATIOS, USDT_MINT, USDC_MINT } from '@solwallet/config';
+import { QUICK_AMOUNT_RATIOS, USDT_MINT } from '@solwallet/config';
 import { getWalletBalance, type WalletBalance } from '@/lib/api/balance';
 import { isLoggedIn } from '@/lib/api/auth';
 import { getTokenLogoUrl } from '@/lib/tokenLogo';
@@ -186,10 +186,9 @@ function TradeContent() {
   // 활성 지갑 잔액 조회 (최대 수량 계산용)
   const activeWallet = wallets.find((w) => w.isActive) || wallets[0];
 
-  // 현재 선택된 토큰의 Quote 통화 결정 (SOL은 USDC, 나머지는 USDT로 임시 매핑. 추후 토큰 속성에 따라 변경 가능)
-  const isUsdcQuote = selectedToken?.symbol === 'SOL';
-  const quoteMint = isUsdcQuote ? USDC_MINT : USDT_MINT;
-  const quoteSymbol = isUsdcQuote ? 'USDC' : 'USDT';
+  // Quote 통화 — 모든 거래 쌍 USDT 고정
+  const quoteMint = USDT_MINT;
+  const quoteSymbol = 'USDT';
 
   const [walletData, setWalletData] = useState<WalletBalance | null>(null);
 
