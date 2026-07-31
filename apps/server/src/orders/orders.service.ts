@@ -290,8 +290,9 @@ export class OrdersService {
               size: formattedSize,
               price: formattedPrice,
               side: dto.side,
-              // 시장가 = ImmediateOrCancel (현재 가격으로 즉시 체결, 미체결분 취소)
-              orderType: dto.orderType === 'market' ? 'immediateOrCancel' : 'limit',
+              // 시장가 = timeInForce + expirySlots (3슬롯 후 자동 만료 = IOC 효과)
+              orderType: dto.orderType === 'market' ? 'timeInForce' : 'limit',
+              ...(dto.orderType === 'market' ? { expirySlots: 3 } : {}),
               clientOrderId,
             },
           ],
@@ -926,7 +927,8 @@ export class OrdersService {
             size: formattedSize,
             price: formattedPrice,
             side: order.side,
-            orderType: order.order_type === 'market' ? 'immediateOrCancel' : 'limit',
+            orderType: order.order_type === 'market' ? 'timeInForce' : 'limit',
+            ...(order.order_type === 'market' ? { expirySlots: 3 } : {}),
             clientOrderId,
           },
         ],
