@@ -221,6 +221,10 @@ const zh: Record<string, string> = {
   'withdraw.invalidAddress': '无效的 Solana 地址格式。',
   'withdraw.newAddressWarning': '这是新地址。最低提现 0.001 SOL。',
   'withdraw.minWithdraw': '请输入至少 0.001 SOL。',
+  'withdraw.selectToken': '选择要提现的代币',
+  'withdraw.noBalance': '没有可提现的余额',
+  'withdraw.noSolForFee': 'SOL 余额不足，无法转出代币（需要网络手续费）',
+  'withdraw.splBalance': '余额: {balance} {symbol}',
 
   // ─── Pin Modal ───
   'pin.minDigits': 'PIN 至少需要 {min} 位数字。',

@@ -400,8 +400,6 @@ function HomePage() {
             onClick={() => {
               if (!activeWallet) {
                 showToast(t('home.createWalletFirst'));
-              } else if (solBalance <= 0) {
-                showToast(t('home.noSolToWithdraw'));
               } else {
                 setShowWithdraw(true);
               }
@@ -511,6 +509,7 @@ function HomePage() {
           isOpen={showWithdraw}
           walletId={activeWallet.id}
           walletAddress={activeWallet.publicKey}
+          tokens={displayTokens}
           solBalance={solBalance}
           onClose={() => setShowWithdraw(false)}
         />

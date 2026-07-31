@@ -221,6 +221,10 @@ const ja: Record<string, string> = {
   'withdraw.invalidAddress': '正しいSolanaアドレス形式ではありません。',
   'withdraw.newAddressWarning': '新しいアドレスです。最低0.001 SOL以上の出金が必要です。',
   'withdraw.minWithdraw': '0.001 SOL以上を入力してください。',
+  'withdraw.selectToken': '出金するトークンを選択してください',
+  'withdraw.noBalance': '出金可能な残高がありません',
+  'withdraw.noSolForFee': 'SOL残高が不足しています（ネットワーク手数料が必要です）',
+  'withdraw.splBalance': '残高: {balance} {symbol}',
 
   // ─── Pin Modal ───
   'pin.minDigits': 'PINは{min}桁以上必要です。',

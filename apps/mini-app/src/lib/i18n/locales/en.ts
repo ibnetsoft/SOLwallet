@@ -223,6 +223,10 @@ const en: Record<TranslationKey, string> = {
   'withdraw.invalidAddress': 'Invalid Solana address format.',
   'withdraw.newAddressWarning': 'This is a new address. Minimum withdrawal is 0.001 SOL.',
   'withdraw.minWithdraw': 'Please enter at least 0.001 SOL.',
+  'withdraw.selectToken': 'Select a token to withdraw',
+  'withdraw.noBalance': 'No withdrawable balance',
+  'withdraw.noSolForFee': 'Insufficient SOL for network fee. Token transfer requires a small SOL balance.',
+  'withdraw.splBalance': 'Balance: {balance} {symbol}',
 
   // ─── Pin Modal ───
   'pin.minDigits': 'PIN must be at least {min} digits.',

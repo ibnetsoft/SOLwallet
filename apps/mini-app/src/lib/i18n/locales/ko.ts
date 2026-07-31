@@ -223,6 +223,10 @@ const ko: Record<string, string> = {
   'withdraw.invalidAddress': '올바른 Solana 주소 형식이 아닙니다.',
   'withdraw.newAddressWarning': '새 주소입니다. 최소 0.001 SOL 이상 출금해야 합니다.',
   'withdraw.minWithdraw': '최소 0.001 SOL 이상 입력해 주세요.',
+  'withdraw.selectToken': '출금할 토큰을 선택하세요',
+  'withdraw.noBalance': '출금 가능한 잔액이 없습니다',
+  'withdraw.noSolForFee': 'SOL 잔액이 부족하여 토큰을 전송할 수 없습니다 (네트워크 수수료 필요)',
+  'withdraw.splBalance': '보유: {balance} {symbol}',
 
   // ─── Pin Modal ───
   'pin.minDigits': 'PIN은 최소 {min}자리입니다.',

@@ -11,4 +11,4 @@ export { decryptPrivateKey } from './decrypt';
 
 export { signTransaction } from './sign';
 
-export { buildSolTransferTx } from './transfer';
+export { buildSolTransferTx, buildSplTokenTransferTx } from './transfer';

@@ -5,6 +5,12 @@ import {
   LAMPORTS_PER_SOL,
   Connection,
 } from '@solana/web3.js';
+import {
+  getAssociatedTokenAddressSync,
+  createAssociatedTokenAccountIdempotentInstruction,
+  createTransferInstruction,
+  TOKEN_PROGRAM_ID,
+} from '@solana/spl-token';
 
 const RPC_URL = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
 
@@ -35,7 +41,69 @@ export async function buildSolTransferTx(
     }),
   );
 
-  // 직렬화 (base64) — 서명 전 상태
+  const serialized = transaction.serialize({
+    requireAllSignatures: false,
+    verifySignatures: false,
+  });
+
+  return serialized.toString('base64');
+}
+
+/**
+ * SPL 토큰 전송 트랜잭션 빌드 (unsigned)
+ *
+ * 수신자에게 ATA가 없으면 자동 생성 (idempotent).
+ * 송신자에게는 충분한 토큰 잔액이 필요하고,
+ * 네트워크 수수료(tx fee)는 송신자의 SOL에서 차감됨.
+ */
+export async function buildSplTokenTransferTx(
+  from: string,
+  to: string,
+  mint: string,
+  amount: number,
+  decimals: number,
+): Promise<string> {
+  const connection = new Connection(RPC_URL, 'confirmed');
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+
+  const ownerPubkey = new PublicKey(from);
+  const recipientPubkey = new PublicKey(to);
+  const mintPubkey = new PublicKey(mint);
+
+  // 송신자 ATA
+  const sourceAta = getAssociatedTokenAddressSync(mintPubkey, ownerPubkey);
+  // 수신자 ATA
+  const destAta = getAssociatedTokenAddressSync(mintPubkey, recipientPubkey);
+
+  const transaction = new Transaction({
+    feePayer: ownerPubkey,
+    blockhash,
+    lastValidBlockHeight,
+  });
+
+  // 수신자 ATA가 없으면 생성 instruction 추가 (idempotent — 이미 있으면 no-op)
+  transaction.add(
+    createAssociatedTokenAccountIdempotentInstruction(
+      ownerPubkey,  // payer (수수료 부담)
+      destAta,       // ata
+      recipientPubkey, // owner
+      mintPubkey,
+    ),
+  );
+
+  // 토큰 전송 instruction
+  const rawAmount = BigInt(Math.floor(amount * Math.pow(10, decimals)));
+  transaction.add(
+    createTransferInstruction(
+      sourceAta,
+      destAta,
+      ownerPubkey,
+      rawAmount,
+      [],
+      TOKEN_PROGRAM_ID,
+    ),
+  );
+
   const serialized = transaction.serialize({
     requireAllSignatures: false,
     verifySignatures: false,

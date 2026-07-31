@@ -103,6 +103,14 @@ export class WithdrawService {
         }
       } else {
         // SPL 토큰 잔액
+        // 토큰 decimals 조회
+        const { data: token } = await this.client
+          .from('tokens')
+          .select('decimals')
+          .eq('mint_address', mint)
+          .single();
+        const decimals = token?.decimals ?? 9;
+
         const res = await fetch(this.rpcUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -124,8 +132,9 @@ export class WithdrawService {
         if (accounts.length === 0) {
           throw new BadRequestException('해당 토큰을 보유하고 있지 않습니다.');
         }
-        const rawAmount = Number(accounts[0].account?.data?.parsed?.info?.tokenAmount?.amount || 0);
-        if (rawAmount < amount * 1e9) {
+        const rawAmount = BigInt(accounts[0].account?.data?.parsed?.info?.tokenAmount?.amount || '0');
+        const requiredRaw = BigInt(Math.floor(amount * Math.pow(10, decimals)));
+        if (rawAmount < requiredRaw) {
           throw new BadRequestException('토큰 잔액이 부족합니다.');
         }
       }
