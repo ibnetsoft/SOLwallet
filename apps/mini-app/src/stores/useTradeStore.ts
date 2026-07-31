@@ -73,6 +73,7 @@ interface TradeState {
   createAndSubmitOrder: (pin: string) => Promise<{ txSignature?: string }>;
   cancelOrder: (orderId: string, pin: string) => Promise<{ txSignature?: string }>;
   withdrawFunds: (pin: string) => Promise<{ txSignature?: string }>;
+  autoWithdrawIfPossible: () => Promise<void>;
 }
 
 export const useTradeStore = create<TradeState>((set, get) => ({
@@ -190,8 +191,18 @@ export const useTradeStore = create<TradeState>((set, get) => ({
   fetchOrderHistory: async () => {
     try {
       const page = await ordersApi.getOrderHistory();
+      const orders = (page.items || []).map(normalizeOrder);
+
+      // 체결(filled)된 주문이 새로 감지되면 자동 withdraw
+      const prevFilled = get().orderHistory.filter((o) => o.status === 'filled').map((o) => o.id);
+      const newFilled = orders.filter((o) => o.status === 'filled' && !prevFilled.includes(o.id));
+      if (newFilled.length > 0) {
+        console.log('[autoWithdraw] detected', newFilled.length, 'new filled orders — triggering withdraw');
+        get().autoWithdrawIfPossible();
+      }
+
       set({
-        orderHistory: (page.items || []).map(normalizeOrder),
+        orderHistory: orders,
         historyHasMore: page.hasMore,
         historyCursor: page.nextCursor,
       });
@@ -413,6 +424,36 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     } catch (err) {
       useWalletStore.getState().lockWallets();
       throw err;
+    }
+  },
+
+  /** 체결 감지 후 자동 withdraw — 지갑이 unlock 상태면 PIN 없이 실행 */
+  autoWithdrawIfPossible: async () => {
+    const wallets = useWalletStore.getState().wallets;
+    const activeWallet = wallets.find((w) => w.isActive) || wallets[0];
+    if (!activeWallet) return;
+
+    const secretKey = useWalletStore.getState().wallets.find((w) => w.id === activeWallet.id)?.secretKey;
+    if (!secretKey) {
+      console.log('[autoWithdraw] wallet locked — skip (user must withdraw manually)');
+      return;
+    }
+
+    try {
+      console.log('[autoWithdraw] wallet unlocked — executing auto withdraw...');
+      const { signTransaction } = await import('@/lib/wallet');
+
+      const { unsignedTx } = await ordersApi.getWithdrawTx(activeWallet.id);
+      const signedTx = signTransaction(unsignedTx, secretKey, 'legacy');
+      const result = await ordersApi.submitWithdrawTx(signedTx);
+      console.log('[autoWithdraw] done —', result.txSignature?.slice(0, 12));
+
+      // 잔액 새로고침
+      get().fetchActiveOrders();
+      get().fetchOrderHistory();
+    } catch (err) {
+      console.warn('[autoWithdraw] failed:', err instanceof Error ? err.message : String(err));
+      // 실패해도 무시 — 사용자가 수동 withdraw 가능
     }
   },
 }));
