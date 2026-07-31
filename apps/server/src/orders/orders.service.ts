@@ -247,9 +247,7 @@ export class OrdersService {
         wallet_id: dto.walletId,
         token_id: dto.tokenId,
         side: dto.side,
-        // DB constraint는 'limit'만 허용 — Manifest에는 IOC로 전송하되 DB에는 limit 저장
-        // 실제 orderType은 manifest_client_order_id와 함께 애플리케이션에서 추적
-        order_type: 'limit',
+        order_type: dto.orderType || 'limit',
         price: dto.price,
         quantity: dto.quantity,
         fee: fee.toFixed(6),
@@ -338,9 +336,7 @@ export class OrdersService {
       })
       .eq('id', order.id);
 
-    // 실제 orderType을 order 객체에 추가하여 반환 (DB에는 limit으로 저장되므로)
-    const orderWithType = { ...order, manifest_order_type: dto.orderType || 'limit' };
-    return { order: orderWithType as Record<string, unknown>, unsignedTx, setupTx };
+    return { order: order as Record<string, unknown>, unsignedTx, setupTx };
   }
 
   /**
@@ -930,7 +926,7 @@ export class OrdersService {
             size: formattedSize,
             price: formattedPrice,
             side: order.side,
-            orderType: (order.manifest_order_type as string || order.order_type as string) === 'market' ? 'immediateOrCancel' : 'limit',
+            orderType: order.order_type === 'market' ? 'immediateOrCancel' : 'limit',
             clientOrderId,
           },
         ],
