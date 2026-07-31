@@ -36,7 +36,9 @@ export default function WithdrawModal({
   if (!isOpen) return null;
 
   const amountNum = Number(amount) || 0;
-  const isValid = toAddress && amountNum > 0 && amountNum <= solBalance;
+  // 출금 후 tx 수수료 + rent 예치금(0.001 SOL)이 남아야 함
+  const maxWithdrawable = Math.max(0, solBalance - 0.001);
+  const isValid = toAddress && amountNum > 0 && amountNum <= maxWithdrawable;
 
   const handleWithdraw = async (pin: string) => {
     setPinError('');
@@ -134,7 +136,7 @@ export default function WithdrawModal({
                   className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-3 text-sm text-white placeholder-gray-500 outline-none focus:border-primary-500 transition"
                 />
                 <button
-                  onClick={() => setAmount(String(solBalance))}
+                  onClick={() => setAmount(String(Math.max(0, solBalance - 0.001)))}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-xs bg-gray-700 px-2 py-1 rounded text-gray-300 hover:bg-gray-600"
                 >
                   {t('common.max')}
