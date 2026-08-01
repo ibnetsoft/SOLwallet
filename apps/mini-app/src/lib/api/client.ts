@@ -3,8 +3,12 @@ import { getMsg } from '@/lib/i18n';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
-/** 요청 타임아웃 (30초) — 거래 제출/확인은 RPC 응답 대기로 오래 걸릴 수 있음 */
-const REQUEST_TIMEOUT = 30_000;
+/**
+ * 요청 타임아웃 (45초) — 거래 제출/확인은 RPC 응답 대기로 오래 걸릴 수 있음.
+ * 서버의 온체인 컨펌 대기(confirmTransactionInitialTimeout: 30초)보다 충분히 길게 잡아야
+ * 서버가 컨펌 결과를 반환하기 전에 클라이언트가 먼저 요청을 중단해버리는 레이스를 방지함.
+ */
+const REQUEST_TIMEOUT = 45_000;
 
 interface ApiResponse<T> {
   success: boolean;

@@ -302,7 +302,12 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         } catch (wrapErr) {
           console.error('[trade] step 3 FAILED: wrapTx:', wrapErr);
           useWalletStore.getState().lockWallets();
-          throw new Error('SOL을 wSOL으로 래핑하는 데 실패했습니다. 잠시 후 다시 시도해주세요.');
+          // 서버가 구체적인 실패 사유(컨펌 지연/체인 미반영/RPC 오류 등)를 알려주면
+          // 그대로 노출 — 매번 같은 문구만 뜨면 원인 파악이 불가능해짐
+          const msg = wrapErr instanceof Error && wrapErr.message
+            ? wrapErr.message
+            : 'SOL을 wSOL으로 래핑하는 데 실패했습니다. 잠시 후 다시 시도해주세요.';
+          throw new Error(msg);
         }
       }
 
