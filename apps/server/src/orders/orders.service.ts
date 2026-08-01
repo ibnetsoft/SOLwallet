@@ -1063,7 +1063,13 @@ export class OrdersService {
       }
 
       // 그 외 에러 (setup ixs, network 등) → 사용자에게 재시도 안내
-      throw new BadRequestException('취소 트랜잭션 생성에 실패했습니다. 잠시 후 다시 시도해주세요.');
+      // Manifest가 알려준 구체적인 사유를 함께 노출 — 매번 같은 문구만 뜨면 원인 파악이 불가능해짐
+      const detail = errMsg || cause;
+      throw new BadRequestException(
+        detail
+          ? `취소 트랜잭션 생성에 실패했습니다: ${detail}`
+          : '취소 트랜잭션 생성에 실패했습니다. 잠시 후 다시 시도해주세요.',
+      );
     }
 
     return { unsignedTx: cancelData.transaction };
