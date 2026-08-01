@@ -1,6 +1,9 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from 'react';
+
+/** 토스트 표시 시간 — 너무 빨리 사라진다는 피드백으로 기존 3초에서 2배로 늘림 */
+const TOAST_DURATION = 6000;
 
 // ─── Context ───
 
@@ -22,10 +25,15 @@ export function useToast() {
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<string | null>(null);
+  // 토스트가 연속으로 뜰 때, 먼저 예약된 타이머가 나중 토스트를 조기에 지우는 것을 방지
+  const toastIdRef = useRef(0);
 
   const showToast = useCallback((msg: string) => {
+    const id = ++toastIdRef.current;
     setToast(msg);
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => {
+      if (toastIdRef.current === id) setToast(null);
+    }, TOAST_DURATION);
   }, []);
 
   return (

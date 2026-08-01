@@ -191,9 +191,8 @@ export default function WithdrawModal({
       setAmount('');
       setSelectedToken(null);
       setStep('select');
-      onClose();
-
       showToast(t('withdraw.complete', { tx: result.txSignature.slice(0, 8) }));
+      onClose();
     } catch (err) {
       lockWallets();
       setPinError(err instanceof Error ? err.message : t('withdraw.failed'));
