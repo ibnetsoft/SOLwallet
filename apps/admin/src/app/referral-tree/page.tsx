@@ -114,6 +114,13 @@ export default function ReferralTreePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [treeLoading, setTreeLoading] = useState(false);
   const [error, setError] = useState('');
+  const [zoom, setZoom] = useState(1);
+
+  const ZOOM_MIN = 0.5;
+  const ZOOM_MAX = 2;
+  const zoomIn = () => setZoom((z) => Math.min(ZOOM_MAX, Math.round((z + 0.1) * 10) / 10));
+  const zoomOut = () => setZoom((z) => Math.max(ZOOM_MIN, Math.round((z - 0.1) * 10) / 10));
+  const resetZoom = () => setZoom(1);
 
   // 루트 목록 로드
   const fetchRoots = useCallback(async () => {
@@ -283,9 +290,39 @@ export default function ReferralTreePage() {
           {treeLoading ? (
             <div className="text-center py-8 text-gray-400">로딩 중...</div>
           ) : (
-            <div className="bg-gray-800/30 rounded-xl border border-gray-700/50 p-4">
-              <TreeNode node={treeData.tree} onNavigate={loadTree} />
-            </div>
+            <>
+              {/* 확대/축소 툴바 */}
+              <div className="flex items-center justify-end gap-1 mb-2">
+                <button
+                  onClick={zoomOut}
+                  disabled={zoom <= ZOOM_MIN}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  title="축소"
+                >
+                  −
+                </button>
+                <button
+                  onClick={resetZoom}
+                  className="px-3 h-8 flex items-center justify-center rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 text-xs font-mono transition"
+                  title="100%로 초기화"
+                >
+                  {Math.round(zoom * 100)}%
+                </button>
+                <button
+                  onClick={zoomIn}
+                  disabled={zoom >= ZOOM_MAX}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  title="확대"
+                >
+                  +
+                </button>
+              </div>
+              <div className="bg-gray-800/30 rounded-xl border border-gray-700/50 p-4 overflow-auto">
+                <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}>
+                  <TreeNode node={treeData.tree} onNavigate={loadTree} />
+                </div>
+              </div>
+            </>
           )}
         </>
       )}
