@@ -154,11 +154,11 @@ function UserRow({
       </td>
       <td className="py-3 px-4 text-gray-400 font-mono text-xs text-center">{user.referralCode || '—'}</td>
       <td className="py-3 px-4 text-center text-gray-400 font-mono text-xs">{user.totalReferrals || 0}</td>
-      <td className="py-3 px-4 text-center text-gray-400 font-mono text-xs">{user.level1Referrals || 0}</td>
-      <td className="py-3 px-4 text-center text-gray-400 font-mono text-xs">{user.level2Referrals || 0}</td>
-      <td className="py-3 px-4 text-center text-gray-400 font-mono text-xs">{user.level3Referrals || 0}</td>
-      <td className="py-3 px-4 text-center text-gray-400 font-mono text-xs">{user.level4Referrals || 0}</td>
-      <td className="py-3 px-4 text-center text-gray-400 font-mono text-xs">{user.level5Referrals || 0}</td>
+      <td className="py-3 px-1 w-9 text-center text-gray-400 font-mono text-xs">{user.level1Referrals || 0}</td>
+      <td className="py-3 px-1 w-9 text-center text-gray-400 font-mono text-xs">{user.level2Referrals || 0}</td>
+      <td className="py-3 px-1 w-9 text-center text-gray-400 font-mono text-xs">{user.level3Referrals || 0}</td>
+      <td className="py-3 px-1 w-9 text-center text-gray-400 font-mono text-xs">{user.level4Referrals || 0}</td>
+      <td className="py-3 px-1 w-9 text-center text-gray-400 font-mono text-xs">{user.level5Referrals || 0}</td>
       {tokens.map((t) => (
         <td key={t.id} className="py-3 px-4 text-right text-gray-400 font-mono text-xs">
           {loading ? '...' : (balances[t.mintAddress] || 0).toFixed(4)}
@@ -467,11 +467,11 @@ export default function UsersPage() {
                 <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">스폰서</th>
                 <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">추천코드</th>
                 <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">총추천인원</th>
-                <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">1대</th>
-                <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">2대</th>
-                <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">3대</th>
-                <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">4대</th>
-                <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">5대</th>
+                <th className="text-center py-3 px-1 w-9 text-gray-400 font-medium whitespace-nowrap">1대</th>
+                <th className="text-center py-3 px-1 w-9 text-gray-400 font-medium whitespace-nowrap">2대</th>
+                <th className="text-center py-3 px-1 w-9 text-gray-400 font-medium whitespace-nowrap">3대</th>
+                <th className="text-center py-3 px-1 w-9 text-gray-400 font-medium whitespace-nowrap">4대</th>
+                <th className="text-center py-3 px-1 w-9 text-gray-400 font-medium whitespace-nowrap">5대</th>
                 {tokens.map(t => (
                   <th key={t.id} className="text-right py-3 px-4 text-gray-400 font-medium whitespace-nowrap">{t.symbol}</th>
                 ))}
