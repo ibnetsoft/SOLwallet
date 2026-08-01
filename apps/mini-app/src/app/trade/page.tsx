@@ -285,12 +285,12 @@ function TradeContent() {
     try {
       const result = await withdrawFunds(pin);
       setShowWithdrawPinModal(false);
-      showToast(t('trade.withdrawSuccess', { defaultValue: '수익이 인출되었습니다.' }));
+      showToast(t('trade.withdrawSuccess'));
       if (result.txSignature) {
         showToast(`📝 Tx: ${result.txSignature.slice(0, 8)}...`);
       }
     } catch (err) {
-      setWithdrawPinError(err instanceof Error ? err.message : t('trade.withdrawFailed', { defaultValue: '인출에 실패했습니다.' }));
+      setWithdrawPinError(err instanceof Error ? err.message : t('trade.withdrawFailed'));
     }
   };
 
@@ -656,7 +656,7 @@ function TradeContent() {
               onClick={() => setShowWithdrawPinModal(true)}
               className="text-xs px-2.5 py-1 rounded-lg bg-primary-500/10 text-primary-400 hover:bg-primary-500/20 transition font-medium"
             >
-              {t('trade.withdraw', { defaultValue: '수익 인출' })}
+              {t('trade.withdraw')}
             </button>
             <button
               onClick={() => activeTab === 'open' ? fetchActiveOrders() : fetchOrderHistory()}
@@ -835,7 +835,7 @@ function TradeContent() {
       {/* PIN Modal for withdraw signing */}
       <PinModal
         isOpen={showWithdrawPinModal}
-        title={t('trade.withdraw', { defaultValue: '수익 인출' })}
+        title={t('trade.withdraw')}
         subtitle={t('trade.pinSubtitle')}
         onConfirm={handleWithdrawExecute}
         onCancel={() => {
