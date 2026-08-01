@@ -96,11 +96,16 @@ export class AdminController {
    * PATCH /api/admin/users/:id/sponsor  body: { telegramUid: number }
    */
   @Patch('users/:id/sponsor')
-  async setUserSponsor(@Param('id') userId: string, @Body('telegramUid') telegramUid: number) {
-    if (!telegramUid) {
-      throw new BadRequestException('Tele ID가 필요합니다.');
+  async setUserSponsor(
+    @Param('id') userId: string,
+    @Body('sponsor') sponsor?: string,
+    @Body('telegramUid') telegramUid?: string | number, // 구버전 클라이언트 호환
+  ) {
+    const identifier = String(sponsor ?? telegramUid ?? '').trim();
+    if (!identifier) {
+      throw new BadRequestException('스폰서의 Tele ID를 입력해주세요.');
     }
-    const result = await this.adminService.setUserSponsor(userId, Number(telegramUid));
+    const result = await this.adminService.setUserSponsor(userId, identifier);
     return { success: true, data: result };
   }
 

@@ -23,7 +23,7 @@ function UserRow({
   onToggleCheck: (id: string) => void;
   onViewWallets: (id: string) => void;
   onToggleSponsor: (userId: string) => Promise<void>;
-  onSetSponsor: (userId: string, telegramUid: number) => Promise<void>;
+  onSetSponsor: (userId: string, sponsor: string) => Promise<void>;
   onSetNickname: (userId: string, nickname: string) => Promise<void>;
 }) {
   const [balances, setBalances] = useState<Record<string, number>>({});
@@ -51,7 +51,7 @@ function UserRow({
     if (!sponsorInput.trim()) return;
     setSavingSponsor(true);
     try {
-      await onSetSponsor(user.id, Number(sponsorInput.trim()));
+      await onSetSponsor(user.id, sponsorInput.trim());
       setSponsorInput('');
     } catch (e) {
       alert(e instanceof Error ? e.message : '스폰서 지정 실패');
@@ -133,12 +133,14 @@ function UserRow({
           user.sponsorTeleId
         ) : (
           <div className="flex items-center justify-center gap-1">
+            {/* Tele ID(username) / 숫자 UID / 추천코드 아무거나 입력 가능.
+                예전엔 숫자 외 문자를 전부 제거해서 "mayersam" 같은 username을
+                아예 입력할 수 없었음 */}
             <input
               type="text"
-              inputMode="numeric"
               placeholder="Tele ID"
               value={sponsorInput}
-              onChange={(e) => setSponsorInput(e.target.value.replace(/[^0-9]/g, ''))}
+              onChange={(e) => setSponsorInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSaveSponsor()}
               className="w-20 bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:border-primary-500"
             />
@@ -294,9 +296,9 @@ export default function UsersPage() {
     fetchReferralStats();
   };
 
-  const handleSetSponsor = async (userId: string, telegramUid: number) => {
-    await setUserSponsor(userId, telegramUid);
-    // 목록/방장 통계 새로고침
+  const handleSetSponsor = async (userId: string, sponsor: string) => {
+    await setUserSponsor(userId, sponsor);
+    // 목록/방장 통계 새로고침 — 스폰서의 총추천인원/1대 카운트도 함께 갱신됨
     await fetchUsers(page, pageSize);
     fetchReferralStats();
   };

@@ -355,10 +355,13 @@ export class AdminService {
   }
 
   /**
-   * 어드민이 Tele ID로 스폰서(추천인) 수동 지정
+   * 어드민이 스폰서(추천인) 수동 지정
    * 기존 추천관계(referred_by)가 없는 유저에 한해서만 허용
+   *
+   * @param sponsorIdentifier Tele ID(username) / 숫자 telegram_uid / 추천코드
+   *   — 어드민 화면의 "Tele ID" 칼럼은 username을 표시하므로 그대로 입력해도 찾아짐
    */
-  async setUserSponsor(userId: string, sponsorTelegramUid: number) {
+  async setUserSponsor(userId: string, sponsorIdentifier: string) {
     const { data: user, error: fetchErr } = await this.client
       .from('users')
       .select('id, referred_by')
@@ -372,17 +375,18 @@ export class AdminService {
       throw new BadRequestException('이미 추천인이 지정된 회원입니다.');
     }
 
-    const { data: sponsor, error: sponsorErr } = await this.client
-      .from('users')
-      .select('id')
-      .eq('telegram_uid', sponsorTelegramUid)
-      .maybeSingle();
-
-    if (sponsorErr || !sponsor) {
-      throw new BadRequestException('해당 Tele ID의 회원을 찾을 수 없습니다.');
+    const sponsor = await this.findUserByIdentifier(sponsorIdentifier);
+    if (!sponsor) {
+      throw new BadRequestException(`'${sponsorIdentifier}' 에 해당하는 회원을 찾을 수 없습니다.`);
     }
     if (sponsor.id === userId) {
       throw new BadRequestException('본인을 스폰서로 지정할 수 없습니다.');
+    }
+
+    // 순환 참조 방지 — 지정하려는 스폰서가 이미 이 유저의 하위 라인에 있으면 거부
+    // (A→B 상태에서 B를 A의 스폰서로 지정하면 추천 트리가 무한 루프에 빠짐)
+    if (await this.isDescendantOf(sponsor.id, userId)) {
+      throw new BadRequestException('이 회원의 하위 라인에 있는 회원은 스폰서로 지정할 수 없습니다.');
     }
 
     const { error: updateErr } = await this.client
@@ -405,7 +409,69 @@ export class AdminService {
       throw new BadRequestException('스폰서 관계 기록에 실패했습니다.');
     }
 
-    return { sponsorId: sponsor.id, sponsorTelegramUid };
+    this.logger.log(
+      `[setUserSponsor] linked user=${userId.slice(0, 8)} → sponsor=${sponsor.id.slice(0, 8)} (${sponsorIdentifier})`,
+    );
+    return {
+      sponsorId: sponsor.id,
+      sponsorLabel: sponsor.username || sponsor.first_name || String(sponsor.telegram_uid),
+    };
+  }
+
+  /**
+   * Tele ID(username) / 숫자 telegram_uid / 추천코드 중 아무거나로 유저 조회
+   */
+  private async findUserByIdentifier(identifier: string) {
+    const value = identifier.trim();
+    if (!value) return null;
+
+    const selectCols = 'id, username, first_name, telegram_uid';
+
+    // 1) username 정확히 일치 (어드민 화면의 "Tele ID" 칼럼에 표시되는 값)
+    const { data: byUsername } = await this.client
+      .from('users')
+      .select(selectCols)
+      .eq('username', value.replace(/^@/, ''))
+      .maybeSingle();
+    if (byUsername) return byUsername;
+
+    // 2) 숫자면 telegram_uid로 조회
+    if (/^\d+$/.test(value)) {
+      const { data: byUid } = await this.client
+        .from('users')
+        .select(selectCols)
+        .eq('telegram_uid', Number(value))
+        .maybeSingle();
+      if (byUid) return byUid;
+    }
+
+    // 3) 추천코드로 조회 (대문자 정규화)
+    const { data: byCode } = await this.client
+      .from('users')
+      .select(selectCols)
+      .eq('referral_code', value.toUpperCase())
+      .maybeSingle();
+    if (byCode) return byCode;
+
+    return null;
+  }
+
+  /**
+   * candidateId가 rootId의 하위 라인(추천 트리)에 속하는지 확인 — 순환 참조 방지용
+   */
+  private async isDescendantOf(candidateId: string, rootId: string): Promise<boolean> {
+    try {
+      const { data: subtree } = await this.client.rpc('get_referral_subtree', {
+        root_user_id: rootId,
+        max_depth: 20,
+      });
+      return ((subtree || []) as { user_id: string; depth: number }[]).some(
+        (n) => n.depth >= 1 && n.user_id === candidateId,
+      );
+    } catch {
+      // RPC 실패 시 판단 불가 — 차단하지 않고 통과 (기존 동작 유지)
+      return false;
+    }
   }
 
   /**

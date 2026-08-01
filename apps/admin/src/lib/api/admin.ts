@@ -66,13 +66,14 @@ export function toggleSponsor(userId: string): Promise<{ isSponsor: boolean }> {
 }
 
 /**
- * 어드민이 Tele ID로 스폰서(추천인) 수동 지정 — 기존 추천관계가 없는 유저만 가능
+ * 어드민이 스폰서(추천인) 수동 지정 — 기존 추천관계가 없는 유저만 가능
+ * sponsor: Tele ID(username) / 숫자 telegram_uid / 추천코드 중 아무거나
  * PATCH /admin/users/:id/sponsor
  */
-export function setUserSponsor(userId: string, telegramUid: number): Promise<{ sponsorId: string; sponsorTelegramUid: number }> {
+export function setUserSponsor(userId: string, sponsor: string): Promise<{ sponsorId: string; sponsorLabel: string }> {
   return apiFetch(`/admin/users/${userId}/sponsor`, {
     method: 'PATCH',
-    body: JSON.stringify({ telegramUid }),
+    body: JSON.stringify({ sponsor }),
   });
 }
 
