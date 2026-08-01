@@ -69,7 +69,9 @@ function HomePage() {
 
   useEffect(() => {
     if (!isLoggedIn()) {
-      router.replace('/login');
+      // 추천 링크(?ref=코드)가 리다이렉트 과정에서 유실되지 않도록 쿼리스트링 유지
+      const qs = typeof window !== 'undefined' ? window.location.search : '';
+      router.replace(`/login${qs}`);
       return;
     }
     setAuthChecked(true);
