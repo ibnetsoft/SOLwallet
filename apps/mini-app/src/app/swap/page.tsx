@@ -118,7 +118,10 @@ export default function SwapPage() {
     setInputAmount(inputBalance > 0 ? String(inputBalance) : '');
   };
 
-  const handleExecute = async (pin: string) => {
+  // 지갑이 이미 잠금 해제된 세션인지 — 이 경우 PIN 재입력 없이 진행
+  const isWalletUnlocked = () => !!wallets.find((w) => w.isActive)?.secretKey;
+
+  const handleExecute = async (pin?: string) => {
     setPinError('');
     try {
       const result = await executeSwap(pin);
@@ -130,7 +133,9 @@ export default function SwapPage() {
       // 잔액 새로고침
       fetchPortfolio();
     } catch (err) {
-      setPinError(err instanceof Error ? err.message : t('swap.failed'));
+      const msg = err instanceof Error ? err.message : t('swap.failed');
+      if (showPinModal) setPinError(msg);
+      else showToast(msg);
     }
   };
 
@@ -273,7 +278,11 @@ export default function SwapPage() {
         onClick={() => {
           if (!canSwap) return;
           setPinError('');
-          setShowPinModal(true);
+          if (isWalletUnlocked()) {
+            handleExecute();
+          } else {
+            setShowPinModal(true);
+          }
         }}
         disabled={!canSwap}
         className={`mt-5 w-full py-3.5 rounded-xl font-bold text-sm transition ${

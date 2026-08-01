@@ -28,7 +28,8 @@ interface SwapState {
   setSlippageBps: (bps: number) => void;
   fetchQuote: (walletId: string) => Promise<void>;
   clearQuote: () => void;
-  executeSwap: (pin: string) => Promise<{ txSignature: string }>;
+  // pin은 지갑이 잠겨있을 때만 필요 — 이미 잠금 해제된 세션이면 생략 가능
+  executeSwap: (pin?: string) => Promise<{ txSignature: string }>;
 }
 
 // USDC / USDC 기본 토큰 정의 (환경설정 없이 사용 가능)
@@ -122,14 +123,20 @@ export const useSwapStore = create<SwapState>((set, get) => ({
       throw new Error(getMsg('error.noActiveWallet'));
     }
 
-    // 지갑 잠금 해제
-    await useWalletStore.getState().unlockWallet(activeWallet.id, pin);
-
-    const secretKey = useWalletStore
-      .getState()
-      .wallets.find((w) => w.id === activeWallet.id)?.secretKey;
+    // 이미 잠금 해제된 세션이면 PIN 없이 재사용, 아니면 PIN으로 잠금 해제
+    let secretKey = activeWallet.secretKey;
     if (!secretKey) {
-      useWalletStore.getState().lockWallets();
+      if (!pin) {
+        throw new Error(getMsg('error.walletLocked'));
+      }
+      await useWalletStore.getState().unlockWallet(activeWallet.id, pin);
+      secretKey = useWalletStore
+        .getState()
+        .wallets.find((w) => w.id === activeWallet.id)?.secretKey;
+    } else {
+      useWalletStore.getState().extendSession();
+    }
+    if (!secretKey) {
       throw new Error(getMsg('error.walletUnlockFailed'));
     }
 
@@ -147,7 +154,6 @@ export const useSwapStore = create<SwapState>((set, get) => ({
       });
 
       if (!result.unsignedTx) {
-        useWalletStore.getState().lockWallets();
         throw new Error(getMsg('error.txBuildFailed'));
       }
 
@@ -158,16 +164,10 @@ export const useSwapStore = create<SwapState>((set, get) => ({
       // 3. 서명된 트랜잭션 제출
       const submitResult = await swapApi.executeSwap(signedTx);
 
-      // 4. 메모리에서 키 해제
-      useWalletStore.getState().lockWallets();
-
-      // 성공 시 입력 초기화
+      // 성공 시 입력 초기화 — 세션은 유지 (다음 스왑/거래도 PIN 불필요)
       set({ inputAmount: '', quote: null });
 
       return submitResult;
-    } catch (err) {
-      useWalletStore.getState().lockWallets();
-      throw err;
     } finally {
       set({ isExecuting: false });
     }
