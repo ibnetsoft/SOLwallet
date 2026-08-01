@@ -29,12 +29,18 @@ export function getWebReferralUrl(referralCode: string): string {
 }
 
 /**
- * Telegram 미니앱 딥링크 생성 (보조 — 모바일 전용)
- * ⚠️ PC Telegram Desktop에서는 BOT_INVALID 에러 발생 가능
+ * Telegram 봇 딥링크 생성 — ?start= 형식
+ *
+ * ⚠️ ?startapp= 이 아니라 ?start= 를 쓰는 이유:
+ * ?startapp= 은 BotFather에 "Main Mini App"이 등록된 봇에서만 동작하고,
+ * 등록돼 있지 않으면 텔레그램이 조용히 봇 채팅으로 폴백하면서 파라미터를
+ * 통째로 버림 (실측: /start payload가 빈 문자열로 도착 → 추천코드 유실).
+ * ?start= 는 봇이 startPayload로 코드를 확실히 수신하고, 언어 선택 →
+ * "지갑 열기" web_app 버튼 URL(?ref=코드)로 이어지는 경로가 보장됨.
  */
 export function getTelegramDeepLink(referralCode: string): string {
   if (!TELEGRAM_BOT_USERNAME) return '';
-  return `https://t.me/${TELEGRAM_BOT_USERNAME}?startapp=${referralCode}`;
+  return `https://t.me/${TELEGRAM_BOT_USERNAME}?start=${referralCode}`;
 }
 
 /**

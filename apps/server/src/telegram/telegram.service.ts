@@ -166,8 +166,13 @@ export class TelegramService {
           const firstName = ctx.from?.first_name || ctx.from?.username || 'User';
           const miniAppUrl = this.configService.get<string>('MINI_APP_URL') || 'https://aoiwallet.com';
 
-          // 언어 파라미터를 URL에 추가
-          const appUrl = `${miniAppUrl}?lang=${locale}`;
+          // 언어 + 추천코드를 URL에 추가.
+          // ⚠️ referralPayload를 빼먹으면 t.me/<bot>?startapp=<코드>로 들어온 신규
+          // 가입자의 추천 관계가 전혀 연결되지 않음 — 미니앱은 web_app 버튼의 URL로
+          // 열리므로, /start의 startPayload를 여기까지 실어 날라야 함
+          const appUrl = referralPayload
+            ? `${miniAppUrl}?lang=${locale}&ref=${encodeURIComponent(referralPayload)}`
+            : `${miniAppUrl}?lang=${locale}`;
 
           const welcomeLines = WELCOME_MESSAGES[locale](firstName);
           const welcomeText = welcomeLines.join('\n');

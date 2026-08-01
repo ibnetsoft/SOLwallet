@@ -17,7 +17,9 @@ function getOpenInTelegramHref(botUsername: string): string {
   const stored = sessionStorage.getItem('referral_start_param');
   const urlRef = new URLSearchParams(window.location.search).get('ref');
   const code = stored && stored.length >= 4 ? stored : urlRef && urlRef.length >= 4 ? urlRef : undefined;
-  return code ? `https://t.me/${botUsername}?startapp=${encodeURIComponent(code)}` : `https://t.me/${botUsername}`;
+  // ?startapp= 이 아닌 ?start= — Main Mini App 미등록 봇에서 startapp이 조용히
+  // 폴백되며 파라미터가 유실되는 문제 회피 (lib/referral.ts 주석 참고)
+  return code ? `https://t.me/${botUsername}?start=${encodeURIComponent(code)}` : `https://t.me/${botUsername}`;
 }
 
 export default function LoginPage() {
