@@ -43,10 +43,13 @@ export async function apiFetch<T>(
       signal: controller.signal,
     });
 
-    // 401 — 토큰 만료 시 자동 로그아웃
+    // 401 — 토큰 만료/무효(삭제된 유저 등) 시 자동 로그아웃 + 재로그인 유도.
+    // 토큰만 지우고 리다이렉트를 안 하면, 사용자가 같은 화면에서 재시도할 때
+    // 토큰 없이 요청이 나가 "인증 토큰이 필요합니다" 같은 다른 에러로 이어짐.
     if (res.status === 401) {
       if (typeof window !== 'undefined') {
         clearAuthToken();
+        window.location.href = '/login';
       }
       throw new Error(getMsg('error.authExpired'));
     }

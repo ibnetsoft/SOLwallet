@@ -11,6 +11,7 @@ import {
   updateWalletInStorage,
   loadAuthToken,
   saveAuthToken,
+  clearAuthToken,
 } from '@/lib/storage';
 import type { StoredWallet } from '@/lib/storage';
 import { MAX_WALLETS, AUTO_LOCK_TIMEOUT } from '@solwallet/config';
@@ -75,9 +76,9 @@ function clearAutoLockTimer() {
   }
 }
 
-function apiFetch(path: string, options?: RequestInit) {
+async function apiFetch(path: string, options?: RequestInit) {
   const token = loadAuthToken();
-  return fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -85,6 +86,16 @@ function apiFetch(path: string, options?: RequestInit) {
       ...options?.headers,
     },
   });
+
+  // 401 — 토큰 만료/무효(삭제된 유저 등) 시 자동 로그아웃 + 재로그인 유도.
+  // 토큰만 지우고 리다이렉트를 안 하면, 다음 요청이 토큰 없이 나가
+  // "인증 토큰이 필요합니다" 같은 다른 에러로 이어짐.
+  if (res.status === 401 && typeof window !== 'undefined') {
+    clearAuthToken();
+    window.location.href = '/login';
+  }
+
+  return res;
 }
 
 /**
