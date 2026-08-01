@@ -178,13 +178,11 @@ export class OrderStatusService {
 
     for (const order of typedOrders) {
       const ageMs = Date.now() - new Date(order.created_at).getTime();
-      if (ageMs > this.ORDER_TIMEOUT_MS) {
-        await this.updateOrderStatus(order.id, 'expired');
-        expired++;
-        continue;
-      }
+      const isOverTimeout = ageMs > this.ORDER_TIMEOUT_MS;
 
       // 1단계: 주문 제출 tx 로그에서 즉시 체결(self-cross) 여부 확인
+      // ⚠️ 타임아웃 여부와 무관하게 항상 먼저 체결부터 확인한다 — 체결된 주문을
+      //    "오래됐다"는 이유만으로 expired 처리해버리면 체결 사실 자체가 영영 묻힘
       const fillResult = await this.checkFillFromTxLogs(order.tx_signature, order.id);
 
       if (fillResult.filled) {
@@ -202,9 +200,10 @@ export class OrderStatusService {
       const traderPubkey = order.wallet_id ? walletMap[order.wallet_id] : undefined;
       const baseMint = order.token_id ? tokenMap[order.token_id] : undefined;
       const sequenceNumber = order.manifest_sequence_number;
+      let stillOpen: boolean | null = null;
 
       if (traderPubkey && baseMint && sequenceNumber != null) {
-        const stillOpen = await this.isOrderStillOpen(marketCache, baseMint, traderPubkey, Number(sequenceNumber));
+        stillOpen = await this.isOrderStillOpen(marketCache, baseMint, traderPubkey, Number(sequenceNumber));
         if (stillOpen === false) {
           // 오더북에서 사라짐 — 다른 트레이더에게 체결된 것으로 판단 (전량 체결 처리)
           await this.updateOrderStatus(order.id, 'filled', order.quantity);
@@ -212,6 +211,14 @@ export class OrderStatusService {
           this.logger.log(`[active] order ${order.id} FILLED (vanished from on-chain book) — qty=${order.quantity}`);
           continue;
         }
+      }
+
+      // 여기까지 왔다면 체결 증거를 못 찾은 것 — 온체인에 여전히 남아있음(stillOpen===true)이
+      // 확인됐거나, 마켓 조회 실패(stillOpen===null)로 판단 불가한 경우. 이때만 타임아웃 적용
+      if (isOverTimeout) {
+        await this.updateOrderStatus(order.id, 'expired');
+        expired++;
+        continue;
       }
 
       pending++;
