@@ -104,6 +104,16 @@ export class AdminController {
     return { success: true, data: result };
   }
 
+  /**
+   * 어드민 전용 회원 닉네임 저장 (유저 비노출)
+   * PATCH /api/admin/users/:id/nickname  body: { nickname: string }
+   */
+  @Patch('users/:id/nickname')
+  async setUserNickname(@Param('id') userId: string, @Body('nickname') nickname: string) {
+    const result = await this.adminService.setUserNickname(userId, nickname ?? '');
+    return { success: true, data: result };
+  }
+
   // ─── 토큰 관리 ───
 
   @Get('tokens')

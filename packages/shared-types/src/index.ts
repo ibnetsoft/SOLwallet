@@ -151,6 +151,7 @@ export interface AdminUserDetail {
   level1Referrals: number;
   totalReferrals: number;
   walletCount: number;
+  adminNickname: string | null;
 }
 
 export interface AdminTokenDetail {

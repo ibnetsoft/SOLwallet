@@ -163,6 +163,7 @@ export class AdminService {
       level1Referrals: referralCounts[u.id] || 0,
       totalReferrals: totalReferrals[u.id] || 0,
       walletCount: walletCounts[u.id] || 0,
+      adminNickname: u.admin_nickname || null,
     }));
 
     return { users, total: count || 0 };
@@ -388,6 +389,26 @@ export class AdminService {
     }
 
     return { sponsorId: sponsor.id, sponsorTelegramUid };
+  }
+
+  /**
+   * 어드민 전용 회원 닉네임 저장 — 유저에게는 노출되지 않는 내부 식별용 메모
+   */
+  async setUserNickname(userId: string, nickname: string) {
+    const trimmed = nickname.trim();
+    const { data, error } = await this.client
+      .from('users')
+      .update({ admin_nickname: trimmed || null })
+      .eq('id', userId)
+      .select('id, admin_nickname')
+      .maybeSingle();
+
+    if (error || !data) {
+      this.logger.error(`Failed to set admin nickname: ${error?.message}`);
+      throw new BadRequestException('닉네임 저장에 실패했습니다.');
+    }
+
+    return { adminNickname: data.admin_nickname };
   }
 
   /**

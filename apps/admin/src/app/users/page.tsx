@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getUsers, getUserWallets, getReferralStats, getTokens, getUserBalance, toggleSponsor, deleteUsers, setUserSponsor } from '@/lib/api/admin';
+import { getUsers, getUserWallets, getReferralStats, getTokens, getUserBalance, toggleSponsor, deleteUsers, setUserSponsor, setUserNickname } from '@/lib/api/admin';
 import type { ReferralStat, AdminWalletDetail } from '@/lib/api/admin';
 import type { AdminUserDetail, AdminTokenDetail } from '@solwallet/shared-types';
 
@@ -14,6 +14,7 @@ function UserRow({
   onViewWallets,
   onToggleSponsor,
   onSetSponsor,
+  onSetNickname,
 }: {
   user: AdminUserDetail;
   tokens: AdminTokenDetail[];
@@ -23,12 +24,28 @@ function UserRow({
   onViewWallets: (id: string) => void;
   onToggleSponsor: (userId: string) => Promise<void>;
   onSetSponsor: (userId: string, telegramUid: number) => Promise<void>;
+  onSetNickname: (userId: string, nickname: string) => Promise<void>;
 }) {
   const [balances, setBalances] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [isSponsor, setIsSponsor] = useState((user as any).isSponsor ?? false);
   const [sponsorInput, setSponsorInput] = useState('');
   const [savingSponsor, setSavingSponsor] = useState(false);
+  const [nicknameInput, setNicknameInput] = useState(user.adminNickname || '');
+  const [savedNickname, setSavedNickname] = useState(user.adminNickname || '');
+  const [savingNickname, setSavingNickname] = useState(false);
+
+  const handleSaveNickname = async () => {
+    setSavingNickname(true);
+    try {
+      await onSetNickname(user.id, nicknameInput);
+      setSavedNickname(nicknameInput);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '닉네임 저장 실패');
+    } finally {
+      setSavingNickname(false);
+    }
+  };
 
   const handleSaveSponsor = async () => {
     if (!sponsorInput.trim()) return;
@@ -88,6 +105,27 @@ function UserRow({
       <td className="py-3 px-4">
         <div className="flex items-center gap-2">
           <span className="font-medium text-sm">{user.username || user.firstName || user.telegramUid}</span>
+        </div>
+      </td>
+      <td className="py-3 px-4">
+        <div className="flex items-center gap-1">
+          <input
+            type="text"
+            placeholder="닉네임"
+            value={nicknameInput}
+            onChange={(e) => setNicknameInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSaveNickname()}
+            className="w-24 bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-xs focus:outline-none focus:border-primary-500"
+          />
+          {nicknameInput !== savedNickname && (
+            <button
+              onClick={handleSaveNickname}
+              disabled={savingNickname}
+              className="text-[10px] px-2 py-1 rounded bg-primary-600/20 text-primary-400 hover:bg-primary-600/30 disabled:opacity-40 transition"
+            >
+              {savingNickname ? '...' : '저장'}
+            </button>
+          )}
         </div>
       </td>
       <td className="py-3 px-4 text-gray-400 font-mono text-xs text-center">
@@ -259,6 +297,10 @@ export default function UsersPage() {
     fetchReferralStats();
   };
 
+  const handleSetNickname = async (userId: string, nickname: string) => {
+    await setUserNickname(userId, nickname);
+  };
+
   const handleViewWallets = async (userId: string) => {
     setSelectedUserId(selectedUserId === userId ? null : userId);
     if (selectedUserId === userId) {
@@ -417,6 +459,7 @@ export default function UsersPage() {
                 <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">가입일</th>
                 <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">마지막접속일</th>
                 <th className="text-left py-3 px-4 text-gray-400 font-medium whitespace-nowrap">Tele ID</th>
+                <th className="text-left py-3 px-4 text-gray-400 font-medium whitespace-nowrap">닉네임</th>
                 <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">스폰서</th>
                 <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">추천코드</th>
                 <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">총추천인원</th>
@@ -430,11 +473,11 @@ export default function UsersPage() {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={9 + tokens.length} className="text-center py-8 text-gray-400">로딩 중...</td>
+                  <td colSpan={10 + tokens.length} className="text-center py-8 text-gray-400">로딩 중...</td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={9 + tokens.length} className="text-center py-8 text-gray-400">데이터가 없습니다</td>
+                  <td colSpan={10 + tokens.length} className="text-center py-8 text-gray-400">데이터가 없습니다</td>
                 </tr>
               ) : (
                 users.map((user) => (
@@ -448,6 +491,7 @@ export default function UsersPage() {
                     onViewWallets={handleViewWallets}
                     onToggleSponsor={handleToggleSponsor}
                     onSetSponsor={handleSetSponsor}
+                    onSetNickname={handleSetNickname}
                   />
                 ))
               )}

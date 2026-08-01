@@ -76,6 +76,17 @@ export function setUserSponsor(userId: string, telegramUid: number): Promise<{ s
   });
 }
 
+/**
+ * 어드민 전용 회원 닉네임 저장 — 유저에게는 노출되지 않음
+ * PATCH /admin/users/:id/nickname
+ */
+export function setUserNickname(userId: string, nickname: string): Promise<{ adminNickname: string | null }> {
+  return apiFetch(`/admin/users/${userId}/nickname`, {
+    method: 'PATCH',
+    body: JSON.stringify({ nickname }),
+  });
+}
+
 // ─── 추천 조직도 ───
 
 export function getReferralTree(userId: string, maxDepth = 5) {
