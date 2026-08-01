@@ -97,6 +97,8 @@ export class AdminService {
     const referrerMap: Record<string, { code: string; teleId: string }> = {};
     const referralCounts: Record<string, number> = {};
     const totalReferrals: Record<string, number> = {};
+    /** 인덱스 0~4 = 1대~5대 추천인원 */
+    const levelReferrals: Record<string, number[]> = {};
 
     if (userIds.length > 0) {
       // 1. 지갑 수
@@ -133,7 +135,7 @@ export class AdminService {
         referralCounts[r.referrer_id] = (referralCounts[r.referrer_id] || 0) + 1;
       });
 
-      // 4. 총 추천인 수 (get_referral_subtree RPC로 depth>=1 카운트)
+      // 4. 총 추천인 수 + 레벨별(1~5대) 추천인 수 (get_referral_subtree RPC 한 번으로 함께 계산)
       await Promise.all(
         userIds.map(async (uid) => {
           try {
@@ -141,9 +143,20 @@ export class AdminService {
               root_user_id: uid,
               max_depth: 10,
             });
-            totalReferrals[uid] = (subtree || []).filter((n: any) => n.depth >= 1).length;
+            const nodes = (subtree || []) as { depth: number }[];
+            const levels = [0, 0, 0, 0, 0]; // 1대~5대
+            let total = 0;
+            nodes.forEach((n) => {
+              if (n.depth >= 1) {
+                total++;
+                if (n.depth <= 5) levels[n.depth - 1]++;
+              }
+            });
+            totalReferrals[uid] = total;
+            levelReferrals[uid] = levels;
           } catch {
             totalReferrals[uid] = referralCounts[uid] || 0;
+            levelReferrals[uid] = [referralCounts[uid] || 0, 0, 0, 0, 0];
           }
         })
       );
@@ -160,7 +173,11 @@ export class AdminService {
       referralCode: u.referral_code, // 본인의 추천코드
       referrerCode: u.referred_by ? (referrerMap[u.referred_by]?.code || null) : null,
       sponsorTeleId: u.referred_by ? (referrerMap[u.referred_by]?.teleId || null) : null,
-      level1Referrals: referralCounts[u.id] || 0,
+      level1Referrals: levelReferrals[u.id]?.[0] ?? referralCounts[u.id] ?? 0,
+      level2Referrals: levelReferrals[u.id]?.[1] ?? 0,
+      level3Referrals: levelReferrals[u.id]?.[2] ?? 0,
+      level4Referrals: levelReferrals[u.id]?.[3] ?? 0,
+      level5Referrals: levelReferrals[u.id]?.[4] ?? 0,
       totalReferrals: totalReferrals[u.id] || 0,
       walletCount: walletCounts[u.id] || 0,
       adminNickname: u.admin_nickname || null,

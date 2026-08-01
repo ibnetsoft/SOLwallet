@@ -149,6 +149,10 @@ export interface AdminUserDetail {
   referrerCode: string | null;
   sponsorTeleId: string | null;
   level1Referrals: number;
+  level2Referrals: number;
+  level3Referrals: number;
+  level4Referrals: number;
+  level5Referrals: number;
   totalReferrals: number;
   walletCount: number;
   adminNickname: string | null;
