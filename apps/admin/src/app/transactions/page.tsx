@@ -10,6 +10,16 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
   filled:    { label: '체결',   color: 'bg-success/20 text-success' },
   cancelled: { label: '취소',   color: 'bg-danger/20 text-danger' },
   expired:   { label: '만료',   color: 'bg-gray-600/20 text-gray-400' },
+  // failed 매핑이 없어 실패한 주문이 "미체결"로 잘못 표시되던 문제 수정
+  failed:    { label: '실패',   color: 'bg-danger/20 text-danger' },
+};
+
+/** 상태별 메시지 색상 — 실패/취소는 눈에 띄게, 나머지는 차분하게 */
+const MESSAGE_COLOR: Record<string, string> = {
+  failed: 'text-danger',
+  cancelled: 'text-gray-400',
+  expired: 'text-gray-500',
+  filled: 'text-success',
 };
 
 export default function TransactionsPage() {
@@ -124,43 +134,45 @@ export default function TransactionsPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
+              {/* 메시지 칼럼 폭을 최대한 확보하기 위해 나머지 칼럼은 px-1 + w-0(내용폭)으로 압축 */}
               <tr className="border-b border-gray-700">
-                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">주문시간</th>
-                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">마감시간</th>
-                <th className="text-left py-3 px-2 text-gray-400 font-medium">유저</th>
-                <th className="text-left py-3 px-2 text-gray-400 font-medium">종류</th>
-                <th className="text-left py-3 px-2 text-gray-400 font-medium">토큰</th>
-                <th className="text-right py-3 px-2 text-gray-400 font-medium">가격</th>
-                <th className="text-right py-3 px-2 text-gray-400 font-medium">수량</th>
-                <th className="text-right py-3 px-2 text-gray-400 font-medium">수수료</th>
-                <th className="text-left py-3 px-2 text-gray-400 font-medium">Tx Hash</th>
-                <th className="text-center py-3 px-2 text-gray-400 font-medium">상태</th>
+                <th className="text-left py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">주문시간</th>
+                <th className="text-left py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">마감시간</th>
+                <th className="text-left py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">유저</th>
+                <th className="text-left py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">종류</th>
+                <th className="text-left py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">토큰</th>
+                <th className="text-right py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">가격</th>
+                <th className="text-right py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">수량</th>
+                <th className="text-right py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">수수료</th>
+                <th className="text-left py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">Tx Hash</th>
+                <th className="text-left py-3 px-2 text-gray-400 font-medium">메세지</th>
+                <th className="text-center py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">상태</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={10} className="text-center py-8 text-gray-400">로딩 중...</td>
+                  <td colSpan={11} className="text-center py-8 text-gray-400">로딩 중...</td>
                 </tr>
               ) : orders.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="text-center py-8 text-gray-400">데이터가 없습니다</td>
+                  <td colSpan={11} className="text-center py-8 text-gray-400">데이터가 없습니다</td>
                 </tr>
               ) : (
                 orders.map((order) => {
                   const statusInfo = STATUS_MAP[order.status] || STATUS_MAP.active;
                   return (
                     <tr key={order.id} className="border-b border-gray-700/50 hover:bg-gray-700/30 transition">
-                      <td className="py-2 px-2 text-gray-400 text-xs whitespace-nowrap">
+                      <td className="py-2 px-1 text-gray-400 text-xs whitespace-nowrap">
                         {new Date(order.createdAt).toLocaleString('ko-KR')}
                       </td>
-                      <td className="py-2 px-2 text-gray-400 text-xs whitespace-nowrap">
+                      <td className="py-2 px-1 text-gray-400 text-xs whitespace-nowrap">
                         {order.status === 'filled' && order.updatedAt
                           ? new Date(order.updatedAt).toLocaleString('ko-KR')
                           : '—'}
                       </td>
-                      <td className="py-2 px-2">{order.username}</td>
-                      <td className="py-2 px-2">
+                      <td className="py-2 px-1 whitespace-nowrap">{order.username}</td>
+                      <td className="py-2 px-1">
                         <span className={`text-xs px-1.5 py-0.5 rounded ${
                           order.side === 'buy'
                             ? 'bg-green-600/20 text-green-400'
@@ -169,11 +181,11 @@ export default function TransactionsPage() {
                           {order.side === 'buy' ? 'BUY' : 'SELL'}
                         </span>
                       </td>
-                      <td className="py-2 px-2 font-medium">{order.tokenSymbol}</td>
-                      <td className="py-2 px-2 text-right font-mono text-xs">{order.price}</td>
-                      <td className="py-2 px-2 text-right font-mono text-xs">{order.quantity}</td>
-                      <td className="py-2 px-2 text-right text-gray-400 text-xs">{order.fee}</td>
-                      <td className="py-2 px-2 font-mono text-xs text-gray-400">
+                      <td className="py-2 px-1 font-medium whitespace-nowrap">{order.tokenSymbol}</td>
+                      <td className="py-2 px-1 text-right font-mono text-xs whitespace-nowrap">{order.price}</td>
+                      <td className="py-2 px-1 text-right font-mono text-xs whitespace-nowrap">{order.quantity}</td>
+                      <td className="py-2 px-1 text-right text-gray-400 text-xs whitespace-nowrap">{order.fee}</td>
+                      <td className="py-2 px-1 font-mono text-xs text-gray-400 whitespace-nowrap">
                         {order.txSignature ? (
                           <a
                             href={buildSolscanTxUrl(order.txSignature)}
@@ -185,8 +197,11 @@ export default function TransactionsPage() {
                           </a>
                         ) : '—'}
                       </td>
-                      <td className="py-2 px-2 text-center">
-                        <span className={`text-xs px-2 py-1 rounded-full ${statusInfo.color}`}>
+                      <td className={`py-2 px-2 text-xs ${MESSAGE_COLOR[order.status] || 'text-gray-300'}`}>
+                        {order.statusMessage || '—'}
+                      </td>
+                      <td className="py-2 px-1 text-center">
+                        <span className={`text-xs px-2 py-1 rounded-full whitespace-nowrap ${statusInfo.color}`}>
                           {statusInfo.label}
                         </span>
                       </td>

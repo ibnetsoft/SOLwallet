@@ -1005,14 +1005,76 @@ export class AdminService {
       side: o.side,
       price: o.price,
       quantity: o.quantity,
+      filledQty: o.filled_qty ?? 0,
       fee: o.fee,
       status: o.status,
       txSignature: o.tx_signature,
       createdAt: o.created_at,
       updatedAt: o.updated_at || null,
+      statusMessage: this.buildOrderStatusMessage(o),
     }));
 
     return { orders, total: count || 0 };
+  }
+
+  /**
+   * 주문 상태를 사람이 읽을 수 있는 상세 메시지로 변환
+   *
+   * orders 테이블에 실패 사유를 저장하는 컬럼이 없으므로, 보유한 필드
+   * (tx_signature / manifest_* / filled_qty / order_type)의 조합으로 어느
+   * 단계에서 멈췄는지를 추론해 알려준다.
+   */
+  private buildOrderStatusMessage(o: Record<string, unknown>): string {
+    const status = String(o.status ?? '');
+    const hasTx = !!o.tx_signature;
+    const hasSeq = o.manifest_sequence_number != null;
+    const qty = Number(o.quantity ?? 0);
+    const filled = Number(o.filled_qty ?? 0);
+    const orderType = String(o.order_type ?? 'limit');
+    const typeLabel = orderType === 'market' ? '시장가' : '지정가';
+
+    switch (status) {
+      case 'filled':
+        return filled > 0 && filled < qty
+          ? `부분 체결 — ${filled}/${qty} 체결됨 (${typeLabel})`
+          : `체결 완료 — 전량 ${qty} 체결 (${typeLabel})`;
+
+      case 'active':
+        if (!hasTx) {
+          return '주문 생성됨 — 아직 체인에 제출되지 않음 (서명 대기/중단)';
+        }
+        return hasSeq
+          ? `오더북 등록 완료 — 체결 대기 중 (${typeLabel})`
+          : '체인 제출됨 — 오더북 등록 확인 중';
+
+      case 'submitted':
+        return hasTx
+          ? '체인에 제출됨 — 블록 포함 확인 중'
+          : '제출 처리 중 — Tx 미생성';
+
+      case 'cancelled':
+        return filled > 0
+          ? `취소됨 — 취소 전 ${filled}/${qty} 체결`
+          : '취소됨 — 체결 없이 전량 취소';
+
+      case 'expired':
+        if (!hasTx) {
+          return '만료 — 체인 제출 전 단계에서 종료됨';
+        }
+        return filled > 0
+          ? `만료 — ${filled}/${qty} 체결 후 나머지 소멸`
+          : '만료 — 체결되지 않은 채 유효기간 종료';
+
+      case 'failed':
+        if (!hasTx) {
+          // DEX가 주문 tx 자체를 만들어주지 못한 경우 (예: 해당 페어의 마켓 미존재)
+          return 'DEX 주문 생성 실패 — 거래 마켓이 없거나 DEX가 요청을 거부함 (Tx 미생성)';
+        }
+        return '체인 제출 실패 — 트랜잭션이 블록에 반영되지 못함';
+
+      default:
+        return status || '—';
+    }
   }
 
   /**

@@ -219,11 +219,15 @@ export interface AdminOrderDetail {
   side: string;
   price: string;
   quantity: string;
+  /** 체결된 수량 (부분 체결 표시용) */
+  filledQty: string | number;
   fee: string;
   status: string;
   txSignature: string | null;
   createdAt: string;
   updatedAt: string | null;
+  /** 어느 단계에서 멈췄는지 사람이 읽을 수 있게 풀어쓴 상태 설명 */
+  statusMessage: string;
 }
 
 // ========================================
