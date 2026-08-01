@@ -91,6 +91,19 @@ export class AdminController {
     return { success: true, data: result };
   }
 
+  /**
+   * 어드민이 Tele ID로 스폰서(추천인) 수동 지정
+   * PATCH /api/admin/users/:id/sponsor  body: { telegramUid: number }
+   */
+  @Patch('users/:id/sponsor')
+  async setUserSponsor(@Param('id') userId: string, @Body('telegramUid') telegramUid: number) {
+    if (!telegramUid) {
+      throw new BadRequestException('Tele ID가 필요합니다.');
+    }
+    const result = await this.adminService.setUserSponsor(userId, Number(telegramUid));
+    return { success: true, data: result };
+  }
+
   // ─── 토큰 관리 ───
 
   @Get('tokens')

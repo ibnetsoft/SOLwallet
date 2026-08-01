@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getUsers, getUserWallets, getReferralStats, getTokens, getUserBalance, toggleSponsor, deleteUsers } from '@/lib/api/admin';
+import { getUsers, getUserWallets, getReferralStats, getTokens, getUserBalance, toggleSponsor, deleteUsers, setUserSponsor } from '@/lib/api/admin';
 import type { ReferralStat, AdminWalletDetail } from '@/lib/api/admin';
 import type { AdminUserDetail, AdminTokenDetail } from '@solwallet/shared-types';
 
@@ -13,6 +13,7 @@ function UserRow({
   onToggleCheck,
   onViewWallets,
   onToggleSponsor,
+  onSetSponsor,
 }: {
   user: AdminUserDetail;
   tokens: AdminTokenDetail[];
@@ -21,10 +22,26 @@ function UserRow({
   onToggleCheck: (id: string) => void;
   onViewWallets: (id: string) => void;
   onToggleSponsor: (userId: string) => Promise<void>;
+  onSetSponsor: (userId: string, telegramUid: number) => Promise<void>;
 }) {
   const [balances, setBalances] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [isSponsor, setIsSponsor] = useState((user as any).isSponsor ?? false);
+  const [sponsorInput, setSponsorInput] = useState('');
+  const [savingSponsor, setSavingSponsor] = useState(false);
+
+  const handleSaveSponsor = async () => {
+    if (!sponsorInput.trim()) return;
+    setSavingSponsor(true);
+    try {
+      await onSetSponsor(user.id, Number(sponsorInput.trim()));
+      setSponsorInput('');
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '스폰서 지정 실패');
+    } finally {
+      setSavingSponsor(false);
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -73,7 +90,30 @@ function UserRow({
           <span className="font-medium text-sm">{user.username || user.firstName || user.telegramUid}</span>
         </div>
       </td>
-      <td className="py-3 px-4 text-gray-400 font-mono text-xs text-center">{user.sponsorTeleId || '—'}</td>
+      <td className="py-3 px-4 text-gray-400 font-mono text-xs text-center">
+        {user.sponsorTeleId ? (
+          user.sponsorTeleId
+        ) : (
+          <div className="flex items-center justify-center gap-1">
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="Tele ID"
+              value={sponsorInput}
+              onChange={(e) => setSponsorInput(e.target.value.replace(/[^0-9]/g, ''))}
+              onKeyDown={(e) => e.key === 'Enter' && handleSaveSponsor()}
+              className="w-20 bg-gray-900 border border-gray-700 rounded px-1.5 py-1 text-xs text-center focus:outline-none focus:border-primary-500"
+            />
+            <button
+              onClick={handleSaveSponsor}
+              disabled={savingSponsor || !sponsorInput.trim()}
+              className="text-[10px] px-2 py-1 rounded bg-primary-600/20 text-primary-400 hover:bg-primary-600/30 disabled:opacity-40 transition"
+            >
+              {savingSponsor ? '...' : '저장'}
+            </button>
+          </div>
+        )}
+      </td>
       <td className="py-3 px-4 text-gray-400 font-mono text-xs text-center">{user.referralCode || '—'}</td>
       <td className="py-3 px-4 text-center text-gray-400 font-mono text-xs">{user.totalReferrals || 0}</td>
       <td className="py-3 px-4 text-center text-gray-400 font-mono text-xs">{user.level1Referrals || 0}</td>
@@ -209,6 +249,13 @@ export default function UsersPage() {
 
   const handleToggleSponsor = async (_userId: string) => {
     // 방장 통계 새로고침
+    fetchReferralStats();
+  };
+
+  const handleSetSponsor = async (userId: string, telegramUid: number) => {
+    await setUserSponsor(userId, telegramUid);
+    // 목록/방장 통계 새로고침
+    await fetchUsers(page, pageSize);
     fetchReferralStats();
   };
 
@@ -400,6 +447,7 @@ export default function UsersPage() {
                     onToggleCheck={toggleSelectUser}
                     onViewWallets={handleViewWallets}
                     onToggleSponsor={handleToggleSponsor}
+                    onSetSponsor={handleSetSponsor}
                   />
                 ))
               )}

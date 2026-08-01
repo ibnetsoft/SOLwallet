@@ -337,6 +337,60 @@ export class AdminService {
   }
 
   /**
+   * 어드민이 Tele ID로 스폰서(추천인) 수동 지정
+   * 기존 추천관계(referred_by)가 없는 유저에 한해서만 허용
+   */
+  async setUserSponsor(userId: string, sponsorTelegramUid: number) {
+    const { data: user, error: fetchErr } = await this.client
+      .from('users')
+      .select('id, referred_by')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (fetchErr || !user) {
+      throw new BadRequestException('유저를 찾을 수 없습니다.');
+    }
+    if (user.referred_by) {
+      throw new BadRequestException('이미 추천인이 지정된 회원입니다.');
+    }
+
+    const { data: sponsor, error: sponsorErr } = await this.client
+      .from('users')
+      .select('id')
+      .eq('telegram_uid', sponsorTelegramUid)
+      .maybeSingle();
+
+    if (sponsorErr || !sponsor) {
+      throw new BadRequestException('해당 Tele ID의 회원을 찾을 수 없습니다.');
+    }
+    if (sponsor.id === userId) {
+      throw new BadRequestException('본인을 스폰서로 지정할 수 없습니다.');
+    }
+
+    const { error: updateErr } = await this.client
+      .from('users')
+      .update({ referred_by: sponsor.id })
+      .eq('id', userId);
+    if (updateErr) {
+      this.logger.error(`Failed to set sponsor: ${updateErr.message}`);
+      throw new BadRequestException('스폰서 지정에 실패했습니다.');
+    }
+
+    const { error: refError } = await this.client.from('referrals').insert({
+      referrer_id: sponsor.id,
+      referee_id: userId,
+    });
+    if (refError) {
+      this.logger.error(`Failed to record referral for manual sponsor: ${refError.message}`);
+      // referrals 기록 실패 → referred_by 롤백 (데이터 정합성)
+      await this.client.from('users').update({ referred_by: null }).eq('id', userId);
+      throw new BadRequestException('스폰서 관계 기록에 실패했습니다.');
+    }
+
+    return { sponsorId: sponsor.id, sponsorTelegramUid };
+  }
+
+  /**
    * 토큰 목록 — camelCase 변환
    */
   async getTokens() {

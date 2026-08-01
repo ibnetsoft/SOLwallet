@@ -65,6 +65,17 @@ export function toggleSponsor(userId: string): Promise<{ isSponsor: boolean }> {
   return apiFetch(`/admin/users/${userId}/toggle-sponsor`, { method: 'POST' });
 }
 
+/**
+ * 어드민이 Tele ID로 스폰서(추천인) 수동 지정 — 기존 추천관계가 없는 유저만 가능
+ * PATCH /admin/users/:id/sponsor
+ */
+export function setUserSponsor(userId: string, telegramUid: number): Promise<{ sponsorId: string; sponsorTelegramUid: number }> {
+  return apiFetch(`/admin/users/${userId}/sponsor`, {
+    method: 'PATCH',
+    body: JSON.stringify({ telegramUid }),
+  });
+}
+
 // ─── 추천 조직도 ───
 
 export function getReferralTree(userId: string, maxDepth = 5) {
