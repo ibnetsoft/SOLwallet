@@ -63,6 +63,16 @@ export class AdminController {
     return { success: true, data: result };
   }
 
+  /**
+   * 유저 일괄 삭제
+   * DELETE /api/admin/users  body: { userIds: string[] }
+   */
+  @Delete('users')
+  async deleteUsers(@Body('userIds') userIds: string[]) {
+    const result = await this.adminService.deleteUsers(userIds);
+    return { success: true, data: result };
+  }
+
   // ─── 추천인 통계 ───
 
   @Get('referrals/stats')

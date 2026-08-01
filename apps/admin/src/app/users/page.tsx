@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getUsers, getUserWallets, getReferralStats, getTokens, getUserBalance, toggleSponsor } from '@/lib/api/admin';
+import { getUsers, getUserWallets, getReferralStats, getTokens, getUserBalance, toggleSponsor, deleteUsers } from '@/lib/api/admin';
 import type { ReferralStat, AdminWalletDetail } from '@/lib/api/admin';
 import type { AdminUserDetail, AdminTokenDetail } from '@solwallet/shared-types';
 
@@ -9,12 +9,16 @@ function UserRow({
   user,
   tokens,
   selectedUserId,
+  checked,
+  onToggleCheck,
   onViewWallets,
   onToggleSponsor,
 }: {
   user: AdminUserDetail;
   tokens: AdminTokenDetail[];
   selectedUserId: string | null;
+  checked: boolean;
+  onToggleCheck: (id: string) => void;
   onViewWallets: (id: string) => void;
   onToggleSponsor: (userId: string) => Promise<void>;
 }) {
@@ -50,6 +54,14 @@ function UserRow({
 
   return (
     <tr className="border-b border-gray-700/50 hover:bg-gray-700/30 transition">
+      <td className="py-3 px-4 text-center">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={() => onToggleCheck(user.id)}
+          className="w-4 h-4 rounded border-gray-600 bg-gray-700 accent-primary-600 cursor-pointer"
+        />
+      </td>
       <td className="py-3 px-4 text-center text-gray-400 text-xs whitespace-nowrap">
         {new Date(user.createdAt).toLocaleDateString('ko-KR')}
       </td>
@@ -61,7 +73,6 @@ function UserRow({
           <span className="font-medium text-sm">{user.username || user.firstName || user.telegramUid}</span>
         </div>
       </td>
-      <td className="py-3 px-4 text-gray-400 font-mono text-xs">{user.id.slice(0, 8)}...</td>
       <td className="py-3 px-4 text-gray-400 font-mono text-xs text-center">{user.sponsorTeleId || '—'}</td>
       <td className="py-3 px-4 text-gray-400 font-mono text-xs text-center">{user.referralCode || '—'}</td>
       <td className="py-3 px-4 text-center text-gray-400 font-mono text-xs">{user.totalReferrals || 0}</td>
@@ -121,6 +132,10 @@ export default function UsersPage() {
   const [pageSize, setPageSize] = useState(20);
   const totalPages = Math.ceil(total / pageSize);
 
+  // 선택 삭제
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
+
   const fetchUsers = async (p: number, size: number) => {
     setIsLoading(true);
     setError('');
@@ -128,10 +143,42 @@ export default function UsersPage() {
       const data = await getUsers(p, size);
       setUsers(data.users);
       setTotal(data.total);
+      setSelectedIds(new Set());
     } catch (err) {
       setError(err instanceof Error ? err.message : '유저 조회 실패');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const toggleSelectUser = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) =>
+      prev.size === users.length && users.length > 0 ? new Set() : new Set(users.map((u) => u.id)),
+    );
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`선택한 ${selectedIds.size}명의 회원을 삭제하시겠습니까?\n관련 지갑/주문/추천 기록도 함께 삭제되며 되돌릴 수 없습니다.`)) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      await deleteUsers(Array.from(selectedIds));
+      await fetchUsers(page, pageSize);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '삭제 실패');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -283,6 +330,15 @@ export default function UsersPage() {
           <h2 className="text-lg font-bold">💰 유저 목록</h2>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-400">총 {total}명</span>
+            {selectedIds.size > 0 && (
+              <button
+                onClick={handleDeleteSelected}
+                disabled={deleting}
+                className="text-xs px-3 py-1.5 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 disabled:opacity-50 transition"
+              >
+                {deleting ? '삭제 중...' : `🗑 선택 삭제 (${selectedIds.size})`}
+              </button>
+            )}
             <select
               value={pageSize}
               onChange={(e) => {
@@ -303,10 +359,17 @@ export default function UsersPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-700">
+                <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    checked={users.length > 0 && selectedIds.size === users.length}
+                    onChange={toggleSelectAll}
+                    className="w-4 h-4 rounded border-gray-600 bg-gray-700 accent-primary-600 cursor-pointer"
+                  />
+                </th>
                 <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">가입일</th>
                 <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">마지막접속일</th>
                 <th className="text-left py-3 px-4 text-gray-400 font-medium whitespace-nowrap">Tele ID</th>
-                <th className="text-left py-3 px-4 text-gray-400 font-medium whitespace-nowrap">UID</th>
                 <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">스폰서</th>
                 <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">추천코드</th>
                 <th className="text-center py-3 px-4 text-gray-400 font-medium whitespace-nowrap">총추천인원</th>
@@ -328,12 +391,14 @@ export default function UsersPage() {
                 </tr>
               ) : (
                 users.map((user) => (
-                  <UserRow 
-                    key={user.id} 
-                    user={user} 
-                    tokens={tokens} 
-                    selectedUserId={selectedUserId} 
-                    onViewWallets={handleViewWallets} 
+                  <UserRow
+                    key={user.id}
+                    user={user}
+                    tokens={tokens}
+                    selectedUserId={selectedUserId}
+                    checked={selectedIds.has(user.id)}
+                    onToggleCheck={toggleSelectUser}
+                    onViewWallets={handleViewWallets}
                     onToggleSponsor={handleToggleSponsor}
                   />
                 ))

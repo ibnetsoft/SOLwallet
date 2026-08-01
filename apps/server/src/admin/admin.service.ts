@@ -169,6 +169,45 @@ export class AdminService {
   }
 
   /**
+   * 유저 일괄 삭제
+   * wallets/orders/referrals는 ON DELETE CASCADE로 자동 정리되지만,
+   * transfers와 users.referred_by(자기참조)는 cascade가 없어 먼저 정리해야 함
+   */
+  async deleteUsers(userIds: string[]) {
+    if (!userIds || userIds.length === 0) {
+      throw new BadRequestException('삭제할 유저를 선택해주세요.');
+    }
+
+    // 삭제 대상을 추천인으로 등록해 둔 다른 유저들의 참조 해제
+    const { error: unlinkError } = await this.client
+      .from('users')
+      .update({ referred_by: null })
+      .in('referred_by', userIds);
+    if (unlinkError) {
+      this.logger.error(`Failed to unlink referred_by before delete: ${unlinkError.message}`);
+      throw new BadRequestException('유저 삭제 준비에 실패했습니다.');
+    }
+
+    // transfers는 FK에 cascade가 없어 먼저 삭제
+    const { error: transfersError } = await this.client
+      .from('transfers')
+      .delete()
+      .in('user_id', userIds);
+    if (transfersError) {
+      this.logger.error(`Failed to delete transfers before user delete: ${transfersError.message}`);
+      throw new BadRequestException('유저 삭제 준비에 실패했습니다.');
+    }
+
+    const { error } = await this.client.from('users').delete().in('id', userIds);
+    if (error) {
+      this.logger.error(`Failed to delete users: ${error.message}`);
+      throw new BadRequestException('유저 삭제에 실패했습니다.');
+    }
+
+    return { deleted: userIds.length };
+  }
+
+  /**
    * 특정 유저의 지갑 + 잔액 정보
    */
   async getUserWallets(userId: string) {

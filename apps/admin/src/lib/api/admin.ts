@@ -31,6 +31,13 @@ export function getUserBalance(userId: string): Promise<{ wallets: any[]; totalU
   return apiFetch(`/admin/users/${userId}/balance`);
 }
 
+export function deleteUsers(userIds: string[]): Promise<{ deleted: number }> {
+  return apiFetch('/admin/users', {
+    method: 'DELETE',
+    body: JSON.stringify({ userIds }),
+  });
+}
+
 // ─── 추천(방장) 통계 ───
 
 export interface ReferralStat {
