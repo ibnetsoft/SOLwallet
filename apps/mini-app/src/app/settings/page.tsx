@@ -323,16 +323,6 @@ export default function SettingsPage() {
                 {profile.referralCode} <Copy className="inline w-3.5 h-3.5 ml-1" />
               </button>
             </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-400">{t('settings.directReferrals')}</span>
-              <span className="font-medium">{t('settings.friendsCount', { count: profile.referralCount })}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-400">{t('settings.totalReferrals')}</span>
-              <span className="font-medium">{t('settings.friendsCount', { count: profile.totalReferralCount ?? profile.referralCount })}</span>
-            </div>
-
-
           </div>
         </section>
       )}

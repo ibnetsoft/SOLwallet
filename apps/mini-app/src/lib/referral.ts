@@ -2,13 +2,15 @@
  * 추천 링크 생성 헬퍼
  *
  * 링크 형태:
- * 1. 웹 URL (메인/권장): https://<miniapp>/?ref=<code>
- *    → PC/모바일/일반 브라우저 모두 작동 — 가장 호환성 높음
- *    → Telegram 안에서 열면 자동으로 미니앱 로드 + ?ref= 추천인 추적
- * 2. Telegram 미니앱 딥링크 (보조): https://t.me/<bot>?startapp=<code>
- *    → 모바일 Telegram 전용. PC Desktop은 BOT_INVALID 에러 발생 가능
- *    → (참고) 올바른 Mini App 딥링크는 t.me/<bot>/<app>?startapp= 형식이나
- *      BotFather에 등록된 app name이 필요. 없으면 ?startapp= 폼 사용.
+ * 1. Telegram 미니앱 딥링크 (메인/권장): https://t.me/<bot>?startapp=<code>
+ *    → 탭하면 텔레그램이 곧바로 미니앱을 열고 start_param으로 추천코드 전달.
+ *      "텔레그램 안에서 열어주세요" 중간 화면 없이 바로 지갑 화면으로 넘어감.
+ *    → PC Telegram Desktop에서 드물게 BOT_INVALID 에러 발생 가능하나,
+ *      모바일(실사용 대부분)에서는 가장 안정적으로 동작.
+ * 2. 웹 URL (보조): https://<miniapp>/?ref=<code>
+ *    → 텔레그램이 설치 안 된 환경(PC 브라우저 등)을 위한 폴백.
+ *    → 텔레그램 "밖"에서 열면 "Please open this app inside Telegram" 화면을
+ *      거쳐야 하므로, 실사용 공유 링크로는 1번(딥링크)을 우선 사용해야 함.
  */
 
 import { getMsg } from '@/lib/i18n';
@@ -36,13 +38,14 @@ export function getTelegramDeepLink(referralCode: string): string {
 }
 
 /**
- * 공유용 메인 링크 — 웹 URL 우선, 없으면 딥링크 폴백
+ * 공유용 메인 링크 — 텔레그램 딥링크 우선(중간 화면 없이 바로 미니앱 오픈),
+ * 봇 username이 설정 안 된 경우에만 웹 URL로 폴백
  * 클립보드 복사 / 공유 버튼에 사용
  */
 export function getShareLink(referralCode: string): string {
-  const web = getWebReferralUrl(referralCode);
-  if (web) return web;
-  return getTelegramDeepLink(referralCode);
+  const deepLink = getTelegramDeepLink(referralCode);
+  if (deepLink) return deepLink;
+  return getWebReferralUrl(referralCode);
 }
 
 /**
