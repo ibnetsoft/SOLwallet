@@ -6,6 +6,20 @@ import { telegramLogin, isLoggedIn } from '@/lib/api/auth';
 import { useToast } from '@/components/Toast';
 import { useT } from '@/lib/i18n';
 
+/**
+ * "Open in Telegram" 링크 — 일반 브라우저에서 웹 추천 링크(?ref=)로 들어와
+ * Telegram 환경이 아닐 때 표시됨. startapp= 파라미터로 추천코드를 실어 보내지
+ * 않으면 봇 채팅창만 열리고 미니앱은 별도로 찾아 들어가야 해서 추천코드가
+ * 유실됨 — sessionStorage/URL에 남아있는 코드를 그대로 startapp=에 전달.
+ */
+function getOpenInTelegramHref(botUsername: string): string {
+  if (typeof window === 'undefined') return `https://t.me/${botUsername}`;
+  const stored = sessionStorage.getItem('referral_start_param');
+  const urlRef = new URLSearchParams(window.location.search).get('ref');
+  const code = stored && stored.length >= 4 ? stored : urlRef && urlRef.length >= 4 ? urlRef : undefined;
+  return code ? `https://t.me/${botUsername}?startapp=${encodeURIComponent(code)}` : `https://t.me/${botUsername}`;
+}
+
 export default function LoginPage() {
   const { t } = useT();
   const router = useRouter();
@@ -179,7 +193,7 @@ export default function LoginPage() {
             <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700/50 text-center">
               <p className="text-sm text-gray-300 mb-4">{errorMessage}</p>
               <a
-                href={`https://t.me/${botUsername}`}
+                href={getOpenInTelegramHref(botUsername)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full bg-blue-500 hover:bg-blue-600 text-white rounded-xl py-3 px-4 font-medium flex items-center justify-center gap-2 transition"
