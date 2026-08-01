@@ -1,10 +1,15 @@
 import { apiFetch, API_BASE } from './client';
-import type { AdminStats, AdminUserDetail, AdminTokenDetail, AdminOrderDetail } from '@solwallet/shared-types';
+import type { AdminStats, AdminDashboard, AdminUserDetail, AdminTokenDetail, AdminOrderDetail } from '@solwallet/shared-types';
 
 // ─── 대시보드 ───
 
 export function getStats(): Promise<AdminStats> {
   return apiFetch('/admin/stats');
+}
+
+/** 대시보드 전체 — 통계 + 입금 현황 + 오늘의 가입/트랜잭션 */
+export function getDashboard(): Promise<AdminDashboard> {
+  return apiFetch('/admin/dashboard');
 }
 
 // ─── 유저 관리 ───

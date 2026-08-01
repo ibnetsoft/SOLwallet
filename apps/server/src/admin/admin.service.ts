@@ -1,7 +1,19 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
-import type { AdminStats } from '@solwallet/shared-types';
+import type {
+  AdminStats,
+  AdminDashboard,
+  DashboardTodayUser,
+  DashboardTodayOrder,
+} from '@solwallet/shared-types';
+
+const SOL_MINT_ADDR = 'So11111111111111111111111111111111111111112';
+const USDT_MINT_ADDR = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
+const USDC_MINT_ADDR = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+/** 스테이블코인 — USDT 환산 시 1:1로 계산 */
+const STABLE_MINTS = new Set([USDT_MINT_ADDR, USDC_MINT_ADDR]);
 
 // 내부 트리 노드 타입 (buildTree/getReferralTree에서 사용)
 export interface TreeNodeShape {
@@ -27,6 +39,52 @@ export class AdminService {
 
   private get client() {
     return this.supabaseService.getClient();
+  }
+
+  private get rpcUrl(): string {
+    return this.configService.get<string>('SOLANA_RPC_URL') || '';
+  }
+
+  /**
+   * 대시보드 입금 집계 캐시 — 온체인 RPC 호출이 무거워 60초간 재사용.
+   * (지갑 수 × RPC 호출이라 매 새로고침마다 조회하면 rate limit에 걸림)
+   */
+  private depositStatsCache: {
+    at: number;
+    data: { totalDepositUsdt: number; todayDepositUsdt: number; partial: boolean };
+  } | null = null;
+  private readonly DEPOSIT_CACHE_MS = 60_000;
+
+  /** RPC JSON-RPC 호출 헬퍼 */
+  private async rpc<T>(method: string, params: unknown[]): Promise<T | null> {
+    try {
+      const res = await fetch(this.rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+      });
+      const json = (await res.json()) as { result?: T; error?: { message?: string } };
+      if (json.error) {
+        this.logger.warn(`RPC ${method} error: ${json.error.message}`);
+        return null;
+      }
+      return json.result ?? null;
+    } catch (err) {
+      this.logger.warn(`RPC ${method} failed: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    }
+  }
+
+  /** SOL 현재가(USD) — Jupiter Price API. 실패 시 0 (SOL은 환산에서 제외됨) */
+  private async getSolPriceUsd(): Promise<number> {
+    try {
+      const res = await fetch(`https://lite-api.jup.ag/price/v3?ids=${SOL_MINT_ADDR}`);
+      if (!res.ok) return 0;
+      const data = (await res.json()) as Record<string, { usdPrice?: number }>;
+      return Number(data?.[SOL_MINT_ADDR]?.usdPrice) || 0;
+    } catch {
+      return 0;
+    }
   }
 
   /**
@@ -74,6 +132,264 @@ export class AdminService {
       totalOrders: totalOrders || 0,
       activeOrders: activeOrders || 0,
     };
+  }
+
+  /**
+   * 대시보드 전체 데이터 — 기존 통계 + 입금 현황 + 오늘의 가입/트랜잭션 목록
+   */
+  async getDashboard(): Promise<AdminDashboard> {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayIso = todayStart.toISOString();
+
+    const [stats, deposit, todayUsers, todayOrders] = await Promise.all([
+      this.getStats(),
+      this.getDepositStats(todayStart),
+      this.getTodayUsers(todayIso),
+      this.getTodayOrders(todayIso),
+    ]);
+
+    return {
+      ...stats,
+      totalDepositUsdt: deposit.totalDepositUsdt,
+      todayDepositUsdt: deposit.todayDepositUsdt,
+      depositStatsPartial: deposit.partial,
+      todayUsers,
+      todayOrders,
+    };
+  }
+
+  /** 오늘 가입한 회원 목록 (스폰서 Tele ID 포함) */
+  private async getTodayUsers(todayIso: string): Promise<DashboardTodayUser[]> {
+    const { data } = await this.client
+      .from('users')
+      .select('*')
+      .gte('created_at', todayIso)
+      .order('created_at', { ascending: false });
+
+    const rows = data || [];
+    if (rows.length === 0) return [];
+
+    // 스폰서 표시용 — referred_by → username/first_name/telegram_uid
+    const referrerIds = Array.from(new Set(rows.map((u) => u.referred_by).filter(Boolean)));
+    const referrerMap: Record<string, string> = {};
+    if (referrerIds.length > 0) {
+      const { data: referrers } = await this.client
+        .from('users')
+        .select('id, username, first_name, telegram_uid')
+        .in('id', referrerIds);
+      (referrers || []).forEach((r) => {
+        referrerMap[r.id as string] =
+          (r.username as string) || (r.first_name as string) || String(r.telegram_uid);
+      });
+    }
+
+    return rows.map((u) => ({
+      id: u.id,
+      telegramUid: u.telegram_uid,
+      username: u.username,
+      firstName: u.first_name,
+      createdAt: u.created_at,
+      referralCode: u.referral_code ?? null,
+      sponsorTeleId: u.referred_by ? referrerMap[u.referred_by] ?? null : null,
+      adminNickname: u.admin_nickname ?? null,
+    }));
+  }
+
+  /** 오늘 발생한 주문(트랜잭션) 목록 */
+  private async getTodayOrders(todayIso: string): Promise<DashboardTodayOrder[]> {
+    const { data } = await this.client
+      .from('orders')
+      .select('*, users(username, first_name, telegram_uid), tokens(symbol)')
+      .gte('created_at', todayIso)
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    return (data || []).map((o) => {
+      const u = o.users as { username?: string; first_name?: string; telegram_uid?: number } | null;
+      const t = o.tokens as { symbol?: string } | null;
+      return {
+        id: o.id,
+        createdAt: o.created_at,
+        username: u?.username || u?.first_name || String(u?.telegram_uid ?? '—'),
+        side: o.side,
+        tokenSymbol: t?.symbol || '—',
+        price: o.price,
+        quantity: o.quantity,
+        fee: o.fee,
+        status: o.status,
+        txSignature: o.tx_signature ?? null,
+      };
+    });
+  }
+
+  /**
+   * 입금 현황 집계 — 전체 보유 잔고 + 오늘 입금액 (모두 USDT 환산)
+   *
+   * transfers 테이블에는 출금만 기록되고 입금은 남지 않으므로 온체인에서 직접 집계한다.
+   * RPC 호출을 최소화하기 위해:
+   *  - SOL 잔고: getMultipleAccounts로 최대 100개 지갑을 한 번에 조회
+   *  - SPL 잔고: 지갑당 getTokenAccountsByOwner 1회 (모든 민트를 한 번에)
+   *  - 오늘 입금: getSignaturesForAddress로 먼저 오늘 것만 추린 뒤 해당 tx만 상세 조회
+   */
+  private async getDepositStats(
+    todayStart: Date,
+  ): Promise<{ totalDepositUsdt: number; todayDepositUsdt: number; partial: boolean }> {
+    const cached = this.depositStatsCache;
+    if (cached && Date.now() - cached.at < this.DEPOSIT_CACHE_MS) {
+      return cached.data;
+    }
+
+    const empty = { totalDepositUsdt: 0, todayDepositUsdt: 0, partial: true };
+    if (!this.rpcUrl) return empty;
+
+    const { data: wallets } = await this.client.from('wallets').select('public_key');
+    const addresses = (wallets || []).map((w) => w.public_key as string).filter(Boolean);
+    if (addresses.length === 0) {
+      const zero = { totalDepositUsdt: 0, todayDepositUsdt: 0, partial: false };
+      this.depositStatsCache = { at: Date.now(), data: zero };
+      return zero;
+    }
+
+    const solPrice = await this.getSolPriceUsd();
+    let partial = solPrice === 0; // SOL 시세를 못 받으면 SOL분이 빠지므로 부분 집계
+
+    // ── 1. 전체 보유 잔고 ──
+    let totalDepositUsdt = 0;
+
+    // SOL: getMultipleAccounts (100개씩)
+    for (let i = 0; i < addresses.length; i += 100) {
+      const chunk = addresses.slice(i, i + 100);
+      const res = await this.rpc<{ value: Array<{ lamports?: number } | null> }>(
+        'getMultipleAccounts',
+        [chunk, { encoding: 'jsonParsed' }],
+      );
+      if (!res) {
+        partial = true;
+        continue;
+      }
+      (res.value || []).forEach((acc) => {
+        const lamports = acc?.lamports ?? 0;
+        totalDepositUsdt += (lamports / 1e9) * solPrice;
+      });
+    }
+
+    // SPL 토큰: 지갑당 1회
+    for (const addr of addresses) {
+      const res = await this.rpc<{
+        value: Array<{
+          account?: {
+            data?: {
+              parsed?: {
+                info?: { mint?: string; tokenAmount?: { uiAmount?: number } };
+              };
+            };
+          };
+        }>;
+      }>('getTokenAccountsByOwner', [
+        addr,
+        { programId: TOKEN_PROGRAM_ID },
+        { encoding: 'jsonParsed' },
+      ]);
+      if (!res) {
+        partial = true;
+        continue;
+      }
+      (res.value || []).forEach((acc) => {
+        const info = acc.account?.data?.parsed?.info;
+        const mint = info?.mint;
+        const uiAmount = Number(info?.tokenAmount?.uiAmount ?? 0);
+        if (!mint || !uiAmount) return;
+        totalDepositUsdt += this.toUsdt(mint, uiAmount, solPrice);
+      });
+    }
+
+    // ── 2. 오늘 입금액 ──
+    const todayDepositUsdt = await this.sumTodayDeposits(addresses, todayStart, solPrice, () => {
+      partial = true;
+    });
+
+    const result = {
+      totalDepositUsdt: Math.round(totalDepositUsdt * 1e6) / 1e6,
+      todayDepositUsdt: Math.round(todayDepositUsdt * 1e6) / 1e6,
+      partial,
+    };
+    this.depositStatsCache = { at: Date.now(), data: result };
+    return result;
+  }
+
+  /** 민트별 USDT 환산 — 스테이블 1:1, SOL/wSOL은 시세 적용, 그 외는 시세가 없어 0 */
+  private toUsdt(mint: string, uiAmount: number, solPrice: number): number {
+    if (STABLE_MINTS.has(mint)) return uiAmount;
+    if (mint === SOL_MINT_ADDR) return uiAmount * solPrice;
+    return 0;
+  }
+
+  /**
+   * 오늘 각 지갑으로 들어온 입금액 합계 (USDT 환산)
+   * 서명 목록에서 blockTime으로 먼저 오늘 것만 추려 상세 조회를 최소화한다.
+   */
+  private async sumTodayDeposits(
+    addresses: string[],
+    todayStart: Date,
+    solPrice: number,
+    markPartial: () => void,
+  ): Promise<number> {
+    const todaySec = Math.floor(todayStart.getTime() / 1000);
+    let sum = 0;
+
+    for (const addr of addresses) {
+      const sigs = await this.rpc<Array<{ signature: string; blockTime?: number | null; err?: unknown }>>(
+        'getSignaturesForAddress',
+        [addr, { limit: 25 }],
+      );
+      if (!sigs) {
+        markPartial();
+        continue;
+      }
+
+      const todaySigs = sigs
+        .filter((s) => !s.err && typeof s.blockTime === 'number' && (s.blockTime as number) >= todaySec)
+        .map((s) => s.signature);
+
+      for (const sig of todaySigs) {
+        const tx = await this.rpc<{
+          meta?: {
+            err?: unknown;
+            preBalances?: number[];
+            postBalances?: number[];
+            preTokenBalances?: Array<{ owner?: string; mint?: string; uiTokenAmount?: { uiAmount?: number } }>;
+            postTokenBalances?: Array<{ owner?: string; mint?: string; uiTokenAmount?: { uiAmount?: number } }>;
+          } | null;
+          transaction?: { message?: { accountKeys?: Array<string | { pubkey?: string }> } };
+        }>('getTransaction', [sig, { maxSupportedTransactionVersion: 0, encoding: 'jsonParsed' }]);
+
+        if (!tx?.meta || tx.meta.err) continue;
+
+        // SOL 증가분
+        const keys = (tx.transaction?.message?.accountKeys || []).map((k) =>
+          typeof k === 'string' ? k : k?.pubkey || '',
+        );
+        const idx = keys.indexOf(addr);
+        if (idx >= 0 && tx.meta.preBalances && tx.meta.postBalances) {
+          const diff = (tx.meta.postBalances[idx] ?? 0) - (tx.meta.preBalances[idx] ?? 0);
+          if (diff > 0) sum += (diff / 1e9) * solPrice;
+        }
+
+        // SPL 토큰 증가분 (이 지갑이 owner인 계정만)
+        const pre = tx.meta.preTokenBalances || [];
+        const post = tx.meta.postTokenBalances || [];
+        for (const p of post) {
+          if (p.owner !== addr || !p.mint) continue;
+          const before = pre.find((b) => b.owner === addr && b.mint === p.mint);
+          const diff =
+            Number(p.uiTokenAmount?.uiAmount ?? 0) - Number(before?.uiTokenAmount?.uiAmount ?? 0);
+          if (diff > 0) sum += this.toUsdt(p.mint, diff, solPrice);
+        }
+      }
+    }
+
+    return sum;
   }
 
   /**

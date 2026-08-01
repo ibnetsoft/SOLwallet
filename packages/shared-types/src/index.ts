@@ -137,6 +137,49 @@ export interface AdminStats {
   activeOrders: number;
 }
 
+/** 대시보드 — 오늘 가입한 회원 (회원목록과 동일한 필드 일부) */
+export interface DashboardTodayUser {
+  id: string;
+  telegramUid: string | number;
+  username: string;
+  firstName: string;
+  createdAt: string;
+  referralCode: string | null;
+  sponsorTeleId: string | null;
+  adminNickname: string | null;
+}
+
+/** 대시보드 — 오늘의 트랜잭션(주문) */
+export interface DashboardTodayOrder {
+  id: string;
+  createdAt: string;
+  username: string;
+  side: string;
+  tokenSymbol: string;
+  price: string | number;
+  quantity: string | number;
+  fee: string | number;
+  status: string;
+  txSignature: string | null;
+}
+
+/**
+ * 대시보드 전체 데이터 — 기존 통계 + 입금 현황 + 오늘의 목록
+ *
+ * ⚠️ 입금 관련 값은 온체인에서 직접 집계함 (transfers 테이블에는 출금만
+ * 기록되고 입금은 남지 않기 때문). RPC 부하를 줄이려 서버에서 캐시함.
+ */
+export interface AdminDashboard extends AdminStats {
+  /** 전체 회원 지갑의 현재 보유 잔고 합계 (USDT 환산) */
+  totalDepositUsdt: number;
+  /** 오늘 입금된 금액 (USDT 환산) */
+  todayDepositUsdt: number;
+  /** 입금 집계가 RPC 오류 등으로 부분적으로만 성공했는지 여부 */
+  depositStatsPartial: boolean;
+  todayUsers: DashboardTodayUser[];
+  todayOrders: DashboardTodayOrder[];
+}
+
 export interface AdminUserDetail {
   id: string;
   telegramUid: string | number;

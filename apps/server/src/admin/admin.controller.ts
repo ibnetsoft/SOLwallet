@@ -40,6 +40,15 @@ export class AdminController {
     return { success: true, data: stats };
   }
 
+  /**
+   * GET /api/admin/dashboard — 통계 + 입금 현황 + 오늘의 가입/트랜잭션
+   */
+  @Get('dashboard')
+  async getDashboard() {
+    const data = await this.adminService.getDashboard();
+    return { success: true, data };
+  }
+
   // ─── 유저 관리 ───
 
   @Get('users')
