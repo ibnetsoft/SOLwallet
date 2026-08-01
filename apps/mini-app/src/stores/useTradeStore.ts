@@ -70,8 +70,9 @@ interface TradeState {
   fetchMoreHistory: () => Promise<void>;
 
   // Order actions
-  createAndSubmitOrder: (pin: string) => Promise<{ txSignature?: string }>;
-  cancelOrder: (orderId: string, pin: string) => Promise<{ txSignature?: string }>;
+  // pin은 지갑이 잠겨있을 때만 필요 — 이미 잠금 해제된 세션이면 생략 가능
+  createAndSubmitOrder: (pin?: string) => Promise<{ txSignature?: string }>;
+  cancelOrder: (orderId: string, pin?: string) => Promise<{ txSignature?: string }>;
   withdrawFunds: (pin: string) => Promise<{ txSignature?: string }>;
   autoWithdrawIfPossible: () => Promise<void>;
 }
@@ -242,12 +243,18 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       throw new Error(getMsg('error.noActiveWallet'));
     }
 
-    // 지갑 잠금 해제
-    await useWalletStore.getState().unlockWallet(activeWallet.id, pin);
-
-    const secretKey = useWalletStore.getState().wallets.find((w) => w.id === activeWallet.id)?.secretKey;
+    // 이미 잠금 해제된 세션이면 PIN 없이 재사용, 아니면 PIN으로 잠금 해제
+    let secretKey = activeWallet.secretKey;
     if (!secretKey) {
-      useWalletStore.getState().lockWallets();
+      if (!pin) {
+        throw new Error(getMsg('error.walletLocked'));
+      }
+      await useWalletStore.getState().unlockWallet(activeWallet.id, pin);
+      secretKey = useWalletStore.getState().wallets.find((w) => w.id === activeWallet.id)?.secretKey;
+    } else {
+      useWalletStore.getState().extendSession();
+    }
+    if (!secretKey) {
       throw new Error(getMsg('error.walletUnlockFailed'));
     }
 
@@ -265,7 +272,6 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       });
 
       if (!result.unsignedTx) {
-        useWalletStore.getState().lockWallets();
         throw new Error(getMsg('error.txBuildFailed'));
       }
 
@@ -279,7 +285,6 @@ export const useTradeStore = create<TradeState>((set, get) => ({
           console.log('[trade] step 2: setupTx submitted');
         } catch (setupErr) {
           console.error('[trade] step 2 FAILED: setupTx:', setupErr);
-          useWalletStore.getState().lockWallets();
           throw new Error('지갑 초기 설정(토큰 계정 생성)에 실패했습니다. 잠시 후 다시 시도해주세요.');
         }
       }
@@ -301,7 +306,6 @@ export const useTradeStore = create<TradeState>((set, get) => ({
           }
         } catch (wrapErr) {
           console.error('[trade] step 3 FAILED: wrapTx:', wrapErr);
-          useWalletStore.getState().lockWallets();
           // 서버가 구체적인 실패 사유(컨펌 지연/체인 미반영/RPC 오류 등)를 알려주면
           // 그대로 노출 — 매번 같은 문구만 뜨면 원인 파악이 불가능해짐
           const msg = wrapErr instanceof Error && wrapErr.message
@@ -329,13 +333,8 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       setTimeout(() => get().fetchActiveOrders(), 10_000);
       setTimeout(() => get().fetchActiveOrders(), 20_000);
 
-      // 7. 메모리에서 키 해제
-      useWalletStore.getState().lockWallets();
-
+      // 세션 유지 — 다음 거래/취소는 PIN 재입력 없이 진행 (특수 케이스만 별도 확인)
       return submitResult;
-    } catch (err) {
-      useWalletStore.getState().lockWallets();
-      throw err;
     } finally {
       set({ isSubmitting: false });
     }
@@ -348,45 +347,43 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       throw new Error(getMsg('error.noActiveWallet'));
     }
 
-    // 지갑 잠금 해제
-    await useWalletStore.getState().unlockWallet(activeWallet.id, pin);
-
-    const secretKey = useWalletStore.getState().wallets.find((w) => w.id === activeWallet.id)?.secretKey;
+    // 이미 잠금 해제된 세션이면 PIN 없이 재사용, 아니면 PIN으로 잠금 해제
+    let secretKey = activeWallet.secretKey;
     if (!secretKey) {
-      useWalletStore.getState().lockWallets();
+      if (!pin) {
+        throw new Error(getMsg('error.walletLocked'));
+      }
+      await useWalletStore.getState().unlockWallet(activeWallet.id, pin);
+      secretKey = useWalletStore.getState().wallets.find((w) => w.id === activeWallet.id)?.secretKey;
+    } else {
+      useWalletStore.getState().extendSession();
+    }
+    if (!secretKey) {
       throw new Error(getMsg('error.walletUnlockFailed'));
     }
 
-    try {
-      // 1. Manifest에서 fresh cancel tx 획득 (취소 요청 + fresh blockhash 한 번에 처리)
-      const freshCancel = await ordersApi.getFreshCancelTx(orderId);
+    // 1. Manifest에서 fresh cancel tx 획득 (취소 요청 + fresh blockhash 한 번에 처리)
+    const freshCancel = await ordersApi.getFreshCancelTx(orderId);
 
-      // 주문이 온체인에 없어 DB에서 삭제된 경우 → 성공으로 처리
-      if (freshCancel.cancelled || !freshCancel.unsignedTx) {
-        console.log('[cancelOrder] order was not on-chain, already removed from DB');
-        get().fetchActiveOrders();
-        useWalletStore.getState().lockWallets();
-        return { txSignature: '' };
-      }
-
-      // 2. 온디바이스 서명 (Manifest 취소 = versioned)
-      const { signTransaction } = await import('@/lib/wallet');
-      const signedTx = signTransaction(freshCancel.unsignedTx, secretKey, 'versioned');
-
-      // 3. 서명된 cancel tx 제출
-      const result = await ordersApi.submitCancelOrder(orderId, signedTx);
-
-      // 4. 활성 주문 새로고침
+    // 주문이 온체인에 없어 DB에서 삭제된 경우 → 성공으로 처리
+    if (freshCancel.cancelled || !freshCancel.unsignedTx) {
+      console.log('[cancelOrder] order was not on-chain, already removed from DB');
       get().fetchActiveOrders();
-
-      // 5. 메모리에서 키 해제
-      useWalletStore.getState().lockWallets();
-
-      return result;
-    } catch (err) {
-      useWalletStore.getState().lockWallets();
-      throw err;
+      return { txSignature: '' };
     }
+
+    // 2. 온디바이스 서명 (Manifest 취소 = versioned)
+    const { signTransaction } = await import('@/lib/wallet');
+    const signedTx = signTransaction(freshCancel.unsignedTx, secretKey, 'versioned');
+
+    // 3. 서명된 cancel tx 제출
+    const result = await ordersApi.submitCancelOrder(orderId, signedTx);
+
+    // 4. 활성 주문 새로고침
+    get().fetchActiveOrders();
+
+    // 세션 유지 — 다음 거래/취소는 PIN 재입력 없이 진행
+    return result;
   },
 
   withdrawFunds: async (pin) => {
@@ -396,40 +393,34 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       throw new Error(getMsg('error.noActiveWallet'));
     }
 
-    // 지갑 잠금 해제
+    // 출금은 특수 케이스 — 이미 잠금 해제된 세션이어도 매번 PIN으로 재확인
     await useWalletStore.getState().unlockWallet(activeWallet.id, pin);
 
     const secretKey = useWalletStore.getState().wallets.find((w) => w.id === activeWallet.id)?.secretKey;
     if (!secretKey) {
-      useWalletStore.getState().lockWallets();
       throw new Error(getMsg('error.walletUnlockFailed'));
     }
 
-    try {
-      const { signTransaction } = await import('@/lib/wallet');
+    const { signTransaction } = await import('@/lib/wallet');
 
-      // 1. Manifest에서 withdraw tx 획득 (Global 잔액 인출)
-      console.log('[withdrawFunds] fetching withdraw tx...');
-      const { unsignedTx } = await ordersApi.getWithdrawTx(activeWallet.id);
+    // 1. Manifest에서 withdraw tx 획득 (Global 잔액 인출)
+    console.log('[withdrawFunds] fetching withdraw tx...');
+    const { unsignedTx } = await ordersApi.getWithdrawTx(activeWallet.id);
 
-      // 2. 온디바이스 서명 (withdraw = legacy)
-      console.log('[withdrawFunds] signing withdraw tx...');
-      const signedTx = signTransaction(unsignedTx, secretKey, 'legacy');
+    // 2. 온디바이스 서명 (withdraw = legacy)
+    console.log('[withdrawFunds] signing withdraw tx...');
+    const signedTx = signTransaction(unsignedTx, secretKey, 'legacy');
 
-      // 3. 서명된 withdraw tx 제출
-      console.log('[withdrawFunds] submitting...');
-      const result = await ordersApi.submitWithdrawTx(signedTx);
-      console.log('[withdrawFunds] done —', result.txSignature?.slice(0, 12));
+    // 3. 서명된 withdraw tx 제출
+    console.log('[withdrawFunds] submitting...');
+    const result = await ordersApi.submitWithdrawTx(signedTx);
+    console.log('[withdrawFunds] done —', result.txSignature?.slice(0, 12));
 
-      // 4. 잔액 새로고침
-      get().fetchActiveOrders();
+    // 4. 잔액 새로고침
+    get().fetchActiveOrders();
 
-      useWalletStore.getState().lockWallets();
-      return result;
-    } catch (err) {
-      useWalletStore.getState().lockWallets();
-      throw err;
-    }
+    // 세션 유지 — 거래/취소는 계속 PIN 없이 가능
+    return result;
   },
 
   /** 체결 감지 후 자동 withdraw — 지갑이 unlock 상태면 PIN 없이 실행 */

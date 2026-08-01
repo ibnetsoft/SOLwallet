@@ -46,6 +46,8 @@ interface WalletState {
   deleteWallet: (walletId: string) => Promise<void>;
   lockWallets: () => void;
   unlockWallet: (walletId: string, pin: string) => Promise<void>;
+  /** 잠금 해제 상태에서 활동이 있을 때 자동 잠금 타이머 연장 (세션 유지) */
+  extendSession: () => void;
 }
 
 // ─── 자동 잠금 타이머 관리 ───
@@ -459,6 +461,12 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       resetAutoLockTimer(() => get().lockWallets());
     } catch {
       throw new Error(getMsg('error.wrongPin'));
+    }
+  },
+
+  extendSession: () => {
+    if (!get().isLocked) {
+      resetAutoLockTimer(() => get().lockWallets());
     }
   },
 }));

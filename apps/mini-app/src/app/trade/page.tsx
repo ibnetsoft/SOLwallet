@@ -242,8 +242,11 @@ function TradeContent() {
     }
   }, [walletData, side, selectedToken, price, quoteMint]);
 
-  // 주문 실행 → PIN 입력 → 서명 + 제출
-  const handleExecute = async (pin: string) => {
+  // 지갑이 이미 잠금 해제된 세션인지 — 거래/취소는 이 경우 PIN 재입력 없이 진행
+  const isWalletUnlocked = () => !!wallets.find((w) => w.isActive)?.secretKey;
+
+  // 주문 실행 → 잠금 해제 상태면 즉시 서명/제출, 아니면 PIN 모달 표시
+  const handleExecute = async (pin?: string) => {
     setPinError('');
     try {
       const result = await createAndSubmitOrder(pin);
@@ -255,21 +258,24 @@ function TradeContent() {
         showToast(`📝 Tx: ${result.txSignature.slice(0, 8)}...`);
       }
     } catch (err) {
-      setPinError(err instanceof Error ? err.message : t('trade.orderFailed'));
+      const msg = err instanceof Error ? err.message : t('trade.orderFailed');
+      if (showPinModal) setPinError(msg);
+      else showToast(msg);
     }
   };
 
-  // 주문 취소 → PIN 입력 → 서명 + 제출
-  const handleCancelExecute = async (pin: string) => {
-    if (!pendingCancelOrderId) return;
+  // 주문 취소 → 잠금 해제 상태면 즉시 서명/제출, 아니면 PIN 모달 표시
+  const executeCancelOrder = async (orderId: string, pin?: string) => {
     setCancelPinError('');
     try {
-      await cancelOrder(pendingCancelOrderId, pin);
+      await cancelOrder(orderId, pin);
       setShowCancelPinModal(false);
       setPendingCancelOrderId(null);
       showToast(t('trade.orderCancelled'));
     } catch (err) {
-      setCancelPinError(err instanceof Error ? err.message : t('trade.cancelFailed'));
+      const msg = err instanceof Error ? err.message : t('trade.cancelFailed');
+      if (showCancelPinModal) setCancelPinError(msg);
+      else showToast(msg);
     }
   };
 
@@ -598,7 +604,11 @@ function TradeContent() {
             showToast(validationError);
             return;
           }
-          setShowPinModal(true);
+          if (isWalletUnlocked()) {
+            handleExecute();
+          } else {
+            setShowPinModal(true);
+          }
         }}
         disabled={isSubmitting || !activeWallet}
         className={`w-full py-4 rounded-xl font-bold text-lg transition disabled:opacity-50 ${
@@ -682,9 +692,13 @@ function TradeContent() {
                     </div>
                     <button
                       onClick={() => {
-                        setPendingCancelOrderId(order.id);
-                        setCancelPinError('');
-                        setShowCancelPinModal(true);
+                        if (isWalletUnlocked()) {
+                          executeCancelOrder(order.id);
+                        } else {
+                          setPendingCancelOrderId(order.id);
+                          setCancelPinError('');
+                          setShowCancelPinModal(true);
+                        }
                       }}
                       className="text-xs px-3 py-1 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition"
                     >
@@ -806,7 +820,10 @@ function TradeContent() {
         isOpen={showCancelPinModal}
         title={t('trade.pinTitle')}
         subtitle={t('trade.pinSubtitle')}
-        onConfirm={handleCancelExecute}
+        onConfirm={(pin) => {
+          if (!pendingCancelOrderId) return Promise.resolve();
+          return executeCancelOrder(pendingCancelOrderId, pin);
+        }}
         onCancel={() => {
           setShowCancelPinModal(false);
           setPendingCancelOrderId(null);

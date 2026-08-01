@@ -284,6 +284,7 @@ const zh: Record<string, string> = {
   'error.walletKeyMissing': '此设备没有钱包私钥。请在创建钱包的设备上访问，或使用助记词导入。',
   'error.wrongPin': 'PIN 不正确。',
   'error.walletUnlockFailed': '钱包解锁失败。',
+  'error.walletLocked': '钱包已锁定，请输入 PIN 解锁。',
   'error.fillAllFields': '请输入代币、价格和数量。',
   'error.noActiveWallet': '没有活跃钱包。',
   'error.txBuildFailed': '交易构建失败。',

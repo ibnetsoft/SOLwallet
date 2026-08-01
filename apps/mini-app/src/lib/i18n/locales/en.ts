@@ -286,6 +286,7 @@ const en: Record<TranslationKey, string> = {
   'error.walletKeyMissing': 'This device does not have the wallet private key. Access it from the device where it was created, or import it via seed phrase.',
   'error.wrongPin': 'Incorrect PIN.',
   'error.walletUnlockFailed': 'Failed to unlock wallet.',
+  'error.walletLocked': 'Wallet is locked. Please enter your PIN to unlock it.',
   'error.fillAllFields': 'Please enter token, price, and amount.',
   'error.noActiveWallet': 'No active wallet.',
   'error.txBuildFailed': 'Failed to build transaction.',

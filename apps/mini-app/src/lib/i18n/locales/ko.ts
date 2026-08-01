@@ -286,6 +286,7 @@ const ko: Record<string, string> = {
   'error.walletKeyMissing': '이 기기에 지갑 개인키가 없습니다. 지갑을 처음 만든 기기에서 접속하거나, 시드 구문으로 가져오세요.',
   'error.wrongPin': 'PIN이 올바르지 않습니다.',
   'error.walletUnlockFailed': '지갑 잠금 해제에 실패했습니다.',
+  'error.walletLocked': '지갑이 잠겨 있습니다. PIN을 입력해 잠금을 해제해주세요.',
   'error.fillAllFields': '토큰, 가격, 수량을 모두 입력해주세요.',
   'error.noActiveWallet': '활성 지갑이 없습니다.',
   'error.txBuildFailed': '트랜잭션 생성에 실패했습니다.',

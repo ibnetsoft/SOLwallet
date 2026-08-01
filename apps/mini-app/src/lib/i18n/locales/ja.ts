@@ -284,6 +284,7 @@ const ja: Record<string, string> = {
   'error.walletKeyMissing': 'この端末にはウォレットの秘密鍵がありません。作成した端末からアクセスするか、シードフレーズでインポートしてください。',
   'error.wrongPin': 'PINが正しくありません。',
   'error.walletUnlockFailed': 'ウォレットのロック解除に失敗しました。',
+  'error.walletLocked': 'ウォレットがロックされています。PINを入力して解除してください。',
   'error.fillAllFields': 'トークン、価格、数量をすべて入力してください。',
   'error.noActiveWallet': 'アクティブなウォレットがありません。',
   'error.txBuildFailed': 'トランザクションの構築に失敗しました。',
