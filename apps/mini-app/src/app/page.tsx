@@ -50,6 +50,7 @@ function HomePage() {
     wallets,
     activeWalletId,
     isInitialized,
+    walletsSynced,
     initialize,
   } = useWalletStore();
 
@@ -77,11 +78,14 @@ function HomePage() {
     setAuthChecked(true);
     if (!isInitialized) {
       initialize();
-    } else if (wallets.length === 0) {
-      // 지갑이 없는 신규 유저의 경우 바로 설정(지갑 생성) 페이지로 이동
+    } else if (walletsSynced && wallets.length === 0) {
+      // 지갑이 없는 신규 유저의 경우 바로 설정(지갑 생성) 페이지로 이동.
+      // ⚠️ 서버 동기화(walletsSynced) 완료 전에는 판단하지 않음 — 다른 기기에서
+      // 이미 만든 지갑이 있는데 이 기기의 로컬 상태만 보고 "0개"로 오판해
+      // 중복 지갑을 새로 만들게 되는 문제 방지
       router.replace('/settings?create=true');
     }
-  }, [isInitialized, initialize, router, wallets.length]);
+  }, [isInitialized, walletsSynced, initialize, router, wallets.length]);
 
   const fetchPortfolio = useCallback(async (silent = false) => {
     if (!activeWalletId) return;

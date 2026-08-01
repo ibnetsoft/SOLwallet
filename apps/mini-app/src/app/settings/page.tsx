@@ -23,6 +23,7 @@ export default function SettingsPage() {
     wallets,
     activeWalletId,
     isInitialized,
+    walletsSynced,
     initialize,
     createWallet,
     importWallet,
@@ -54,16 +55,21 @@ export default function SettingsPage() {
     }
     // 프로필 조회
     getUserProfile().then(setProfile).catch(() => {});
-
-    // 신규 유저 자동 지갑 생성 유도
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('create') === 'true') {
-        setShowCreatePin(true);
-        window.history.replaceState(null, '', '/settings');
-      }
-    }
   }, [isInitialized, initialize]);
+
+  // 신규 유저 자동 지갑 생성 유도 — 서버 동기화 완료 후 실제로 지갑이 0개일 때만 실행.
+  // ⚠️ 동기화 전 로컬 상태만 보고 판단하면, 다른 기기에서 이미 만든 지갑을 놓치고
+  // 여기서 또 새 지갑을 만들어버리는 문제가 있었음 (모바일 가입 후 PC 접속 시 재현)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (new URLSearchParams(window.location.search).get('create') !== 'true') return;
+    if (!walletsSynced) return;
+
+    window.history.replaceState(null, '', '/settings');
+    if (wallets.length === 0) {
+      setShowCreatePin(true);
+    }
+  }, [walletsSynced, wallets.length]);
 
   const getNextWalletLabel = () => {
     const numbers = wallets.map(w => {

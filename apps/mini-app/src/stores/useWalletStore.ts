@@ -36,6 +36,12 @@ interface WalletState {
   activeWalletId: string | null;
   isLocked: boolean;
   isInitialized: boolean;
+  /**
+   * 서버와 지갑 목록 동기화(fetchWallets)가 최소 1회 완료됐는지 여부.
+   * true가 되기 전에는 `wallets`가 이 기기의 localStorage만 반영한 값이라
+   * "지갑 0개"로 오판하면 안 됨 (다른 기기에서 이미 만든 지갑이 있을 수 있음).
+   */
+  walletsSynced: boolean;
 
   // Actions
   initialize: () => void;
@@ -95,6 +101,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
   activeWalletId: null,
   isLocked: true,
   isInitialized: false,
+  walletsSynced: false,
 
   /**
    * 앱 초기화 — localStorage에서 지갑 목록을 먼저 로드해 UI를 빠르게 그리고,
@@ -290,59 +297,65 @@ export const useWalletStore = create<WalletState>((set, get) => ({
    * 사용자가 잠금 해제할 수 있으므로 보존한다.
    */
   fetchWallets: async () => {
-    const token = loadAuthToken();
-    if (!token) return;
-
-    let res: Response;
     try {
-      res = await apiFetch('/user/wallets');
-    } catch {
-      // 네트워크 오류 — 로컬 상태 유지
-      return;
+      const token = loadAuthToken();
+      if (!token) return;
+
+      let res: Response;
+      try {
+        res = await apiFetch('/user/wallets');
+      } catch {
+        // 네트워크 오류 — 로컬 상태 유지
+        return;
+      }
+      if (!res.ok) return;
+
+      const { data } = await res.json();
+      const stored = loadWallets();
+
+      // 서버 지갑(snake_case) → WalletInfo + StoredWallet 병합
+      const serverRows = (data || []) as Record<string, unknown>[];
+      const mergedStorage: StoredWallet[] = [];
+      const serverWallets: WalletInfo[] = serverRows.map((w) => {
+        const local = stored.find((s) => s.id === (w.id as string));
+        // 로컬에 encrypted blob이 있으면 보존 (개인키는 서버에 없음)
+        const storedWallet: StoredWallet = {
+          id: w.id as string,
+          publicKey: w.public_key as string,
+          encrypted: local?.encrypted as StoredWallet['encrypted'],
+          mnemonic: local?.mnemonic,
+          label: (w.label as string) || local?.label || '',
+          walletIndex: w.wallet_index as number,
+          isActive: w.is_active as boolean,
+          createdAt: w.created_at as string,
+        };
+        mergedStorage.push(storedWallet);
+        return {
+          id: storedWallet.id,
+          publicKey: storedWallet.publicKey,
+          label: storedWallet.label,
+          walletIndex: storedWallet.walletIndex,
+          isActive: storedWallet.isActive,
+          createdAt: storedWallet.createdAt,
+          // 동기화 후에는 잠금 상태 — secretKey는 메모리에 두지 않음
+        };
+      });
+
+      // localStorage에 병합 결과 저장 (잠금 해제/삭제 시 일관성 유지)
+      saveWallets(mergedStorage);
+
+      const activeWallet = serverWallets.find((w) => w.isActive);
+
+      set({
+        wallets: serverWallets,
+        activeWalletId: activeWallet?.id || serverWallets[0]?.id || null,
+        isLocked: true,
+      });
+    } finally {
+      // 성공/실패/토큰없음 등 모든 경로에서 "동기화 시도는 끝났다"로 표시.
+      // 이게 있어야 홈 화면이 "동기화 전 로컬 상태만 보고 지갑 0개로 오판"하지 않음
+      set({ walletsSynced: true });
     }
-    if (!res.ok) return;
-
-    const { data } = await res.json();
-    const stored = loadWallets();
-
-    // 서버 지갑(snake_case) → WalletInfo + StoredWallet 병합
-    const serverRows = (data || []) as Record<string, unknown>[];
-    const mergedStorage: StoredWallet[] = [];
-    const serverWallets: WalletInfo[] = serverRows.map((w) => {
-      const local = stored.find((s) => s.id === (w.id as string));
-      // 로컬에 encrypted blob이 있으면 보존 (개인키는 서버에 없음)
-      const storedWallet: StoredWallet = {
-        id: w.id as string,
-        publicKey: w.public_key as string,
-        encrypted: local?.encrypted as StoredWallet['encrypted'],
-        mnemonic: local?.mnemonic,
-        label: (w.label as string) || local?.label || '',
-        walletIndex: w.wallet_index as number,
-        isActive: w.is_active as boolean,
-        createdAt: w.created_at as string,
-      };
-      mergedStorage.push(storedWallet);
-      return {
-        id: storedWallet.id,
-        publicKey: storedWallet.publicKey,
-        label: storedWallet.label,
-        walletIndex: storedWallet.walletIndex,
-        isActive: storedWallet.isActive,
-        createdAt: storedWallet.createdAt,
-        // 동기화 후에는 잠금 상태 — secretKey는 메모리에 두지 않음
-      };
-    });
-
-    // localStorage에 병합 결과 저장 (잠금 해제/삭제 시 일관성 유지)
-    saveWallets(mergedStorage);
-
-    const activeWallet = serverWallets.find((w) => w.isActive);
-
-    set({
-      wallets: serverWallets,
-      activeWalletId: activeWallet?.id || serverWallets[0]?.id || null,
-      isLocked: true,
-    });
   },
 
   /**
