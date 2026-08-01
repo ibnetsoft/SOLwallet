@@ -107,10 +107,14 @@ export default function LoginPage() {
             setStatus('telegram');
             const referralCode = extractReferralCode();
             telegramLogin(initData, referralCode)
-              .then(() => {
+              .then((result) => {
                 // 로그인 성공 후 저장된 referral param 삭제
                 sessionStorage.removeItem('referral_start_param');
                 showToast(t('login.telegramSuccess'));
+                // #6: 추천코드가 전달되었으나 유효하지 않은 경우 안내
+                if (referralCode && result.referralApplied === false) {
+                  setTimeout(() => showToast(t('referral.invalidCode')), 500);
+                }
                 setTimeout(() => router.replace('/'), 300);
               })
               .catch((err) => {

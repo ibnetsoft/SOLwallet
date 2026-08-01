@@ -257,9 +257,10 @@ const zh: Record<string, string> = {
   'mnemonic.acknowledged': '我已保存助记词',
 
   // ─── Referral ───
-  'referral.shareTitle': 'AOI Wallet 推荐链接',
-  'referral.code': '推荐码：{code}',
-  'referral.link': '链接：{link}',
+    'referral.shareTitle': 'AOI Wallet 推荐链接',
+    'referral.code': '推荐码：{code}',
+    'referral.link': '链接：{link}',
+    'referral.invalidCode': '推荐码无效，未能应用。',
 
   // ─── API Errors ───
   'error.authExpired': '会话已过期，请重新登录。',

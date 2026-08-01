@@ -39,7 +39,7 @@ export class AuthController {
 
     // JWT 발급
     const token = this.authService.generateToken(
-      user.id,
+      user.id as string,
       authData.telegramUid,
     );
 
@@ -53,6 +53,7 @@ export class AuthController {
           username: user.username,
           first_name: user.first_name,
         },
+        referralApplied: !!user.referralApplied,
       },
     };
   }
@@ -119,7 +120,7 @@ export class AuthController {
       lastName: 'User',
     });
 
-    const token = this.authService.generateToken(user.id, testUid);
+    const token = this.authService.generateToken(user.id as string, testUid);
 
     return {
       success: true,

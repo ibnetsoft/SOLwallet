@@ -259,9 +259,10 @@ const en: Record<TranslationKey, string> = {
   'mnemonic.acknowledged': 'I have saved my seed phrase',
 
   // ─── Referral ───
-  'referral.shareTitle': 'AOI Wallet Referral Link',
-  'referral.code': 'Code: {code}',
-  'referral.link': 'Link: {link}',
+    'referral.shareTitle': 'AOI Wallet Referral Link',
+    'referral.code': 'Code: {code}',
+    'referral.link': 'Link: {link}',
+    'referral.invalidCode': 'Referral code is invalid and was not applied.',
 
   // ─── API Errors ───
   'error.authExpired': 'Session expired. Please log in again.',

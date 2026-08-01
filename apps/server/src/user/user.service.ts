@@ -80,6 +80,8 @@ export class UserService {
   /**
    * 사용자 생성 (upsert 기반) — username, first_name, last_name 모두 동기화
    * referralCode(문자열)를 받아 referrer user id로 변환 후 연결
+   *
+   * @returns user 레코드 + referralApplied (추천인 코드가 유효해서 연결되었는지 여부)
    */
   async upsertUser(params: {
     telegramUid: number;
@@ -87,7 +89,7 @@ export class UserService {
     firstName: string;
     lastName: string;
     referralCode?: string;
-  }) {
+  }): Promise<Record<string, unknown> & { referralApplied?: boolean }> {
     // 기존 유저 확인
     const existing = await this.findByTelegramUid(params.telegramUid);
 
@@ -99,6 +101,7 @@ export class UserService {
         last_login_at: new Date().toISOString(),
       };
       let needsUpdate = true; // last_login_at 갱신으로 무조건 update 실행
+      let referralApplied = false;
 
       if (params.username !== undefined && params.username !== existing.username) {
         updates.username = params.username;
@@ -119,6 +122,19 @@ export class UserService {
         needsUpdate = true;
       }
 
+      // #3: 기존 유저이면서 referred_by가 비어있고 유효한 referralCode가 전달된 경우 → 추천인 연결 (최초 1회)
+      if (params.referralCode && !existing.referred_by) {
+        const referrerId = await this.findReferrerIdByCode(params.referralCode);
+        if (referrerId && referrerId !== existing.id) {
+          // 자기 자신 추천 방지
+          updates.referred_by = referrerId;
+          needsUpdate = true;
+          referralApplied = true;
+        } else if (!referrerId && params.referralCode) {
+          this.logger.warn(`Invalid referral code for existing user: ${params.referralCode}`);
+        }
+      }
+
       if (needsUpdate) {
         const { data, error } = await this.client
           .from('users')
@@ -133,7 +149,7 @@ export class UserService {
             this.logger.warn(`last_login_at column missing, retrying without it`);
             const { data: retryData, error: retryError } = await this.client
               .from('users')
-              .update({ updated_at: updates.updated_at, username: updates.username, first_name: updates.first_name, last_name: updates.last_name, referral_code: updates.referral_code })
+              .update({ updated_at: updates.updated_at, username: updates.username, first_name: updates.first_name, last_name: updates.last_name, referral_code: updates.referral_code, referred_by: updates.referred_by })
               .eq('id', existing.id)
               .select()
               .single();
@@ -141,14 +157,42 @@ export class UserService {
               this.logger.error(`Failed to update user: ${retryError.message}`);
               throw retryError;
             }
-            return retryData;
+            // #3: referrals 테이블에도 기록
+            if (referralApplied && retryData && updates.referred_by) {
+              const { error: refError } = await this.client.from('referrals').insert({
+                referrer_id: updates.referred_by as string,
+                referee_id: retryData.id as string,
+              });
+              if (refError) {
+                this.logger.error(`Failed to record referral for existing user: ${refError.message}`);
+                // referrals insert 실패 → referred_by 롤백 (데이터 정합성)
+                await this.client.from('users').update({ referred_by: null }).eq('id', retryData.id);
+                referralApplied = false;
+              }
+            }
+            return { ...retryData, referralApplied };
           }
           this.logger.error(`Failed to update user: ${error.message}`);
           throw error;
         }
-        return data;
+
+        // #3: referrals 테이블에도 기록
+        if (referralApplied && data && updates.referred_by) {
+          const { error: refError } = await this.client.from('referrals').insert({
+            referrer_id: updates.referred_by as string,
+            referee_id: data.id as string,
+          });
+          if (refError) {
+            this.logger.error(`Failed to record referral for existing user: ${refError.message}`);
+            // referrals insert 실패 → referred_by 롤백 (데이터 정합성)
+            await this.client.from('users').update({ referred_by: null }).eq('id', data.id);
+            referralApplied = false;
+          }
+        }
+
+        return { ...data, referralApplied };
       }
-      return existing;
+      return { ...existing, referralApplied };
     }
 
     // 신규 유저 생성
@@ -203,24 +247,39 @@ export class UserService {
           this.logger.error(`Failed to create user: ${retryError.message}`);
           throw retryError;
         }
-        return retryData;
+        // fallback 경로에서도 referrals 테이블 기록 + 실패 시 롤백
+        if (referrerId && retryData) {
+          const { error: refError } = await this.client.from('referrals').insert({
+            referrer_id: referrerId,
+            referee_id: retryData.id,
+          });
+          if (refError) {
+            this.logger.error(`Failed to record referral (fallback): ${refError.message}`);
+            await this.client.from('users').update({ referred_by: null }).eq('id', retryData.id);
+          }
+        }
+        return { ...retryData, referralApplied: !!referrerId };
       }
       this.logger.error(`Failed to create user: ${error.message}`);
       throw error;
     }
 
-    // 추천인 관계가 있으면 referrals 테이블에도 기록 (에러 시 로그만)
+    // #1: 추천인 관계가 있으면 referrals 테이블에도 기록 — 실패 시 referred_by 롤백 (데이터 정합성)
+    let referralApplied = !!referrerId;
     if (referrerId && data) {
       const { error: refError } = await this.client.from('referrals').insert({
         referrer_id: referrerId,
         referee_id: data.id,
       });
       if (refError) {
-        this.logger.warn(`Failed to record referral: ${refError.message}`);
+        this.logger.error(`Failed to record referral: ${refError.message}`);
+        // referrals insert 실패 → referred_by 롤백
+        await this.client.from('users').update({ referred_by: null }).eq('id', data.id);
+        referralApplied = false;
       }
     }
 
-    return data;
+    return { ...data, referralApplied };
   }
 
   /**
@@ -267,11 +326,11 @@ export class UserService {
       referrer = ref;
     }
 
-    // 내가 추천한 유저 수 (1대 추천)
+    // #2: 내가 추천한 유저 수 (1대 추천) — users.referred_by 기반 (referrals 테이블과 단일화)
     const { count: refCount } = await this.client
-      .from('referrals')
+      .from('users')
       .select('*', { count: 'exact', head: true })
-      .eq('referrer_id', userId);
+      .eq('referred_by', userId);
 
     // 총 추천인 수 (하위 전체) — get_referral_subtree RPC
     let totalReferralCount = refCount || 0;

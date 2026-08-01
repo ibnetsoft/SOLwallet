@@ -257,9 +257,10 @@ const ja: Record<string, string> = {
   'mnemonic.acknowledged': 'シードフレーズを保存しました',
 
   // ─── Referral ───
-  'referral.shareTitle': 'AOI Wallet 紹介リンク',
-  'referral.code': '紹介コード：{code}',
-  'referral.link': 'リンク：{link}',
+    'referral.shareTitle': 'AOI Wallet 紹介リンク',
+    'referral.code': '紹介コード：{code}',
+    'referral.link': 'リンク：{link}',
+    'referral.invalidCode': '紹介コードが無効のため適用されませんでした。',
 
   // ─── API Errors ───
   'error.authExpired': 'セッションが期限切れです。再度ログインしてください。',

@@ -259,9 +259,10 @@ const ko: Record<string, string> = {
   'mnemonic.acknowledged': '확인했습니다',
 
   // ─── Referral ───
-  'referral.shareTitle': 'AOI Wallet 추천 링크',
-  'referral.code': '추천코드: {code}',
-  'referral.link': '링크: {link}',
+    'referral.shareTitle': 'AOI Wallet 추천 링크',
+    'referral.code': '추천코드: {code}',
+    'referral.link': '링크: {link}',
+    'referral.invalidCode': '추천코드가 유효하지 않아 연결되지 않았습니다.',
 
   // ─── API Errors ───
   'error.authExpired': '인증이 만료되었습니다. 다시 로그인해주세요.',

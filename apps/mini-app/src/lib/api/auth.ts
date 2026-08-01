@@ -6,8 +6,9 @@ import { getMsg } from '@/lib/i18n';
  * Telegram initData로 로그인 (프로덕션)
  * @param initData Telegram WebApp initData (서명된 문자열)
  * @param referralCode 추천인 코드 (선택) — 신규 가입 시에만 적용
+ * @returns { token, referralApplied } — referralApplied는 추천인 코드가 유효해서 연결되었는지 여부
  */
-export async function telegramLogin(initData: string, referralCode?: string): Promise<string> {
+export async function telegramLogin(initData: string, referralCode?: string): Promise<{ token: string; referralApplied?: boolean }> {
   const res = await fetch(`${API_BASE}/auth/telegram`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -25,7 +26,7 @@ export async function telegramLogin(initData: string, referralCode?: string): Pr
   }
 
   saveAuthToken(json.data.token);
-  return json.data.token;
+  return { token: json.data.token, referralApplied: json.data.referralApplied };
 }
 
 /**
