@@ -1,6 +1,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { ConfigService } from '@nestjs/config';
+import { Connection } from '@solana/web3.js';
 
 const JUPITER_BASE = 'https://lite-api.jup.ag/swap/v1';
 
@@ -38,12 +39,14 @@ export interface SwapQuoteResult {
 export class SwapService {
   private readonly logger = new Logger(SwapService.name);
   private readonly rpcUrl: string;
+  private readonly connection: Connection;
 
   constructor(
     private readonly supabaseService: SupabaseService,
     private readonly configService: ConfigService,
   ) {
     this.rpcUrl = this.configService.get<string>('SOLANA_RPC_URL') || '';
+    this.connection = new Connection(this.rpcUrl, 'confirmed');
   }
 
   private get client() {
@@ -183,7 +186,12 @@ export class SwapService {
           jsonrpc: '2.0',
           id: 1,
           method: 'sendTransaction',
-          params: [signedTx, { encoding: 'base64' }],
+          params: [signedTx, {
+            encoding: 'base64',
+            skipPreflight: true,
+            maxRetries: 3,
+            preflightCommitment: 'confirmed',
+          }],
         }),
       });
 
@@ -206,6 +214,28 @@ export class SwapService {
     }
 
     this.logger.log(`Swap submitted by user ${userId}: ${txSignature}`);
+
+    // sendTransaction은 네트워크에 전달만 할 뿐 실제로 블록에 포함됐는지 보장하지
+    // 않는다 — 이 확인 없이 그대로 성공 응답하면, 블록해시 만료 등으로 트랜잭션이
+    // 조용히 드랍돼도 클라이언트는 "성공" 토스트를 보고 잔액은 안 바뀌는 상황이 됨
+    // (0.0002 USDT → USDC 스왑에서 실측 재현 — getSignatureStatuses가 계속 null).
+    try {
+      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
+      const confirmed = await this.connection.confirmTransaction(
+        { signature: txSignature, blockhash, lastValidBlockHeight },
+        'confirmed',
+      );
+      if (!confirmed.value || confirmed.value.err) {
+        this.logger.warn(`Swap NOT CONFIRMED — tx=${txSignature} err=${JSON.stringify(confirmed.value?.err)}`);
+        throw new BadRequestException('스왑이 체인에 반영되지 않았습니다. 다시 시도해주세요.');
+      }
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      this.logger.warn(`Swap confirm timeout: ${txSignature} — ${err instanceof Error ? err.message : String(err)}`);
+      throw new BadRequestException('스왑 컨펌이 지연되었습니다. 잠시 후 잔액을 확인해주세요.');
+    }
+
+    this.logger.log(`Swap CONFIRMED — tx=${txSignature.slice(0, 12)}...`);
     return { txSignature };
   }
 }
