@@ -17,6 +17,7 @@ import { PriceModule } from './price/price.module';
 import { SettingsModule } from './settings/settings.module';
 import { TransfersModule } from './transfers/transfers.module';
 import { HealthController } from './health.controller';
+import { ClientErrorController } from './client-error.controller';
 
 @Module({
   imports: [
@@ -47,6 +48,6 @@ import { HealthController } from './health.controller';
     SettingsModule,
     TransfersModule,
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, ClientErrorController],
 })
 export class AppModule {}
