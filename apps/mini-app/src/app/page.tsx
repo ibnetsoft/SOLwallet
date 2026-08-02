@@ -156,8 +156,13 @@ function HomePage() {
   const solChangePct = solPrice?.change24hPct;
 
   const computedTotal = solUsdPrice > 0 ? totalUsdt + solUsdValue : totalUsdt;
-  
-  const roi = useRoi(activeWallet?.id, computedTotal);
+
+  const roi = useRoi(
+    activeWallet?.id,
+    computedTotal,
+    portfolio?.roiBaseline ?? 0,
+    portfolio?.withdrawnTotal ?? 0,
+  );
   const sparkData = roi.history.length >= 2 ? roi.history.map((p) => p.v) : [computedTotal, computedTotal];
 
   const usdtFromPortfolio =
@@ -521,17 +526,10 @@ function HomePage() {
           tokens={displayTokens}
           solBalance={solBalance}
           onClose={() => setShowWithdraw(false)}
-          onWithdrawn={({ symbol, amount }) => {
-            // 출금액을 USDT로 환산해 ROI에서 제외.
-            // 스테이블은 1:1, SOL은 현재 시세 적용. 시세를 모르는 토큰은 제외(0)하여
-            // 잘못된 값이 ROI에 섞이지 않도록 한다.
-            const usdt =
-              symbol === 'USDT' || symbol === 'USDC'
-                ? amount
-                : symbol === 'SOL'
-                  ? amount * solUsdPrice
-                  : 0;
-            if (usdt > 0) roi.recordWithdrawal(usdt);
+          onWithdrawn={() => {
+            // 서버가 transfers 테이블 기준으로 withdrawnTotal(ROI 제외분)을 계산하므로
+            // 여기선 즉시 재조회만 트리거 — 다음 폴링까지 기다리지 않고 바로 반영
+            fetchPortfolio(true);
           }}
         />
       )}

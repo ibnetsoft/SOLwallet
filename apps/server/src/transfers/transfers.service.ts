@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { SupabaseService } from '../supabase/supabase.service';
+import { WSOL_MINT } from '@solwallet/config';
 
 export interface TransferItem {
   id: string; // transaction signature
@@ -256,6 +257,70 @@ export class TransfersService {
       transfers.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
       return transfers;
+  }
+
+  /**
+   * 지갑에 각 코인(mint)이 최초로 입금된 시점의 수량을 조회 — ROI 초기값 계산용
+   *
+   * SOL은 WSOL_MINT('So111...112')를 키로 사용한다.
+   * 최근 200개 서명까지만 스캔한다 — 이 앱의 지갑들은 거래 이력이 적어 충분하고,
+   * 결과는 wallet_deposit_baseline에 영구 저장되어 지갑당 한 번만 스캔하면 된다.
+   */
+  async findFirstDeposits(walletAddress: string): Promise<Map<string, { amount: number; blockTime: number }>> {
+    const result = new Map<string, { amount: number; blockTime: number }>();
+    const pubkey = new PublicKey(walletAddress);
+
+    const signatures = await this.connection.getSignaturesForAddress(pubkey, { limit: 200 });
+    if (signatures.length === 0) return result;
+
+    const sigs = signatures.map((s) => s.signature);
+    const txs = await this.connection.getParsedTransactions(sigs, { maxSupportedTransactionVersion: 0 });
+
+    const considerDeposit = (mint: string, amount: number, blockTime: number) => {
+      if (amount <= 0) return;
+      const existing = result.get(mint);
+      if (!existing || blockTime < existing.blockTime) {
+        result.set(mint, { amount, blockTime });
+      }
+    };
+
+    for (let i = 0; i < txs.length; i++) {
+      const tx = txs[i];
+      const sigInfo = signatures[i];
+      if (!tx || !tx.meta) continue;
+      const blockTime = sigInfo.blockTime || 0;
+
+      const accountIndex = tx.transaction.message.accountKeys.findIndex(
+        (k) => k.pubkey.toBase58() === walletAddress,
+      );
+      if (accountIndex !== -1) {
+        const preBal = tx.meta.preBalances[accountIndex] || 0;
+        const postBal = tx.meta.postBalances[accountIndex] || 0;
+        const solDiff = postBal - preBal;
+        if (solDiff > 0) {
+          considerDeposit(WSOL_MINT, solDiff / 1e9, blockTime);
+        }
+      }
+
+      const preTokenBalances = tx.meta.preTokenBalances?.filter((b) => b.owner === walletAddress) ?? [];
+      const postTokenBalances = tx.meta.postTokenBalances?.filter((b) => b.owner === walletAddress) ?? [];
+      const mintMap = new Map<string, { pre: number; post: number }>();
+      for (const b of preTokenBalances) {
+        mintMap.set(b.mint, { pre: Number(b.uiTokenAmount?.uiAmountString ?? 0), post: 0 });
+      }
+      for (const b of postTokenBalances) {
+        const existing = mintMap.get(b.mint);
+        const post = Number(b.uiTokenAmount?.uiAmountString ?? 0);
+        if (existing) existing.post = post;
+        else mintMap.set(b.mint, { pre: 0, post });
+      }
+      for (const [mint, entry] of mintMap) {
+        const diff = entry.post - entry.pre;
+        if (diff > 0) considerDeposit(mint, diff, blockTime);
+      }
+    }
+
+    return result;
   }
 
   /**

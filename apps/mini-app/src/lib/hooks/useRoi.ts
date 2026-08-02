@@ -5,25 +5,23 @@ import { useEffect, useState, useCallback } from 'react';
 /**
  * ROI(수익률) 추적 훅
  *
- * localStorage 기반으로 동작 (DB에 별도 스냅샷 테이블이 없는 경우 fallback).
+ * initialBalance(초기값)와 withdrawnTotal(누적 출금액)은 서버가 계산해서 내려준다
+ * (지갑에 각 코인이 "최초로" 입금됐을 때의 달러 가치를 코인별로 합산한 값 —
+ * balance.service.ts의 wallet_deposit_baseline 기반). 기기와 무관하게 항상 동일한
+ * 값이 나오도록 하기 위해 localStorage가 아닌 서버를 기준으로 삼는다.
  *
- * - initialBalance: 최초 기록된 잔고 (USDT 환산)
- * - history: 시계열 스냅샷 (최대 30개, 1시간 간격)
- * - recordSnapshot(total): 현재 잔고를 기록 — 잔액 변화 있을 때만 push
- * - recordWithdrawal(usdt): 외부 출금액 누적 — ROI에서 제외하기 위함
+ * history(스프라인용 시계열)만 기기-로컬 localStorage에 남긴다 — 표시용일 뿐
+ * ROI 정확도에 영향을 주지 않는 보조 데이터라 서버 이전 대상에서 제외.
  *
- * 수익률 = (현재잔고 + 누적출금액 - 최초잔고) / 최초잔고 * 100
+ * 수익률 = (현재잔고 + 누적출금액 - 초기값) / 초기값 * 100
  *
  * ⚠️ 출금액을 더해주는 이유:
  * 출금은 손실이 아니라 자산을 밖으로 옮긴 것뿐인데, 단순히
- * (현재잔고 - 최초잔고)로 계산하면 출금한 만큼 손실로 잡힌다.
- * 예) 100 입금 → 100 출금 시 실제 손익은 0인데 -100(-100%)으로 표시됨.
+ * (현재잔고 - 초기값)로 계산하면 출금한 만큼 손실로 잡힌다.
  * 누적 출금액을 되돌려 더해줘야 거래로 인한 실제 손익만 남는다.
  */
 
-const getInitialKey = (id: string) => `solwallet:roi:initial:${id}`;
 const getHistoryKey = (id: string) => `solwallet:roi:history:${id}`;
-const getWithdrawnKey = (id: string) => `solwallet:roi:withdrawn:${id}`;
 const MAX_POINTS = 30;
 const MIN_INTERVAL_MS = 30 * 60 * 1000; // 최소 30분 간격
 
@@ -40,73 +38,37 @@ export interface RoiData {
   /** 누적 외부 출금액 (USDT 환산) — ROI 계산에서 제외됨 */
   withdrawnTotal: number;
   recordSnapshot: (totalUsdt: number) => void;
-  /** 외부 출금 발생 시 호출 — 출금액(USDT 환산)을 누적 */
-  recordWithdrawal: (usdtValue: number) => void;
   reset: () => void;
 }
 
-export function useRoi(walletId: string | undefined, currentTotal: number): RoiData {
-  const [initialBalance, setInitialBalance] = useState<number>(0);
+export function useRoi(
+  walletId: string | undefined,
+  currentTotal: number,
+  serverInitialBalance: number,
+  serverWithdrawnTotal: number,
+): RoiData {
   const [history, setHistory] = useState<RoiHistoryPoint[]>([]);
-  const [withdrawnTotal, setWithdrawnTotal] = useState<number>(0);
 
-  // 초기 로드
+  // 초기 로드 — history(스파크라인)만 기기-로컬로 유지
   useEffect(() => {
     if (!walletId) {
-      setInitialBalance(0);
       setHistory([]);
-      setWithdrawnTotal(0);
       return;
     }
     try {
-      const init = localStorage.getItem(getInitialKey(walletId));
       const hist = localStorage.getItem(getHistoryKey(walletId));
-      const withdrawn = localStorage.getItem(getWithdrawnKey(walletId));
-      if (init) setInitialBalance(parseFloat(init));
-      else setInitialBalance(0);
-
-      if (hist) setHistory(JSON.parse(hist));
-      else setHistory([]);
-
-      setWithdrawnTotal(withdrawn ? parseFloat(withdrawn) || 0 : 0);
+      setHistory(hist ? JSON.parse(hist) : []);
     } catch {
-      setInitialBalance(0);
       setHistory([]);
-      setWithdrawnTotal(0);
     }
   }, [walletId]);
 
-  /** 외부 출금액 누적 — 출금이 손실로 잡히지 않도록 */
-  const recordWithdrawal = useCallback(
-    (usdtValue: number) => {
-      if (!walletId || !usdtValue || usdtValue <= 0) return;
-      setWithdrawnTotal((prev) => {
-        const next = prev + usdtValue;
-        try {
-          localStorage.setItem(getWithdrawnKey(walletId), String(next));
-        } catch {
-          // 무시
-        }
-        return next;
-      });
-    },
-    [walletId],
-  );
-
-  // 스냅샷 기록
+  // 스파크라인 히스토리만 기록 (초기값/출금액은 서버 값을 그대로 씀)
   const recordSnapshot = useCallback(
     (totalUsdt: number) => {
       if (!walletId || totalUsdt <= 0) return;
 
       try {
-        // 최초 잔고 설정 (아직 없으면)
-        setInitialBalance((prev) => {
-          if (prev > 0) return prev;
-          localStorage.setItem(getInitialKey(walletId), String(totalUsdt));
-          return totalUsdt;
-        });
-
-        // 히스토리 업데이트 — 마지막 기록 후 최소 간격 지난 경우만 push
         setHistory((prev) => {
           const now = Date.now();
           const last = prev[prev.length - 1];
@@ -148,26 +110,21 @@ export function useRoi(walletId: string | undefined, currentTotal: number): RoiD
 
   const reset = useCallback(() => {
     if (!walletId) return;
-    localStorage.removeItem(getInitialKey(walletId));
     localStorage.removeItem(getHistoryKey(walletId));
-    localStorage.removeItem(getWithdrawnKey(walletId));
-    setInitialBalance(0);
     setHistory([]);
-    setWithdrawnTotal(0);
   }, [walletId]);
 
   // 출금액을 되돌려 더해 거래 손익만 남김 (출금이 손실로 잡히는 것 방지)
-  const totalProfit = currentTotal + withdrawnTotal - initialBalance;
-  const roiPct = initialBalance > 0 ? (totalProfit / initialBalance) * 100 : 0;
+  const totalProfit = currentTotal + serverWithdrawnTotal - serverInitialBalance;
+  const roiPct = serverInitialBalance > 0 ? (totalProfit / serverInitialBalance) * 100 : 0;
 
   return {
-    initialBalance,
+    initialBalance: serverInitialBalance,
     history,
     totalProfit,
     roiPct,
-    withdrawnTotal,
+    withdrawnTotal: serverWithdrawnTotal,
     recordSnapshot,
-    recordWithdrawal,
     reset,
   };
 }

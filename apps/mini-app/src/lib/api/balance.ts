@@ -5,11 +5,17 @@ export interface WalletBalance {
   sol: number;
   tokens: Array<{ mint: string; symbol: string; decimals: number; balance: number; usdValue: number; logoUrl?: string }>;
   totalUsdtValue: number;
+  /** ROI 초기값 — 이 지갑에 각 코인이 최초로 입금됐을 때의 달러 가치 합계 */
+  roiBaseline: number;
+  /** 외부로 실제로 나간 출금 누적액(USD) — ROI 계산에서 제외됨 */
+  withdrawnTotal: number;
 }
 
 export interface Portfolio {
   wallets: Array<WalletBalance & { publicKey: string }>;
   totalUsdt: number;
+  roiBaseline: number;
+  withdrawnTotal: number;
 }
 
 /**
