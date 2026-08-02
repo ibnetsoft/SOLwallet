@@ -28,6 +28,7 @@ const ko: Record<string, string> = {
   'login.devSecretPlaceholder': '개발용 시크릿',
   'login.loggingIn': '로그인 중...',
   'login.loginBtn': '로그인하기',
+  'login.loggedOutDesc': '로그아웃되었습니다. 다시 이용하시려면 아래 버튼을 눌러 로그인하세요.',
   'login.telegramSuccess': 'Telegram 로그인 성공',
   'login.telegramFailed': 'Telegram 로그인 실패',
   'login.success': '✅ 로그인 성공',

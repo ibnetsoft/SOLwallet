@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { telegramLogin, isLoggedIn } from '@/lib/api/auth';
+import { telegramLogin, isLoggedIn, isLoggedOutByUser, clearLoggedOutFlag } from '@/lib/api/auth';
 import { useToast } from '@/components/Toast';
 import { useT } from '@/lib/i18n';
 
@@ -26,7 +26,7 @@ export default function LoginPage() {
   const { t } = useT();
   const router = useRouter();
   const { showToast } = useToast();
-  const [status, setStatus] = useState<'checking' | 'telegram' | 'error'>('checking');
+  const [status, setStatus] = useState<'checking' | 'telegram' | 'error' | 'loggedOut'>('checking');
   const [errorMessage, setErrorMessage] = useState('');
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isIOS, setIsIOS] = useState(false);
@@ -92,6 +92,13 @@ export default function LoginPage() {
 
   useEffect(() => {
     const init = async () => {
+      // 0. 사용자가 방금 로그아웃한 경우 — 자동 재로그인 차단.
+      //    이게 없으면 로그아웃 직후 initData로 즉시 재로그인되어 로그아웃이 무의미해짐.
+      if (isLoggedOutByUser()) {
+        setStatus('loggedOut');
+        return;
+      }
+
       // 1. 이미 로그인되어 있으면 홈으로
       if (isLoggedIn()) {
         router.replace('/');
@@ -186,6 +193,24 @@ export default function LoginPage() {
         {status === 'telegram' && (
           <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700/50 text-center">
             <p className="text-sm text-gray-400">{t('login.telegramAuth')}</p>
+          </div>
+        )}
+
+        {/* 로그아웃 상태 — 사용자가 직접 눌러야만 다시 로그인됨 */}
+        {status === 'loggedOut' && (
+          <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700/50 text-center">
+            <p className="text-sm text-gray-300 mb-4">{t('login.loggedOutDesc')}</p>
+            <button
+              onClick={() => {
+                clearLoggedOutFlag();
+                setStatus('checking');
+                // 자동 로그인 로직을 다시 태우기 위해 페이지 재진입
+                window.location.href = '/login';
+              }}
+              className="w-full bg-primary-600 hover:bg-primary-500 text-white rounded-xl py-3 px-4 font-medium transition"
+            >
+              {t('login.loginBtn')}
+            </button>
           </div>
         )}
 

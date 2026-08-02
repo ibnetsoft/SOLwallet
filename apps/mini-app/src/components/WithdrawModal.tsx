@@ -31,6 +31,11 @@ interface WithdrawModalProps {
   tokens: WithdrawToken[];
   solBalance: number;
   onClose: () => void;
+  /**
+   * 출금 성공 시 호출 — ROI 계산에서 출금액을 제외하기 위해 상위(홈)에 알린다.
+   * USDT 환산은 시세를 가진 홈 화면에서 처리하므로 심볼/수량만 전달.
+   */
+  onWithdrawn?: (info: { symbol: string; amount: number }) => void;
 }
 
 export default function WithdrawModal({
@@ -40,6 +45,7 @@ export default function WithdrawModal({
   tokens,
   solBalance,
   onClose,
+  onWithdrawn,
 }: WithdrawModalProps) {
   const { showToast } = useToast();
   const { unlockWallet, lockWallets } = useWalletStore();
@@ -186,6 +192,9 @@ export default function WithdrawModal({
       });
 
       lockWallets();
+      // ROI에서 출금액을 제외하도록 상위에 알림 (상태 초기화 전에 심볼/수량 확보)
+      onWithdrawn?.({ symbol: selectedToken!.symbol, amount: amountNum });
+
       setShowPin(false);
       setToAddress('');
       setAmount('');

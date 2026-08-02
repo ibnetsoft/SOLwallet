@@ -30,6 +30,7 @@ const en: Record<TranslationKey, string> = {
   'login.devSecretPlaceholder': 'Dev Secret',
   'login.loggingIn': 'Logging in...',
   'login.loginBtn': 'Login',
+  'login.loggedOutDesc': 'You have been logged out. Tap the button below to log in again.',
   'login.telegramSuccess': 'Telegram login successful',
   'login.telegramFailed': 'Telegram login failed',
   'login.success': '✅ Login successful',

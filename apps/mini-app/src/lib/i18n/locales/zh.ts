@@ -28,6 +28,7 @@ const zh: Record<string, string> = {
   'login.devSecretPlaceholder': '开发密钥',
   'login.loggingIn': '登录中...',
   'login.loginBtn': '登录',
+  'login.loggedOutDesc': '您已登出。如需继续使用，请点击下方按钮登录。',
   'login.telegramSuccess': 'Telegram 登录成功',
   'login.telegramFailed': 'Telegram 登录失败',
   'login.success': '✅ 登录成功',

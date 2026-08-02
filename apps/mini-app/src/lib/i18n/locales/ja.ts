@@ -28,6 +28,7 @@ const ja: Record<string, string> = {
   'login.devSecretPlaceholder': '開発用シークレット',
   'login.loggingIn': 'ログイン中...',
   'login.loginBtn': 'ログイン',
+  'login.loggedOutDesc': 'ログアウトしました。再度ご利用になるには下のボタンからログインしてください。',
   'login.telegramSuccess': 'Telegram ログイン成功',
   'login.telegramFailed': 'Telegram ログイン失敗',
   'login.success': '✅ ログイン成功',

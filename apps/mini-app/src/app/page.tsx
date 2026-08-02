@@ -518,6 +518,18 @@ function HomePage() {
           tokens={displayTokens}
           solBalance={solBalance}
           onClose={() => setShowWithdraw(false)}
+          onWithdrawn={({ symbol, amount }) => {
+            // 출금액을 USDT로 환산해 ROI에서 제외.
+            // 스테이블은 1:1, SOL은 현재 시세 적용. 시세를 모르는 토큰은 제외(0)하여
+            // 잘못된 값이 ROI에 섞이지 않도록 한다.
+            const usdt =
+              symbol === 'USDT' || symbol === 'USDC'
+                ? amount
+                : symbol === 'SOL'
+                  ? amount * solUsdPrice
+                  : 0;
+            if (usdt > 0) roi.recordWithdrawal(usdt);
+          }}
         />
       )}
     </main>

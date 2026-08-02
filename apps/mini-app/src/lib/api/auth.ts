@@ -71,8 +71,32 @@ export function isLoggedIn(): boolean {
  * 같은 기기에서 다른 계정으로 전환하거나 재로그인할 때 사용.
  * Telegram 미니앱 환경에서는 다시 열면 현재 Telegram 계정으로 자동 로그인됨.
  */
+/**
+ * 로그아웃 후 자동 재로그인을 막기 위한 플래그.
+ * Telegram 미니앱은 로그인 페이지에 들어가면 initData로 즉시 자동 로그인되기 때문에,
+ * 이 플래그가 없으면 로그아웃을 눌러도 곧바로 다시 로그인되어 아무 일도 없는 것처럼 보인다.
+ * sessionStorage라 앱을 완전히 닫았다 열면 자연스럽게 해제된다.
+ */
+const LOGGED_OUT_FLAG = 'solwallet_logged_out';
+
 export function logout(): void {
   clearAuthToken();
+  if (typeof window !== 'undefined') {
+    sessionStorage.setItem(LOGGED_OUT_FLAG, '1');
+  }
+}
+
+/** 사용자가 방금 로그아웃했는지 — 로그인 페이지의 자동 로그인 차단용 */
+export function isLoggedOutByUser(): boolean {
+  if (typeof window === 'undefined') return false;
+  return sessionStorage.getItem(LOGGED_OUT_FLAG) === '1';
+}
+
+/** 수동 로그인 시 호출 — 자동 로그인 차단 해제 */
+export function clearLoggedOutFlag(): void {
+  if (typeof window !== 'undefined') {
+    sessionStorage.removeItem(LOGGED_OUT_FLAG);
+  }
 }
 
 /**
