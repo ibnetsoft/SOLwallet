@@ -54,12 +54,71 @@ export class OrdersService {
     this.manifestBaseUrl = MANIFEST.baseUrl;
     this.rpcUrl = this.configService.get<string>('SOLANA_RPC_URL') || '';
     this.connection = new Connection(this.rpcUrl, {
+      // setup tx 제출 직후 재시도에서 방금 만든 계정(좌석/wrapper/Global)이
+      // 보여야 한다. 기본값 finalized는 최대 30초 뒤처져 "아직 준비 안 됨"이
+      // 무한 반복된다.
+      commitment: 'confirmed',
       confirmTransactionInitialTimeout: 30_000, // 컨펌 대기 30초
     });
   }
 
   private get client() {
     return this.supabaseService.getClient();
+  }
+
+  /**
+   * Manifest 마켓의 좌석(seat) 확보에 필요한 instruction 반환
+   *
+   * Manifest 주문 생성 API(`/v1/orders`)는 트레이더가 해당 마켓에 좌석이 없으면
+   * setupIxs:true를 줘도 스스로 만들지 못하고
+   * `Cannot read properties of null (reading 'publicKey')` 500을 낸다.
+   * (좌석 있는 지갑 → 200 / 좌석 없는 지갑 → 500 으로 실측 확인)
+   *
+   * 그래서 좌석 생성 ix를 우리 setup tx에 포함해 먼저 온체인에 확보한다.
+   * 조회 실패 시에는 setupNeeded=false로 넘겨 기존 흐름을 막지 않는다.
+   */
+  private async getMarketSeatSetup(
+    baseMintAddress: string,
+    traderPubkey: PublicKey,
+  ): Promise<{
+    setupNeeded: boolean;
+    instructions: import('@solana/web3.js').TransactionInstruction[];
+    wrapperKeypair?: Parameters<typeof Transaction.prototype.partialSign>[0];
+  }> {
+    const none = { setupNeeded: false, instructions: [] };
+    try {
+      const { Market, ManifestClient } = await import('@cks-systems/manifest-sdk');
+      const markets = await Market.findByMints(
+        this.connection,
+        new PublicKey(baseMintAddress),
+        new PublicKey(USDT_MINT),
+      );
+      if (!markets || markets.length === 0) {
+        this.logger.warn(
+          `[getMarketSeatSetup] 마켓 없음 — base=${baseMintAddress.slice(0, 8)}...`,
+        );
+        return none;
+      }
+
+      const setupData = await ManifestClient.getSetupIxs(
+        this.connection,
+        markets[0].address,
+        traderPubkey,
+      );
+      this.logger.log(
+        `[getMarketSeatSetup] base=${baseMintAddress.slice(0, 8)}... setupNeeded=${setupData.setupNeeded} ixs=${setupData.instructions.length}`,
+      );
+      return {
+        setupNeeded: setupData.setupNeeded,
+        instructions: setupData.instructions,
+        wrapperKeypair: setupData.wrapperKeypair ?? undefined,
+      };
+    } catch (e) {
+      this.logger.warn(
+        `[getMarketSeatSetup] 좌석 확인 실패(무시하고 진행): ${(e as Error).message}`,
+      );
+      return none;
+    }
   }
 
   /**
@@ -245,9 +304,16 @@ export class OrdersService {
       quoteMintAddress,
     ]);
 
-    // ── setup tx (ATA 생성 + Global 생성) ──
+    // ── Manifest 마켓 좌석(seat) 확인 ──
+    // Manifest 주문 생성 API는 "좌석이 없는 트레이더"를 스스로 처리하지 못하고
+    // (setupIxs:true를 줘도) null 참조로 500을 낸다. 실측 비교:
+    //   좌석 있음 → 200 OK / 좌석 없음 → 500 "reading 'publicKey'"
+    // 따라서 좌석 생성 ix를 우리 setup tx에 포함해 먼저 확보한다.
+    const marketSetup = await this.getMarketSeatSetup(baseMintAddress, traderPubkey);
+
+    // ── setup tx (ATA 생성 + Global 생성 + 마켓 좌석 확보) ──
     let setupTx: string | undefined;
-    if (needsAtaSetup || missingGlobalMints.length > 0) {
+    if (needsAtaSetup || missingGlobalMints.length > 0 || marketSetup.setupNeeded) {
       try {
         const setupIxs = [];
 
@@ -285,6 +351,14 @@ export class OrdersService {
           }
         }
 
+        // 마켓 좌석(seat) 확보 — 없으면 Manifest 주문 API가 500으로 실패함
+        if (marketSetup.setupNeeded) {
+          setupIxs.push(...marketSetup.instructions);
+          this.logger.log(
+            `[createOrder] 마켓 좌석 생성 ix ${marketSetup.instructions.length}개 추가`,
+          );
+        }
+
         // fresh blockhash로 legacy 트랜잭션 빌드
         const bhRes = await fetch(this.rpcUrl, {
           method: 'POST',
@@ -301,6 +375,12 @@ export class OrdersService {
             blockhash,
             lastValidBlockHeight,
           }).add(...setupIxs);
+
+          // wrapper 계정을 새로 만드는 경우 해당 키페어 서명이 필요 — 서버가 미리 서명
+          if (marketSetup.wrapperKeypair) {
+            setupTransaction.partialSign(marketSetup.wrapperKeypair);
+            this.logger.log('[createOrder] wrapper 키페어 pre-sign');
+          }
 
           // 잔액 부족을 미리 잡아 명확히 안내한다.
           // 신규 토큰의 첫 거래자는 Global 계정 rent를 부담하게 되는데, SOL이 모자라면
@@ -348,21 +428,25 @@ export class OrdersService {
       }
     }
 
-    // Global 계정이 없으면 Manifest 주문 생성 API가 무조건 500으로 실패한다.
-    // Global은 사용자 서명이 있어야 만들 수 있으므로, 여기서 주문을 진행하지 말고
+    // Global 계정이나 마켓 좌석이 없으면 Manifest 주문 생성 API가 무조건 500으로 실패한다.
+    // 둘 다 사용자 서명이 있어야 만들 수 있으므로, 여기서 주문을 진행하지 말고
     // setup tx만 돌려주고 종료한다. 클라이언트가 이걸 서명·제출(컨펌까지)한 뒤
     // 주문을 다시 요청하면 그때는 정상 처리된다.
     // (주문 row를 만들기 전에 반환해 실패한 orphan 주문이 쌓이지 않도록 함)
-    if (missingGlobalMints.length > 0) {
+    if (missingGlobalMints.length > 0 || marketSetup.setupNeeded) {
       if (!setupTx) {
         throw new BadRequestException(
-          '거래 준비(Global 계정 생성) 트랜잭션 생성에 실패했습니다. 잠시 후 다시 시도해주세요.',
+          '거래 준비 트랜잭션 생성에 실패했습니다. 잠시 후 다시 시도해주세요.',
         );
       }
+      const reasons = [
+        missingGlobalMints.length > 0
+          ? `global=${missingGlobalMints.map((m) => m.slice(0, 8)).join(',')}`
+          : null,
+        marketSetup.setupNeeded ? 'seat' : null,
+      ].filter(Boolean);
       this.logger.log(
-        `[createOrder] SETUP REQUIRED — global 미생성 mint=${missingGlobalMints
-          .map((m) => m.slice(0, 8))
-          .join(',')} → 주문 보류하고 setupTx 반환`,
+        `[createOrder] SETUP REQUIRED — ${reasons.join(' ')} → 주문 보류하고 setupTx 반환`,
       );
       return { setupRequired: true, setupTx };
     }
