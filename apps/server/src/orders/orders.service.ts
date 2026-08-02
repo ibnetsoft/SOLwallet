@@ -17,7 +17,7 @@ import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   createSyncNativeInstruction,
 } from '@solana/spl-token';
-import { MANIFEST, USDT_MINT, USDC_MINT } from '@solwallet/config';
+import { MANIFEST, USDT_MINT } from '@solwallet/config';
 import { SettingsService } from '../settings/settings.service';
 import type { CreateOrderDto } from '../common/dto/order.dto';
 
@@ -557,55 +557,95 @@ export class OrdersService {
       // Manifest SDK 동적 로드
       const { Market, ManifestClient } = await import('@cks-systems/manifest-sdk');
 
-      // SOL/USDT 마켓 조회
-      const baseMint = new PublicKey(NATIVE_MINT.toBase58());
-      const quoteMint = new PublicKey(USDT_MINT);
-      const markets = await Market.findByMints(this.connection, baseMint, quoteMint);
+      // 등록된 모든 활성 토큰의 <토큰>/USDT 마켓을 순회하며 잔액이 있는 곳을 모두 인출한다.
+      // ⚠️ 예전에는 SOL/USDT 마켓만 하드코딩 조회해서, 다른 토큰(DUDE 등) 거래로 생긴
+      //    대금이 해당 마켓에 남아도 영영 인출되지 않고 묶이는 문제가 있었음.
+      const { data: tokens } = await this.client
+        .from('tokens')
+        .select('symbol, mint_address')
+        .eq('is_active', true);
 
-      if (!markets || markets.length === 0) {
-        throw new BadRequestException('거래 가능한 마켓을 찾을 수 없습니다.');
+      // 후보 base mint 목록 — 등록 토큰 + SOL(등록 안 돼 있어도 항상 포함)
+      const baseMints = new Set<string>([NATIVE_MINT.toBase58()]);
+      (tokens || []).forEach((t) => {
+        const mint = t.mint_address as string;
+        // USDT 자신은 base가 될 수 없음 (quote와 동일)
+        if (mint && mint !== USDT_MINT) baseMints.add(mint);
+      });
+
+      const quoteMint = new PublicKey(USDT_MINT);
+      const withdrawIxs = [];
+      const wrapperKeypairs: Array<Parameters<typeof Transaction.prototype.partialSign>[0]> = [];
+      const withdrawnFrom: string[] = [];
+
+      // 트랜잭션 크기 한도가 있으므로 한 번에 인출할 마켓 수를 제한.
+      // 초과분은 다음 인출에서 처리되며(잔액이 남아있으므로) 자금이 유실되지는 않음.
+      const MAX_MARKETS_PER_TX = 3;
+
+      for (const baseMintStr of baseMints) {
+        if (withdrawnFrom.length >= MAX_MARKETS_PER_TX) {
+          this.logger.warn(
+            `[getWithdrawTx] market cap(${MAX_MARKETS_PER_TX}) reached — 남은 마켓은 다음 인출에서 처리됨`,
+          );
+          break;
+        }
+
+        try {
+          const markets = await Market.findByMints(
+            this.connection,
+            new PublicKey(baseMintStr),
+            quoteMint,
+          );
+          if (!markets || markets.length === 0) continue;
+
+          const marketAddress = markets[0].address;
+
+          // 잔액이 있는 마켓만 인출 대상에 포함
+          const readOnlyClient = await ManifestClient.getClientReadOnly(
+            this.connection,
+            marketAddress,
+            traderPubkey,
+          );
+          const baseBalance = readOnlyClient.market.getWithdrawableBalanceTokens(traderPubkey, true);
+          const quoteBalance = readOnlyClient.market.getWithdrawableBalanceTokens(traderPubkey, false);
+          if (baseBalance <= 0 && quoteBalance <= 0) continue;
+
+          this.logger.log(
+            `[getWithdrawTx] ${baseMintStr.slice(0, 8)}/USDT withdrawable — base=${baseBalance} quote=${quoteBalance}`,
+          );
+
+          const setupData = await ManifestClient.getSetupIxs(
+            this.connection,
+            marketAddress,
+            traderPubkey,
+          );
+          if (setupData.setupNeeded) {
+            withdrawIxs.push(...setupData.instructions);
+            if (setupData.wrapperKeypair) wrapperKeypairs.push(setupData.wrapperKeypair);
+          }
+
+          const client = await ManifestClient.getClientForMarketNoPrivateKey(
+            this.connection,
+            marketAddress,
+            traderPubkey,
+          );
+          withdrawIxs.push(...client.withdrawAllIx());
+          withdrawnFrom.push(baseMintStr.slice(0, 8));
+        } catch (err) {
+          // 한 마켓 조회 실패가 전체 인출을 막지 않도록 — 나머지 마켓은 계속 시도
+          this.logger.warn(
+            `[getWithdrawTx] skip market ${baseMintStr.slice(0, 8)}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
       }
 
-      const marketAddress = markets[0].address;
-      this.logger.log(`[getWithdrawTx] market=${marketAddress.toBase58().slice(0, 8)}...`);
-
-      // ReadOnly client로 market의 withdrawable balance 직접 읽기
-      const readOnlyClient = await ManifestClient.getClientReadOnly(
-        this.connection,
-        marketAddress,
-        traderPubkey,
-      );
-
-      const baseBalance = readOnlyClient.market.getWithdrawableBalanceTokens(traderPubkey, true);
-      const quoteBalance = readOnlyClient.market.getWithdrawableBalanceTokens(traderPubkey, false);
-      this.logger.log(`[getWithdrawTx] market withdrawable — base(SOL)=${baseBalance} quote(USDC)=${quoteBalance}`);
-
-      if (baseBalance <= 0 && quoteBalance <= 0) {
+      if (withdrawIxs.length === 0) {
         throw new BadRequestException('인출할 잔액이 없습니다.');
       }
 
-      // withdraw ix 생성 — wrapper client 필요 (getClientForMarketNoPrivateKey)
-      const setupData = await ManifestClient.getSetupIxs(this.connection, marketAddress, traderPubkey);
-      this.logger.log(`[getWithdrawTx] setupNeeded=${setupData.setupNeeded}`);
-
-      const withdrawIxs = [];
-
-      // setup이 필요하면 setup ix를 포함 (wrapper 생성)
-      if (setupData.setupNeeded) {
-        this.logger.log(`[getWithdrawTx] adding ${setupData.instructions.length} setup ixs`);
-        withdrawIxs.push(...setupData.instructions);
-      }
-
-      // wrapper client 생성 후 withdraw ix 획득
-      const client = await ManifestClient.getClientForMarketNoPrivateKey(
-        this.connection,
-        marketAddress,
-        traderPubkey,
+      this.logger.log(
+        `[getWithdrawTx] markets=[${withdrawnFrom.join(', ')}] total ixs=${withdrawIxs.length}`,
       );
-      const ixs = client.withdrawAllIx();
-      withdrawIxs.push(...ixs);
-
-      this.logger.log(`[getWithdrawTx] total ixs=${withdrawIxs.length}`);
 
       // fresh blockhash로 legacy transaction 빌드
       const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
@@ -616,9 +656,11 @@ export class OrdersService {
       }).add(...withdrawIxs);
 
       // wrapper 생성 키페어가 있으면 서버에서 partial sign
-      if (setupData.setupNeeded && setupData.wrapperKeypair) {
-        withdrawTx.partialSign(setupData.wrapperKeypair);
-        this.logger.log(`[getWithdrawTx] wrapper keypair pre-signed`);
+      for (const kp of wrapperKeypairs) {
+        withdrawTx.partialSign(kp);
+      }
+      if (wrapperKeypairs.length > 0) {
+        this.logger.log(`[getWithdrawTx] ${wrapperKeypairs.length} wrapper keypair(s) pre-signed`);
       }
 
       const unsignedTx = withdrawTx.serialize({
@@ -1199,7 +1241,7 @@ export class OrdersService {
         body: JSON.stringify({
           maker: wallet.public_key,
           baseMint: token.mint_address,
-          quoteMint: token.symbol === 'SOL' ? USDC_MINT : USDT_MINT,
+          quoteMint: USDT_MINT, // 모든 페어 USDT 기준 (USDC 잔재 제거)
           orders: [
             sequenceNumber != null
               ? { sequenceNumber }

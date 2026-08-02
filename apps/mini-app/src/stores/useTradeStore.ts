@@ -4,7 +4,7 @@ import * as balanceApi from '@/lib/api/balance';
 import * as tokensApi from '@/lib/api/tokens';
 import * as manifestClient from '@/lib/manifest/client';
 import { getFeeRate } from '@/lib/api/settings';
-import { FEE_RATE, QUICK_AMOUNT_RATIOS, USDC_MINT, USDT_MINT } from '@solwallet/config';
+import { FEE_RATE, QUICK_AMOUNT_RATIOS, USDT_MINT } from '@solwallet/config';
 import { useWalletStore } from './useWalletStore';
 import type { Token } from '@/lib/api/tokens';
 import { getMsg } from '@/lib/i18n';
@@ -158,7 +158,8 @@ export const useTradeStore = create<TradeState>((set, get) => ({
 
     set({ isOrderbookLoading: true });
     try {
-      const quoteMint = selectedToken.symbol === 'SOL' ? USDC_MINT : USDT_MINT;
+      // 모든 페어가 USDT 기준 — 주문은 USDT 마켓으로 나가므로 오더북/시세도 동일 마켓을 봐야 함
+      const quoteMint = USDT_MINT;
       const orderbook = await manifestClient.fetchOrderbook(selectedToken.mint_address, quoteMint);
       set({ orderbook });
     } catch {
@@ -173,7 +174,8 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     if (!selectedToken) return;
 
     try {
-      const quoteMint = selectedToken.symbol === 'SOL' ? USDC_MINT : USDT_MINT;
+      // 모든 페어가 USDT 기준 — 주문은 USDT 마켓으로 나가므로 오더북/시세도 동일 마켓을 봐야 함
+      const quoteMint = USDT_MINT;
       const price = await manifestClient.fetchCurrentPrice(selectedToken.mint_address, quoteMint);
       set({ currentPrice: price });
       // 시장가 모드일 때 가격 자동 동기화
