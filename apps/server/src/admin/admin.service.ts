@@ -962,27 +962,50 @@ export class AdminService {
    * 전체 주문 내역 (필터 지원) — tokenSymbol 매핑 포함
    */
   async getOrders(
-    options: { status?: string; tokenId?: string; page?: number; pageSize?: number } = {},
+    options: {
+      status?: string;
+      tokenId?: string;
+      userId?: string;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+      page?: number;
+      pageSize?: number;
+    } = {},
   ) {
-    const { status, tokenId, page = 1, pageSize = 50 } = options;
+    const { status, tokenId, userId, sortBy, sortOrder = 'desc', page = 1, pageSize = 50 } = options;
     const safePageSize = Math.min(pageSize, 200);
     const from = (page - 1) * safePageSize;
     const to = from + safePageSize - 1;
 
-    let query = this.client
-      .from('orders')
-      .select('*, users!inner(username)', { count: 'exact' })
-      .order('created_at', { ascending: false })
-      .range(from, to);
+    // 정렬 가능한 컬럼 화이트리스트 — 임의 컬럼명이 그대로 쿼리에 들어가지 않도록 제한
+    const SORTABLE = new Set([
+      'created_at', 'price', 'quantity', 'fee', 'status', 'side', 'user_id', 'token_id',
+    ]);
+    const ascending = sortOrder === 'asc';
 
-    if (status) {
-      query = query.eq('status', status);
-    }
-    if (tokenId) {
-      query = query.eq('token_id', tokenId);
-    }
+    const buildQuery = (orderColumn: string, asc: boolean) => {
+      let q = this.client
+        .from('orders')
+        .select('*, users!inner(username)', { count: 'exact' })
+        .order(orderColumn, { ascending: asc })
+        // 정렬 키가 같은 행끼리는 최신순으로 — 페이지 경계에서 순서가 흔들리지 않도록 보조 정렬
+        .order('created_at', { ascending: false })
+        .range(from, to);
 
-    const { data, count } = await query;
+      if (status) q = q.eq('status', status);
+      if (tokenId) q = q.eq('token_id', tokenId);
+      if (userId) q = q.eq('user_id', userId);
+      return q;
+    };
+
+    const orderColumn = sortBy && SORTABLE.has(sortBy) ? sortBy : 'created_at';
+    let { data, count, error } = await buildQuery(orderColumn, ascending);
+
+    // 정렬 컬럼 문제로 실패하면 기본 정렬로 폴백 — 정렬 때문에 목록 자체가 안 나오는 일 방지
+    if (error && orderColumn !== 'created_at') {
+      this.logger.warn(`Order sort by '${orderColumn}' failed, falling back to created_at: ${error.message}`);
+      ({ data, count } = await buildQuery('created_at', false));
+    }
 
     // 토큰 심볼 매핑
     const tokenIds = [...new Set((data || []).map((o) => o.token_id))];
@@ -1016,6 +1039,30 @@ export class AdminService {
     }));
 
     return { orders, total: count || 0 };
+  }
+
+  /**
+   * 주문 필터용 유저 목록 — 실제로 주문 이력이 있는 유저만 (드롭다운용 경량 조회)
+   * getUsers()는 유저당 추천트리 RPC를 돌려 무거우므로 별도로 둔다.
+   */
+  async getOrderUsers(): Promise<Array<{ id: string; label: string }>> {
+    const { data: orderRows } = await this.client.from('orders').select('user_id');
+    const userIds = Array.from(new Set((orderRows || []).map((o) => o.user_id as string).filter(Boolean)));
+    if (userIds.length === 0) return [];
+
+    const { data: users } = await this.client
+      .from('users')
+      .select('id, username, first_name, telegram_uid, admin_nickname')
+      .in('id', userIds);
+
+    return (users || [])
+      .map((u) => {
+        const name =
+          (u.username as string) || (u.first_name as string) || String(u.telegram_uid);
+        const nick = u.admin_nickname as string | null;
+        return { id: u.id as string, label: nick ? `${name} (${nick})` : name };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label));
   }
 
   /**

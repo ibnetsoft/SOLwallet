@@ -201,9 +201,27 @@ export class AdminController {
     @Query('pageSize', new DefaultValuePipe(50), ParseIntPipe) pageSize: number,
     @Query('status') status?: string,
     @Query('tokenId') tokenId?: string,
+    @Query('userId') userId?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: string,
   ) {
-    const result = await this.adminService.getOrders({ status, tokenId, page, pageSize });
+    const result = await this.adminService.getOrders({
+      status,
+      tokenId,
+      userId,
+      sortBy,
+      sortOrder: sortOrder === 'asc' ? 'asc' : 'desc',
+      page,
+      pageSize,
+    });
     return { success: true, data: result };
+  }
+
+  /** GET /api/admin/orders/users — 주문 필터용 유저 목록 (드롭다운) */
+  @Get('orders/users')
+  async getOrderUsers() {
+    const users = await this.adminService.getOrderUsers();
+    return { success: true, data: users };
   }
 
   // ─── 추천 조직도 ───

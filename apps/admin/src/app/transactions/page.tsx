@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getOrders, getTokens, getTransfers, type AdminTransferResponse, type AdminTransferItem } from '@/lib/api/admin';
+import { getOrders, getTokens, getTransfers, getOrderUsers, type AdminTransferResponse, type AdminTransferItem } from '@/lib/api/admin';
 import type { AdminOrderDetail, AdminTokenDetail } from '@solwallet/shared-types';
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -32,13 +32,20 @@ export default function TransactionsPage() {
   // 필터
   const [statusFilter, setStatusFilter] = useState('');
   const [tokenFilter, setTokenFilter] = useState('');
+  const [userFilter, setUserFilter] = useState('');
   const [tokens, setTokens] = useState<AdminTokenDetail[]>([]);
+  const [users, setUsers] = useState<Array<{ id: string; label: string }>>([]);
+
+  // 정렬 — 기본값은 최신순
+  const [sortBy, setSortBy] = useState('created_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const pageSize = 50;
   const totalPages = Math.ceil(total / pageSize);
 
   useEffect(() => {
     getTokens().then(setTokens).catch(() => {});
+    getOrderUsers().then(setUsers).catch(() => {});
   }, []);
 
   const fetchOrders = async (p: number) => {
@@ -50,6 +57,9 @@ export default function TransactionsPage() {
         pageSize,
         status: statusFilter || undefined,
         tokenId: tokenFilter || undefined,
+        userId: userFilter || undefined,
+        sortBy,
+        sortOrder,
       });
       setOrders(data.orders);
       setTotal(data.total);
@@ -62,7 +72,21 @@ export default function TransactionsPage() {
 
   useEffect(() => {
     fetchOrders(page);
-  }, [page, statusFilter, tokenFilter]);
+  }, [page, statusFilter, tokenFilter, userFilter, sortBy, sortOrder]);
+
+  /** 헤더 클릭 — 같은 칼럼이면 방향 토글, 다른 칼럼이면 내림차순으로 시작 */
+  const toggleSort = (column: string) => {
+    if (sortBy === column) {
+      setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(column);
+      setSortOrder('desc');
+    }
+    setPage(1);
+  };
+
+  const sortIcon = (column: string) =>
+    sortBy === column ? (sortOrder === 'asc' ? ' ▲' : ' ▼') : '';
 
   const formatTxHash = (hash: string | null) => {
     if (!hash) return '—';
@@ -122,6 +146,26 @@ export default function TransactionsPage() {
             ))}
           </select>
         </div>
+        <div>
+          <select
+            value={userFilter}
+            onChange={(e) => { setUserFilter(e.target.value); setPage(1); }}
+            className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary-500 transition"
+          >
+            <option value="">전체 유저</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>{u.label}</option>
+            ))}
+          </select>
+        </div>
+        {(statusFilter || tokenFilter || userFilter) && (
+          <button
+            onClick={() => { setStatusFilter(''); setTokenFilter(''); setUserFilter(''); setPage(1); }}
+            className="px-3 py-2 rounded-lg bg-gray-700 text-sm text-gray-300 hover:bg-gray-600 transition"
+          >
+            필터 초기화
+          </button>
+        )}
       </div>
 
       {/* Orders Table */}
@@ -134,20 +178,63 @@ export default function TransactionsPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              {/* 메시지 칼럼 폭을 최대한 확보하기 위해 나머지 칼럼은 px-1 + w-0(내용폭)으로 압축 */}
+              {/* 메시지 칼럼 폭을 최대한 확보하기 위해 나머지 칼럼은 px-1 + w-0(내용폭)으로 압축.
+                  정렬 가능한 헤더는 클릭 시 서버 정렬(같은 칼럼 재클릭 = 방향 토글) */}
               <tr className="border-b border-gray-700">
-                <th className="text-left py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">주문시간</th>
+                <th
+                  onClick={() => toggleSort('created_at')}
+                  className="text-left py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap cursor-pointer select-none hover:text-white transition"
+                >
+                  주문시간{sortIcon('created_at')}
+                </th>
                 <th className="text-left py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">마감시간</th>
-                <th className="text-left py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">유저</th>
-                <th className="text-left py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">종류</th>
-                <th className="text-left py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">토큰</th>
-                <th className="text-right py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">가격</th>
-                <th className="text-right py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">수량</th>
-                <th className="text-right py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">수수료</th>
+                <th
+                  onClick={() => toggleSort('user_id')}
+                  className="text-left py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap cursor-pointer select-none hover:text-white transition"
+                  title="같은 유저의 주문끼리 묶어서 정렬"
+                >
+                  유저{sortIcon('user_id')}
+                </th>
+                <th
+                  onClick={() => toggleSort('side')}
+                  className="text-left py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap cursor-pointer select-none hover:text-white transition"
+                >
+                  종류{sortIcon('side')}
+                </th>
+                <th
+                  onClick={() => toggleSort('token_id')}
+                  className="text-left py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap cursor-pointer select-none hover:text-white transition"
+                  title="같은 토큰의 주문끼리 묶어서 정렬"
+                >
+                  토큰{sortIcon('token_id')}
+                </th>
+                <th
+                  onClick={() => toggleSort('price')}
+                  className="text-right py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap cursor-pointer select-none hover:text-white transition"
+                >
+                  가격{sortIcon('price')}
+                </th>
+                <th
+                  onClick={() => toggleSort('quantity')}
+                  className="text-right py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap cursor-pointer select-none hover:text-white transition"
+                >
+                  수량{sortIcon('quantity')}
+                </th>
+                <th
+                  onClick={() => toggleSort('fee')}
+                  className="text-right py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap cursor-pointer select-none hover:text-white transition"
+                >
+                  수수료{sortIcon('fee')}
+                </th>
                 <th className="text-left py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">주문 Tx</th>
                 <th className="text-left py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">취소 Tx</th>
                 <th className="text-left py-3 px-2 text-gray-400 font-medium">메세지</th>
-                <th className="text-center py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">상태</th>
+                <th
+                  onClick={() => toggleSort('status')}
+                  className="text-center py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap cursor-pointer select-none hover:text-white transition"
+                >
+                  상태{sortIcon('status')}
+                </th>
               </tr>
             </thead>
             <tbody>

@@ -175,13 +175,29 @@ export async function uploadTokenLogo(symbol: string, file: File): Promise<{ log
 
 // ─── 주문 관리 ───
 
-export function getOrders(options: { status?: string; tokenId?: string; page?: number; pageSize?: number } = {}): Promise<{ orders: AdminOrderDetail[]; total: number }> {
+export function getOrders(options: {
+  status?: string;
+  tokenId?: string;
+  userId?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  page?: number;
+  pageSize?: number;
+} = {}): Promise<{ orders: AdminOrderDetail[]; total: number }> {
   const params = new URLSearchParams();
   if (options.status) params.set('status', options.status);
   if (options.tokenId) params.set('tokenId', options.tokenId);
+  if (options.userId) params.set('userId', options.userId);
+  if (options.sortBy) params.set('sortBy', options.sortBy);
+  if (options.sortOrder) params.set('sortOrder', options.sortOrder);
   if (options.page) params.set('page', String(options.page));
   if (options.pageSize) params.set('pageSize', String(options.pageSize));
   return apiFetch(`/admin/orders?${params.toString()}`);
+}
+
+/** 주문 필터용 유저 목록 (드롭다운) */
+export function getOrderUsers(): Promise<Array<{ id: string; label: string }>> {
+  return apiFetch('/admin/orders/users');
 }
 
 // ─── 수수료 정산 대장 ───
