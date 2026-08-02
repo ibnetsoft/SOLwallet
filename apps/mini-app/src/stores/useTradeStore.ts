@@ -19,6 +19,10 @@ interface OrderInfo {
   fee: string;
   status: string;
   created_at: string;
+  /** 주문 등록 트랜잭션 */
+  txSignature: string | null;
+  /** 취소 트랜잭션 — 주문 tx와 별개로 보관 */
+  cancelTxSignature: string | null;
 }
 
 interface OrderbookEntry {
@@ -480,5 +484,8 @@ function normalizeOrder(o: Record<string, unknown>): OrderInfo {
     fee: o.fee as string,
     status: o.status as string,
     created_at: o.created_at as string,
+    // 주문 tx / 취소 tx를 각각 보존 — History에서 둘 다 조회할 수 있도록
+    txSignature: (o.tx_signature as string) || null,
+    cancelTxSignature: (o.cancel_tx_signature as string) || null,
   };
 }

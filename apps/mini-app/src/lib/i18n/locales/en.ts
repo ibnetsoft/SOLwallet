@@ -127,6 +127,8 @@ const en: Record<TranslationKey, string> = {
   'trade.withdrawSuccess': 'Profit withdrawn.',
   'trade.withdrawFailed': 'Withdrawal failed.',
   'trade.cancelRefunded': '💰 Funds locked in the order have been returned to your wallet.',
+  'trade.orderTx': 'Order',
+  'trade.cancelTx': 'Cancel',
   'trade.history': 'History',
   'trade.noHistory': 'No trade history',
   'trade.statusFilled': 'Filled',

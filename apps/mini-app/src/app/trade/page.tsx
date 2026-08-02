@@ -733,24 +733,48 @@ function TradeContent() {
                     : order.status === 'failed' ? 'text-red-400 bg-red-600/20'
                     : 'text-gray-400 bg-gray-600/20';
                   return (
-                    <div key={order.id} className="bg-gray-800/50 rounded-xl p-3 flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-xs px-1.5 py-0.5 rounded ${
-                            order.side === 'buy' ? 'bg-green-600/20 text-green-400' : 'bg-red-600/20 text-red-400'
-                          }`}>
-                            {order.side === 'buy' ? t('trade.buyTag') : t('trade.sellTag')}
-                          </span>
-                          <span className="font-medium text-sm">{order.tokenSymbol}</span>
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${statusColor}`}>
-                            {statusLabel}
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {order.price} × {order.quantity}
-                          <span className="ml-2">{new Date(order.created_at).toLocaleDateString()}</span>
-                        </p>
+                    <div key={order.id} className="bg-gray-800/50 rounded-xl p-3">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${
+                          order.side === 'buy' ? 'bg-green-600/20 text-green-400' : 'bg-red-600/20 text-red-400'
+                        }`}>
+                          {order.side === 'buy' ? t('trade.buyTag') : t('trade.sellTag')}
+                        </span>
+                        <span className="font-medium text-sm">{order.tokenSymbol}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${statusColor}`}>
+                          {statusLabel}
+                        </span>
                       </div>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {order.price} × {order.quantity}
+                        <span className="ml-2">{new Date(order.created_at).toLocaleDateString()}</span>
+                      </p>
+
+                      {/* 주문 tx / 취소 tx를 각각 표시 — 취소된 주문도 원래 주문 tx를 함께 확인 가능 */}
+                      {(order.txSignature || order.cancelTxSignature) && (
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
+                          {order.txSignature && (
+                            <a
+                              href={`https://solscan.io/tx/${order.txSignature}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] font-mono text-primary-400 hover:text-primary-300 transition"
+                            >
+                              {t('trade.orderTx')} {order.txSignature.slice(0, 6)}...{order.txSignature.slice(-4)} ↗
+                            </a>
+                          )}
+                          {order.cancelTxSignature && (
+                            <a
+                              href={`https://solscan.io/tx/${order.cancelTxSignature}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] font-mono text-red-400 hover:text-red-300 transition"
+                            >
+                              {t('trade.cancelTx')} {order.cancelTxSignature.slice(0, 6)}...{order.cancelTxSignature.slice(-4)} ↗
+                            </a>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}

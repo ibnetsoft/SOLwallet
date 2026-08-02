@@ -127,6 +127,8 @@ const ko: Record<string, string> = {
   'trade.withdrawSuccess': '수익이 인출되었습니다.',
   'trade.withdrawFailed': '인출에 실패했습니다.',
   'trade.cancelRefunded': '💰 주문에 묶여있던 자금이 지갑으로 반환되었습니다.',
+  'trade.orderTx': '주문',
+  'trade.cancelTx': '취소',
   'trade.history': '거래 내역',
   'trade.noHistory': '거래 내역이 없습니다',
   'trade.statusFilled': '체결',
