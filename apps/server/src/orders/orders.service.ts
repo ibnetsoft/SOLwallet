@@ -79,7 +79,12 @@ export class OrdersService {
       for (const mint of Array.from(new Set(mints))) {
         try {
           const globalAddr = getGlobalAddress(new PublicKey(mint));
-          const info = await this.connection.getAccountInfo(globalAddr);
+          // ⚠️ 반드시 'confirmed'로 조회할 것.
+          // Connection 기본 commitment는 'finalized'라서, 방금 setup으로 만든 Global이
+          // 아직 finalize되지 않아(수십 초) "없음"으로 보였고, 그 결과 setup을 마친
+          // 사용자에게 다시 setup을 요구하는 무한 루프성 안내가 떴다.
+          // setup 컨펌도 'confirmed' 기준이므로 여기서도 동일하게 맞춘다.
+          const info = await this.connection.getAccountInfo(globalAddr, 'confirmed');
           if (!info) missing.push(mint);
         } catch (err) {
           this.logger.warn(
@@ -398,6 +403,7 @@ export class OrdersService {
     // Manifest API에 unsigned 트랜잭션 요청 (문서 스펙 준수)
     let unsignedTx = '';
     let requestId = '';
+    let manifestErrorDetail = '';
     try {
       const quoteMint = USDT_MINT;
       this.logger.log(`[createOrder] calling Manifest POST /orders — baseMint=${token.mint_address.slice(0, 8)} quoteMint=${quoteMint.slice(0, 8)}`);
@@ -446,8 +452,9 @@ export class OrdersService {
         requestId = manifestData.requestId || '';
         this.logger.log(`[createOrder] Manifest OK — requestId=${requestId} txLen=${unsignedTx.length}`);
       } else {
+        manifestErrorDetail = `${manifestData.error || ''}: ${manifestData.cause || ''}`;
         this.logger.warn(
-          `[createOrder] Manifest failed: ${manifestRes.status} — ${manifestData.error || ''}: ${manifestData.cause || ''}`,
+          `[createOrder] Manifest failed: ${manifestRes.status} — ${manifestErrorDetail}`,
         );
       }
     } catch (err) {
@@ -461,7 +468,21 @@ export class OrdersService {
         .from('orders')
         .update({ status: 'failed', updated_at: new Date().toISOString() })
         .eq('id', order.id);
-      throw new BadRequestException('트랜잭션 생성에 실패했습니다. 잠시 후 다시 시도해주세요.');
+
+      // "Cannot read properties of null" 계열은 DEX가 아직 해당 마켓/계정을 인식하지
+      // 못한 상태 — 신규 상장 직후 DEX 반영이 늦어질 때 발생한다. 일반 문구로 뭉개면
+      // 원인 파악이 불가능하므로 상황을 구체적으로 안내한다.
+      if (/reading 'publicKey'|Cannot read properties of null/i.test(manifestErrorDetail)) {
+        throw new BadRequestException(
+          '거래소가 아직 이 토큰의 마켓 정보를 인식하지 못했습니다. ' +
+            '신규 상장 직후에는 반영까지 몇 분 걸릴 수 있으니 잠시 후 다시 시도해주세요.',
+        );
+      }
+      throw new BadRequestException(
+        manifestErrorDetail.trim().replace(/^:\s*|\s*:$/g, '')
+          ? `주문 생성에 실패했습니다: ${manifestErrorDetail.replace(/^:\s*|\s*:$/g, '')}`
+          : '트랜잭션 생성에 실패했습니다. 잠시 후 다시 시도해주세요.',
+      );
     }
 
     // 성공 시 'active' 상태로 변경 + requestId + clientOrderId 저장
