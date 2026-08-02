@@ -77,31 +77,12 @@ export default function WithdrawModal({
     }
   }, [isOpen]);
 
-  if (!isOpen) return null;
-
   const isSol = selectedToken?.mint === SOL_MINT;
-  const amountNum = Number(amount) || 0;
-
-  // SOL: 0.001 SOL 남겨야 함 (수수료/rent), SPL: 전액 출금 가능
-  const maxWithdrawable = isSol
-    ? Math.max(0, selectedToken!.balance - 0.001)
-    : selectedToken?.balance ?? 0;
-
-  // 새 SOL 주소 최소 출금액
-  const effectiveMinWithdraw = isSol && addressCheck === 'new' ? NEW_ACCOUNT_MIN_WITHDRAW : 0;
-
-  // SPL 토큰 출금 시 SOL 잔액 부족 체크 (네트워크 수수료 필요: ~0.000005 SOL)
-  const solFeeOk = isSol || solBalance > 0.00001;
-
-  const isValid = toAddress &&
-    addressCheck !== 'invalid' &&
-    addressCheck !== 'checking' &&
-    amountNum > 0 &&
-    amountNum <= maxWithdrawable &&
-    amountNum >= effectiveMinWithdraw &&
-    solFeeOk;
 
   // ─── 수신 주소 실시간 체크 (SOL 전용 — SPL에는 불필요) ───
+  // 훅은 항상 같은 순서로 호출돼야 하므로 아래 `if (!isOpen) return null;`보다
+  // 반드시 앞에 있어야 한다. (원래 이 뒤에 있어서 모달이 열릴 때만 훅이 추가로
+  // 호출돼 "Rendered more hooks than during the previous render" 크래시가 났음)
   const doCheckAddress = useCallback(async (addr: string) => {
     if (!addr) {
       setAddressCheck('idle');
@@ -147,6 +128,29 @@ export default function WithdrawModal({
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [toAddress, isSol, doCheckAddress]);
+
+  if (!isOpen) return null;
+
+  const amountNum = Number(amount) || 0;
+
+  // SOL: 0.001 SOL 남겨야 함 (수수료/rent), SPL: 전액 출금 가능
+  const maxWithdrawable = isSol
+    ? Math.max(0, selectedToken!.balance - 0.001)
+    : selectedToken?.balance ?? 0;
+
+  // 새 SOL 주소 최소 출금액
+  const effectiveMinWithdraw = isSol && addressCheck === 'new' ? NEW_ACCOUNT_MIN_WITHDRAW : 0;
+
+  // SPL 토큰 출금 시 SOL 잔액 부족 체크 (네트워크 수수료 필요: ~0.000005 SOL)
+  const solFeeOk = isSol || solBalance > 0.00001;
+
+  const isValid = toAddress &&
+    addressCheck !== 'invalid' &&
+    addressCheck !== 'checking' &&
+    amountNum > 0 &&
+    amountNum <= maxWithdrawable &&
+    amountNum >= effectiveMinWithdraw &&
+    solFeeOk;
 
   // ─── 출금 실행 ───
   const handleWithdraw = async (pin: string) => {
