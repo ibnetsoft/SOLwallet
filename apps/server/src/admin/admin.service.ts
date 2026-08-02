@@ -966,16 +966,30 @@ export class AdminService {
       status?: string;
       tokenId?: string;
       userId?: string;
+      /** Tele ID(username) / 숫자 telegram_uid / 추천코드 — 어드민이 직접 입력한 검색어 */
+      userIdentifier?: string;
       sortBy?: string;
       sortOrder?: 'asc' | 'desc';
       page?: number;
       pageSize?: number;
     } = {},
-  ) {
-    const { status, tokenId, userId, sortBy, sortOrder = 'desc', page = 1, pageSize = 50 } = options;
+  ): Promise<{ orders: unknown[]; total: number; userNotFound?: boolean }> {
+    const { status, tokenId, sortBy, sortOrder = 'desc', page = 1, pageSize = 50 } = options;
     const safePageSize = Math.min(pageSize, 200);
     const from = (page - 1) * safePageSize;
     const to = from + safePageSize - 1;
+
+    // 유저 검색어(Tele ID/username/숫자 UID/추천코드)를 실제 user_id로 변환.
+    // 일치하는 유저가 없으면 "결과 0건"이 아니라 userNotFound로 구분해 알려준다
+    // (오타인지 정말 주문이 없는 건지 화면에서 구분되도록).
+    let userId = options.userId;
+    if (!userId && options.userIdentifier?.trim()) {
+      const found = await this.findUserByIdentifier(options.userIdentifier);
+      if (!found) {
+        return { orders: [], total: 0, userNotFound: true };
+      }
+      userId = found.id as string;
+    }
 
     // 정렬 가능한 컬럼 화이트리스트 — 임의 컬럼명이 그대로 쿼리에 들어가지 않도록 제한
     const SORTABLE = new Set([
@@ -1039,30 +1053,6 @@ export class AdminService {
     }));
 
     return { orders, total: count || 0 };
-  }
-
-  /**
-   * 주문 필터용 유저 목록 — 실제로 주문 이력이 있는 유저만 (드롭다운용 경량 조회)
-   * getUsers()는 유저당 추천트리 RPC를 돌려 무거우므로 별도로 둔다.
-   */
-  async getOrderUsers(): Promise<Array<{ id: string; label: string }>> {
-    const { data: orderRows } = await this.client.from('orders').select('user_id');
-    const userIds = Array.from(new Set((orderRows || []).map((o) => o.user_id as string).filter(Boolean)));
-    if (userIds.length === 0) return [];
-
-    const { data: users } = await this.client
-      .from('users')
-      .select('id, username, first_name, telegram_uid, admin_nickname')
-      .in('id', userIds);
-
-    return (users || [])
-      .map((u) => {
-        const name =
-          (u.username as string) || (u.first_name as string) || String(u.telegram_uid);
-        const nick = u.admin_nickname as string | null;
-        return { id: u.id as string, label: nick ? `${name} (${nick})` : name };
-      })
-      .sort((a, b) => a.label.localeCompare(b.label));
   }
 
   /**

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getOrders, getTokens, getTransfers, getOrderUsers, type AdminTransferResponse, type AdminTransferItem } from '@/lib/api/admin';
+import { getOrders, getTokens, getTransfers, type AdminTransferResponse, type AdminTransferItem } from '@/lib/api/admin';
 import type { AdminOrderDetail, AdminTokenDetail } from '@solwallet/shared-types';
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -32,9 +32,12 @@ export default function TransactionsPage() {
   // 필터
   const [statusFilter, setStatusFilter] = useState('');
   const [tokenFilter, setTokenFilter] = useState('');
+  /** 실제 조회에 적용된 유저 검색어 */
   const [userFilter, setUserFilter] = useState('');
+  /** 입력창의 현재 값 — 엔터/검색을 눌러야 userFilter에 반영 (타이핑마다 조회하지 않도록) */
+  const [userInput, setUserInput] = useState('');
+  const [userNotFound, setUserNotFound] = useState(false);
   const [tokens, setTokens] = useState<AdminTokenDetail[]>([]);
-  const [users, setUsers] = useState<Array<{ id: string; label: string }>>([]);
 
   // 정렬 — 기본값은 최신순
   const [sortBy, setSortBy] = useState('created_at');
@@ -45,7 +48,6 @@ export default function TransactionsPage() {
 
   useEffect(() => {
     getTokens().then(setTokens).catch(() => {});
-    getOrderUsers().then(setUsers).catch(() => {});
   }, []);
 
   const fetchOrders = async (p: number) => {
@@ -57,17 +59,24 @@ export default function TransactionsPage() {
         pageSize,
         status: statusFilter || undefined,
         tokenId: tokenFilter || undefined,
-        userId: userFilter || undefined,
+        user: userFilter || undefined,
         sortBy,
         sortOrder,
       });
       setOrders(data.orders);
       setTotal(data.total);
+      setUserNotFound(!!data.userNotFound);
     } catch (err) {
       setError(err instanceof Error ? err.message : '주문 조회 실패');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  /** 입력창의 검색어를 실제 필터로 적용 */
+  const applyUserFilter = () => {
+    setUserFilter(userInput.trim());
+    setPage(1);
   };
 
   useEffect(() => {
@@ -146,27 +155,48 @@ export default function TransactionsPage() {
             ))}
           </select>
         </div>
-        <div>
-          <select
-            value={userFilter}
-            onChange={(e) => { setUserFilter(e.target.value); setPage(1); }}
-            className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary-500 transition"
+        {/* 유저 검색 — Tele ID(username) / 숫자 UID / 추천코드 모두 인식 */}
+        <div className="flex gap-1">
+          <input
+            type="text"
+            value={userInput}
+            onChange={(e) => setUserInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && applyUserFilter()}
+            placeholder="Tele ID 입력..."
+            className={`bg-gray-800 border rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:border-primary-500 transition w-44 ${
+              userNotFound ? 'border-danger' : 'border-gray-700'
+            }`}
+          />
+          <button
+            onClick={applyUserFilter}
+            className="px-3 py-2 rounded-lg bg-primary-600 text-sm text-white hover:bg-primary-500 transition"
           >
-            <option value="">전체 유저</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>{u.label}</option>
-            ))}
-          </select>
+            검색
+          </button>
         </div>
         {(statusFilter || tokenFilter || userFilter) && (
           <button
-            onClick={() => { setStatusFilter(''); setTokenFilter(''); setUserFilter(''); setPage(1); }}
+            onClick={() => {
+              setStatusFilter('');
+              setTokenFilter('');
+              setUserFilter('');
+              setUserInput('');
+              setUserNotFound(false);
+              setPage(1);
+            }}
             className="px-3 py-2 rounded-lg bg-gray-700 text-sm text-gray-300 hover:bg-gray-600 transition"
           >
             필터 초기화
           </button>
         )}
       </div>
+
+      {/* 검색어에 해당하는 유저가 없을 때 — "주문 0건"과 구분해서 안내 */}
+      {userNotFound && (
+        <div className="bg-danger/10 border border-danger/30 rounded-xl p-3 mb-6 text-danger text-sm">
+          &apos;{userFilter}&apos; 에 해당하는 회원을 찾을 수 없습니다. Tele ID / 숫자 UID / 추천코드로 검색해보세요.
+        </div>
+      )}
 
       {/* Orders Table */}
       <div className="bg-gray-800/50 rounded-xl border border-gray-700/50">
