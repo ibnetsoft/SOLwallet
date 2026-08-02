@@ -186,7 +186,9 @@ export class OrderStatusService {
       const fillResult = await this.checkFillFromTxLogs(order.tx_signature, order.id);
 
       if (fillResult.filled) {
-        const fillQty = fillResult.baseAtomsTokens ?? order.quantity;
+        // ??는 NaN을 걸러주지 않으므로 Number.isFinite로 별도 확인 —
+        // 파싱이 깨져 NaN이 나와도 주문이 영원히 미체결로 남지 않도록 함
+        const fillQty = Number.isFinite(fillResult.baseAtomsTokens) ? fillResult.baseAtomsTokens : order.quantity;
         await this.updateOrderStatus(order.id, 'filled', fillQty);
         filled++;
         this.logger.log(
@@ -323,15 +325,24 @@ export class OrderStatusService {
           const { FillLog } = await import('@cks-systems/manifest-sdk/dist/cjs/manifest/accounts/FillLog');
           const fillLog = FillLog.deserialize(buffer.subarray(8))[0];
 
-          // baseAtoms / quoteAtoms를 토큰 단위로 변환
-          // bignum일 수 있으므로 안전하게 숫자로 변환
-          const toNumber = (v: { toString?: () => string } | number | bigint): number => {
+          // baseAtoms / quoteAtoms는 원시 숫자가 아니라 { inner: bignum } 래퍼
+          // (BaseAtoms/QuoteAtoms 클래스)로 역직렬화된다. 이 unwrap 없이 바로
+          // Number(obj.toString())을 하면 "[object Object]" → NaN이 되고,
+          // 그 NaN이 filled_qty로 DB에 들어가려다 NOT NULL 제약을 위반해
+          // 상태 업데이트 자체가 계속 실패 — 주문이 영원히 미체결로 남는 버그였음.
+          const toNumber = (v: unknown): number => {
             if (typeof v === 'number') return v;
             if (typeof v === 'bigint') return Number(v);
-            return Number(v?.toString?.() ?? 0);
+            const raw =
+              v && typeof v === 'object' && 'inner' in v
+                ? (v as { inner: unknown }).inner
+                : v;
+            if (typeof raw === 'number') return raw;
+            if (typeof raw === 'bigint') return Number(raw);
+            return Number((raw as { toString?: () => string })?.toString?.() ?? 0);
           };
-          const baseAtoms = toNumber(fillLog.baseAtoms as never);
-          const quoteAtoms = toNumber(fillLog.quoteAtoms as never);
+          const baseAtoms = toNumber(fillLog.baseAtoms);
+          const quoteAtoms = toNumber(fillLog.quoteAtoms);
           // SOL = 9 decimals, USDC = 6 decimals
           const baseAtomsTokens = baseAtoms / 1e9;
           const quoteAtomsTokens = quoteAtoms / 1e6;
@@ -406,7 +417,11 @@ export class OrderStatusService {
       updated_at: new Date().toISOString(),
     };
 
-    if (status === 'filled' && filledQty !== undefined) {
+    // filledQty가 NaN이면(위 계산 단계에서 걸러지지만 이중 안전장치로) 컬럼이
+    // NOT NULL이라 update 자체가 실패해 상태가 영원히 안 바뀌는 사고로 이어짐 —
+    // 그런 경우엔 필드를 아예 빼서 상태만이라도 정상 반영되게 한다.
+    const filledQtyValid = typeof filledQty === 'number' ? Number.isFinite(filledQty) : filledQty !== undefined;
+    if (status === 'filled' && filledQtyValid) {
       update.filled_qty = filledQty;
     }
 
