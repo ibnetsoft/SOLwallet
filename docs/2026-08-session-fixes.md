@@ -137,9 +137,67 @@ Windows에서 실시간 백신(Defender 등)이 pnpm의 하드링크 방식 파�
 
 ---
 
-## 8. 배포 체크리스트
+## 9. 출금·자산가치·체결·크래시 연쇄 수정 (`bc94a13` ~ `61eae7a`)
+
+DUDE 실거래 테스트 중 연쇄적으로 발견된 문제들. 서로 인과관계가 있어 발견 순서대로 정리.
+
+### 9-0. 클라이언트 크래시 리포팅 인프라 추가 (`bc94a13`)
+"Application error: a client-side exception has occurred"라는 원인 불명 화면이 신고됐으나, mini-app에 크래시를 기록하는 장치가 전혀 없어(Sentry 등 미도입) 서버·nginx 로그 어디에도 흔적이 없었음.
+
+**추가:** `app/error.tsx` / `app/global-error.tsx`가 렌더링 예외를 잡아 `POST /api/client-error`(인증 불필요)로 스택트레이스를 전송 → `docker compose logs server`에서 바로 확인 가능. 이후 모든 버그가 이 로그 덕분에 추측 없이 원인을 특정됨.
+
+### 9-1. 출금 모달 클릭 시 크래시 (`7258a80`)
+**원인:** React 에러 #310(Rendered more hooks than during the previous render). `WithdrawModal`의 `if (!isOpen) return null;`이 `useCallback`/`useEffect` 두 개보다 앞에 있어서, 모달이 닫힌 렌더(훅 N개)와 열리는 순간(훅 N+2개) 사이에 훅 호출 개수가 달라져 크래시.
+
+**수정:** 두 훅을 early return보다 앞으로 이동.
+
+### 9-2. 총자산·보유자산 시세 계산 (`11351a9`, `a0f1048`)
+**현상:** 홈 화면 총자산이 SOL 시세만 반영(다른 토큰 잔액이 통째로 빠짐), Holdings 목록은 SOL·스테이블이 아닌 토큰을 전부 "1개 = $1"로 표시(DUDE 150개 → $150).
+
+**원인:** `balance.service.ts`의 `totalUsdtValue`가 `0`으로 하드코딩된 미구현 TODO였고, 프론트도 실제 시세 없이 1:1 가정.
+
+이어서 오더북 최우선호가 중간값으로 1차 수정했으나, DUDE처럼 유동성이 거의 없는 마켓에서 bestBid $1(먼지 수량) / bestAsk $19.07의 중간값 $10.0355가 나와 150개가 $1505로 표시되는 새 문제 발생 — 실제로 아무도 그 가격에 사고팔 수 없는 허수였음.
+
+**최종 수정:** `PriceService.getTokenPrice(mint)` — 우리 DB에 기록된 최근 체결(filled) 주문의 price를 사용. 체결 이력이 없으면 0(임의 가정 안 함). 30초 캐시로 잔액 폴링 증폭 방지.
+
+### 9-3. ROI 초기값 재설계 (`e0f7edd`)
+**요청 배경:** 기존 "초기값"은 이 기기에서 앱을 처음 켰을 때 우연히 잡힌 총자산 스냅샷 하나(localStorage, 기기별로 다름) — 어떤 코인이 언제 얼마에 들어왔는지 전혀 반영 안 함.
+
+**수정:** 지갑에 각 코인이 **최초로 입금된 시점**의 달러 가치를 코인별로 계산해 `wallet_deposit_baseline` 테이블(마이그레이션 009, 수동 실행 필요)에 영구 기록하고, 그 합계를 ROI 초기값으로 사용. 과거 시세 이력이 없어 최초 감지 시점의 현재가로 근사(스테이블은 1:1). 온체인 입금 이력은 `TransfersService.findFirstDeposits()`(신규)로 스캔. `withdrawnTotal`(ROI 제외용)도 서버의 `transfers` 테이블(외부 출금만 기록됨, Manifest 수익 인출은 미포함) 기준으로 계산해 기기 간 일관성 확보.
+
+### 9-4. 체결된 주문이 영원히 "미체결"로 남는 버그 (`8454bbd`)
+**현상:** DUDE $1 자가체결 테스트 중 재현. 체결 감지 자체는 10초마다 정확히 성공(로그에 "FILLED" 계속 찍힘)하는데, 화면엔 계속 취소 가능한 미체결 주문으로 남음.
+
+**원인:** Manifest FillLog의 `baseAtoms`/`quoteAtoms`가 원시 숫자가 아니라 `{ inner: bignum }` 래퍼 객체로 역직렬화되는데, 이 unwrap 없이 바로 `toString()`을 호출해 `"[object Object]"` → `NaN`이 됨. 그 `NaN`이 DB의 `filled_qty`(NOT NULL)에 들어가려다 매 폴링마다 update 자체가 실패를 반복.
+
+**수정:** `.inner`를 먼저 꺼내도록 수정 + `Number.isFinite` 이중 안전장치.
+
+### 9-5. 체결 후 USDT 자동 인출이 거의 안 타던 문제 (`c1ef3f4`)
+**원인:** 체결은 서버 백그라운드 폴러가 비동기로(주문 생성 후 한참 뒤에도) 감지하는데, 새로 체결된 주문을 감지해 자동 인출을 트리거하는 클라이언트 로직(`fetchOrderHistory`)이 거래 페이지 진입 시 딱 한 번만 호출됨.
+
+**수정:** 거래 페이지에 15초 주기 폴링 추가.
+
+### 9-6. Withdraw Profit 클릭 시 패닉 + PIN 정책 변경 (`afeb658`)
+**원인:** Manifest wrapper 프로그램의 실제 Rust 소스(`withdraw.rs`)를 직접 확인해 특정. `trader_token_account.try_borrow_data()?[0..32]`로 ATA의 첫 32바이트(mint)를 그대로 읽는데, 그 토큰을 한 번도 받아본 적 없는 지갑은 ATA 자체가 온체인에 없어(데이터 길이 0) "range end index 32 out of range for slice of length 0"로 패닉. USDT를 한 번도 보유한 적 없는 지갑이 첫 USDT 인출을 시도할 때 재현됨.
+
+**수정:** `getWithdrawTx`가 인출 전 base/quote 각 민트의 ATA 존재를 확인, 없으면 같은 트랜잭션에서 생성(`createOrder`에 이미 있던 패턴을 여기도 적용).
+
+**PIN 정책 변경:** Withdraw Profit(Manifest 잔액 인출)은 외부로 자금이 나가는 게 아니라 이미 본인 소유 자금을 자기 지갑으로 옮기는 것뿐이라 위험도가 낮음 — 거래/취소와 동일하게 세션이 이미 잠금 해제 상태면 PIN 없이 즉시 실행되도록 변경. 외부 전송 출금(`WithdrawModal`)은 실제로 자금이 밖으로 나가므로 기존대로 매번 PIN 재확인 유지.
+
+### 9-7. 거래화면 현재가 + Withdraw 버튼 아이콘화 (`61eae7a`)
+**원인:** 9-2에서 홈 화면 자산가치는 "최근 체결가" 기준으로 고쳤지만, 거래 화면의 현재가(지정가 자동입력·시장가 실행가)는 여전히 클라이언트에서 직접 오더북 `(bestBid+bestAsk)/2`를 계산하고 있어 DUDE를 정확히 $1에 체결시킨 뒤에도 $10.0355로 표시됨.
+
+**수정:** `PriceService.getTradePrice(mint)`(최근 체결가 우선, 체결 이력이 아예 없으면 오더북 중간값 폴백) + `GET /api/price/token/:mint` 신설. 프론트의 `fetchCurrentPrice`가 서버 위임으로 교체돼 홈 화면과 동일 기준 사용.
+
+Withdraw Profit은 세션 unlock 상태면 자동 인출도 되므로, 텍스트 버튼 대신 입금 화살표 아이콘(수동 sweep 용도)으로 축소.
+
+---
+
+## 10. 배포 체크리스트
 
 - [ ] Supabase SQL Editor에서 `supabase/migrations/007_admin_nickname.sql` 실행 (닉네임 기능 필요조건)
+- [x] Supabase SQL Editor에서 `supabase/migrations/009_wallet_deposit_baseline.sql` 실행 완료 (ROI 초기값 테이블, 9-3절 필요조건)
 - [ ] EC2 배포: `git pull origin main && docker compose up -d --build admin server mini-app` (전체 재빌드 권장 — 모든 앱에 변경사항 있음)
 - [ ] 배포 후 확인: 추천 링크 신규가입 → 지갑 생성 → 매수/매도 → 취소 → 인출까지 한 번씩 실제 테스트 권장
 - [x] `cf6811c` ~ `bc03fee` (7절) 배포 완료 및 mayersam 계정으로 DUDE 매도 성공 실측 확인
+- [x] `bc94a13` ~ `61eae7a` (9절) 배포 완료 및 DUDE $1 자가체결·인출·현재가 표시까지 실측 확인
