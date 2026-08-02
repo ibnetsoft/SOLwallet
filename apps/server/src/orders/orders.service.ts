@@ -297,6 +297,36 @@ export class OrdersService {
             lastValidBlockHeight,
           }).add(...setupIxs);
 
+          // 잔액 부족을 미리 잡아 명확히 안내한다.
+          // 신규 토큰의 첫 거래자는 Global 계정 rent를 부담하게 되는데, SOL이 모자라면
+          // 서명 후 체인에서 insufficient lamports로 실패해 원인을 알기 어렵다.
+          // 실제 tx를 시뮬레이션해 필요한 금액을 정확히 뽑아 알려준다.
+          // ⚠️ RPC 일시 오류로 시뮬레이션이 실패할 수 있으므로, 잔액 부족이 명확히
+          //    확인될 때만 차단하고 그 외에는 그대로 진행한다(fail-open).
+          try {
+            const sim = await this.connection.simulateTransaction(setupTransaction);
+            if (sim.value.err) {
+              const logs = (sim.value.logs || []).join(' ');
+              const m = logs.match(/insufficient lamports (\d+), need (\d+)/);
+              if (m) {
+                const needSol = Number(m[2]) / 1e9;
+                const haveSol = Number(m[1]) / 1e9;
+                this.logger.warn(
+                  `[createOrder] setup 잔액 부족 — have=${haveSol} need=${needSol} wallet=${walletPublicKey.slice(0, 8)}`,
+                );
+                throw new BadRequestException(
+                  `거래 준비를 위해 최소 ${needSol.toFixed(4)} SOL이 필요합니다 ` +
+                    `(현재 ${haveSol.toFixed(4)} SOL). 지갑에 SOL을 충전한 뒤 다시 시도해주세요.`,
+                );
+              }
+            }
+          } catch (simErr) {
+            if (simErr instanceof BadRequestException) throw simErr;
+            this.logger.warn(
+              `[createOrder] setup 시뮬레이션 건너뜀: ${simErr instanceof Error ? simErr.message : String(simErr)}`,
+            );
+          }
+
           setupTx = setupTransaction.serialize({
             requireAllSignatures: false,
             verifySignatures: false,
@@ -307,6 +337,8 @@ export class OrdersService {
           );
         }
       } catch (err) {
+        // 잔액 부족 등 사용자에게 그대로 전달해야 하는 안내는 삼키지 않고 재throw
+        if (err instanceof BadRequestException) throw err;
         this.logger.error(`Failed to build setup tx: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
