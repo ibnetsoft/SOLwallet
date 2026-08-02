@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, ArrowDownToLine } from 'lucide-react';
 import { useTradeStore } from '@/stores/useTradeStore';
 import { useWalletStore } from '@/stores/useWalletStore';
 import { useToast } from '@/components/Toast';
@@ -680,9 +680,11 @@ function TradeContent() {
                   setShowWithdrawPinModal(true);
                 }
               }}
-              className="text-xs px-2.5 py-1 rounded-lg bg-primary-500/10 text-primary-400 hover:bg-primary-500/20 transition font-medium"
+              className="p-1.5 rounded-lg bg-primary-500/10 text-primary-400 hover:bg-primary-500/20 transition"
+              aria-label={t('trade.withdraw')}
+              title={t('trade.withdraw')}
             >
-              {t('trade.withdraw')}
+              <ArrowDownToLine className="w-4 h-4" />
             </button>
             <button
               onClick={() => activeTab === 'open' ? fetchActiveOrders() : fetchOrderHistory()}

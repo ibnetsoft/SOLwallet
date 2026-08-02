@@ -99,6 +99,32 @@ export class PriceService {
   }
 
   /**
+   * 거래 화면(시장가/현재가 표시)용 참고가 — 최근 체결가 우선, 없으면(신규 상장
+   * 직후라 아직 체결 이력이 전무한 경우) 오더북 중간값으로 폴백.
+   *
+   * getSolPrice가 "manifest 중간값 우선 + Jupiter 폴백"인 것과 반대로 이쪽은
+   * "체결가 우선 + 중간값 폴백"이다 — 이미 실제 체결가가 있는데 그 시점 이후
+   * 누군가 저유동성 마켓에 극단적인 호가를 걸어놔도(예: bestBid $1 vs bestAsk
+   * $19 → 중간값 $10) 거래 화면 참고가가 흔들리지 않도록 하기 위함.
+   */
+  async getTradePrice(mintAddress: string): Promise<number> {
+    const lastTrade = await this.getTokenPrice(mintAddress);
+    if (lastTrade > 0) return lastTrade;
+
+    try {
+      const orderbook = await this.ordersService.getOrderbook(mintAddress, USDT_MINT);
+      const bestBid = orderbook.bids.length > 0 ? Math.max(...orderbook.bids.map((b) => b.price)) : 0;
+      const bestAsk = orderbook.asks.length > 0 ? Math.min(...orderbook.asks.map((a) => a.price)) : 0;
+      return bestBid > 0 && bestAsk > 0 ? (bestBid + bestAsk) / 2 : bestBid || bestAsk || 0;
+    } catch (err) {
+      this.logger.warn(
+        `Trade price orderbook fallback failed for ${mintAddress.slice(0, 8)}...: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return 0;
+    }
+  }
+
+  /**
    * SOL 시세 조회 — Manifest SOL/USDC 오더북 중간가 (Jupiter 폴백)
    */
   async getSolPrice(): Promise<SolPriceResult> {

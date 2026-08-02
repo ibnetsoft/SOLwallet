@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Param } from '@nestjs/common';
 import { PriceService } from './price.service';
 
 /**
@@ -18,5 +18,14 @@ export class PriceController {
   async getSolPrice() {
     const result = await this.priceService.getSolPrice();
     return { success: true, data: result };
+  }
+
+  /**
+   * GET /api/price/token/:mint — 거래 화면 참고가 (최근 체결가 우선, 없으면 오더북 중간값)
+   */
+  @Get('token/:mint')
+  async getTradePrice(@Param('mint') mint: string) {
+    const price = await this.priceService.getTradePrice(mint);
+    return { success: true, data: { price } };
   }
 }

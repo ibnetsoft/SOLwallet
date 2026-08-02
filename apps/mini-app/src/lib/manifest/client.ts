@@ -28,17 +28,18 @@ export async function fetchOrderbook(tokenMint: string, quoteMint?: string): Pro
 }
 
 /**
- * 현재가 (오더북 best bid/ask 중간가)
+ * 현재가 — 서버가 계산한 참고가(최근 체결가 우선, 체결 이력 없으면 오더북 중간값)
+ *
+ * 예전엔 여기서 직접 오더북 bestBid/bestAsk 중간값을 계산했는데, DUDE처럼
+ * 유동성이 거의 없는 마켓에서는 먼지 호가 하나만으로 가격이 실제와 무관하게
+ * 튀는 문제가 있었다(bestBid $1 vs bestAsk $19 → $10). 실제 체결가가 있으면
+ * 그걸 우선하도록 서버 로직(PriceService.getTradePrice)에 위임한다.
  */
-export async function fetchCurrentPrice(tokenMint: string, quoteMint?: string): Promise<number> {
-  const orderbook = await fetchOrderbook(tokenMint, quoteMint);
-
-  if (orderbook.bids.length === 0 || orderbook.asks.length === 0) {
+export async function fetchCurrentPrice(tokenMint: string, _quoteMint?: string): Promise<number> {
+  try {
+    const res = await apiFetch<{ price: number }>(`/price/token/${tokenMint}`);
+    return res.price;
+  } catch {
     return 0;
   }
-
-  const bestBid = Math.max(...orderbook.bids.map((b) => b.price));
-  const bestAsk = Math.min(...orderbook.asks.map((a) => a.price));
-
-  return (bestBid + bestAsk) / 2;
 }
