@@ -269,32 +269,58 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     set({ isSubmitting: true });
 
     try {
-      // 1. 주문 생성 → unsigned tx (서버 DTO는 number 타입 요구)
-      const result = await ordersApi.createOrder({
+      const orderParams = {
         tokenId: selectedToken.id,
         walletId: activeWallet.id,
         side,
         price: Number(price),
         quantity: Number(quantity),
         orderType: get().orderType,
-      });
+      };
+      const { signTransaction } = await import('@/lib/wallet');
 
-      if (!result.unsignedTx) {
+      /** setup tx(ATA/Global 생성)를 서명·제출하고 컨펌까지 대기 */
+      const submitSetup = async (setupTx: string) => {
+        console.log('[trade] setup: signing + submitting setupTx');
+        try {
+          const signedSetupTx = signTransaction(setupTx, secretKey, 'legacy');
+          await ordersApi.submitSetupTx(signedSetupTx);
+          console.log('[trade] setup: setupTx confirmed');
+        } catch (setupErr) {
+          console.error('[trade] setup FAILED:', setupErr);
+          const msg = setupErr instanceof Error && setupErr.message
+            ? setupErr.message
+            : '거래 준비(토큰 계정 생성)에 실패했습니다. 잠시 후 다시 시도해주세요.';
+          throw new Error(msg);
+        }
+      };
+
+      // 1. 주문 생성 → unsigned tx (서버 DTO는 number 타입 요구)
+      let result = await ordersApi.createOrder(orderParams);
+
+      // 1-b. 신규 상장 토큰이라 Manifest Global 계정이 없는 경우 —
+      //      주문이 아직 만들어지지 않았고, 준비 tx를 먼저 확정한 뒤 재요청해야 한다.
+      //      (Global은 사용자 서명이 있어야 생성 가능하므로 서버 혼자 처리할 수 없음)
+      if (result.setupRequired) {
+        if (!result.setupTx) {
+          throw new Error(getMsg('error.txBuildFailed'));
+        }
+        console.log('[trade] step 1b: Global 계정 생성 필요 → setup 후 주문 재요청');
+        await submitSetup(result.setupTx);
+        result = await ordersApi.createOrder(orderParams);
+        if (result.setupRequired) {
+          // 준비를 마쳤는데도 또 요구되면 무한 반복을 피하고 사용자에게 알림
+          throw new Error('거래 준비가 아직 반영되지 않았습니다. 잠시 후 다시 시도해주세요.');
+        }
+      }
+
+      if (!result.unsignedTx || !result.order) {
         throw new Error(getMsg('error.txBuildFailed'));
       }
 
       // 2. ATA setup tx가 있으면 먼저 서명/제출 (첫 거래 전 토큰 계정 생성)
-      const { signTransaction } = await import('@/lib/wallet');
       if (result.setupTx) {
-        console.log('[trade] step 2: signing + submitting setupTx (ATA creation)');
-        try {
-          const signedSetupTx = signTransaction(result.setupTx, secretKey, 'legacy');
-          await ordersApi.submitSetupTx(signedSetupTx);
-          console.log('[trade] step 2: setupTx submitted');
-        } catch (setupErr) {
-          console.error('[trade] step 2 FAILED: setupTx:', setupErr);
-          throw new Error('지갑 초기 설정(토큰 계정 생성)에 실패했습니다. 잠시 후 다시 시도해주세요.');
-        }
+        await submitSetup(result.setupTx);
       }
 
       // 3. SOL 매도 시 fresh wSOL 래핑 tx 획득 + 서명/제출

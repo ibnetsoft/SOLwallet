@@ -10,10 +10,16 @@ export interface CreateOrderParams {
 }
 
 export interface CreateOrderResult {
-  order: Record<string, unknown>;
-  unsignedTx: string;
-  /** 첫 거래 전 필요한 ATA 생성 트랜잭션 (없으면 undefined) */
+  order?: Record<string, unknown>;
+  unsignedTx?: string;
+  /** 첫 거래 전 필요한 준비 트랜잭션 — ATA 생성 / Manifest Global 계정 생성 */
   setupTx?: string;
+  /**
+   * true면 주문이 아직 생성되지 않은 상태.
+   * setupTx를 먼저 서명·제출(컨펌까지)한 뒤 주문을 다시 요청해야 함.
+   * (신규 상장 토큰의 Global 계정이 없을 때 발생 — 사용자 서명이 있어야 만들 수 있음)
+   */
+  setupRequired?: boolean;
 }
 
 /**

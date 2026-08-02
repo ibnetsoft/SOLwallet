@@ -63,6 +63,40 @@ export class OrdersService {
   }
 
   /**
+   * 주어진 민트들 중 Manifest Global 계정이 아직 없는 것만 반환
+   *
+   * Global 계정은 민트에서 파생되는 PDA로, 신규 상장 토큰은 없을 수 있다.
+   * 이게 없으면 Manifest 주문 생성 API가 500으로 실패하므로 미리 확인해
+   * setup tx에서 함께 생성한다. (조회 실패 시에는 "있다"고 보고 넘어가
+   * 불필요한 생성 시도를 하지 않음)
+   */
+  private async findMissingGlobalMints(mints: string[]): Promise<string[]> {
+    const missing: string[] = [];
+    try {
+      const { getGlobalAddress } = await import(
+        '@cks-systems/manifest-sdk/dist/cjs/utils/global'
+      );
+      for (const mint of Array.from(new Set(mints))) {
+        try {
+          const globalAddr = getGlobalAddress(new PublicKey(mint));
+          const info = await this.connection.getAccountInfo(globalAddr);
+          if (!info) missing.push(mint);
+        } catch (err) {
+          this.logger.warn(
+            `[globalCheck] skip ${mint.slice(0, 8)}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+    } catch (err) {
+      this.logger.warn(
+        `[globalCheck] SDK load failed, skipping global setup: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return [];
+    }
+    return missing;
+  }
+
+  /**
    * walletId 소유권 검증 — 해당 지갑이 userId 소유인지 확인
    */
   private async verifyWalletOwnership(walletId: string, userId: string): Promise<string> {
@@ -116,7 +150,13 @@ export class OrdersService {
   async createOrder(
     userId: string,
     dto: CreateOrderDto,
-  ): Promise<{ order: Record<string, unknown>; unsignedTx: string; setupTx?: string }> {
+  ): Promise<{
+    order?: Record<string, unknown>;
+    unsignedTx?: string;
+    setupTx?: string;
+    /** true면 주문이 아직 생성되지 않음 — setupTx를 먼저 처리하고 재요청해야 함 */
+    setupRequired?: boolean;
+  }> {
     this.logger.log(`[createOrder] START — user=${userId.slice(0, 8)} side=${dto.side} token=${dto.tokenId} price=${dto.price} qty=${dto.quantity}`);
 
     // 지갑 소유권 검증 + public key 획득
@@ -189,22 +229,58 @@ export class OrdersService {
       needsAtaSetup = true;
     }
 
-    // ── ATA 생성 tx (필요 시) ──
+    // ── Manifest Global 계정 확인 ──
+    // Manifest는 민트마다 Global 계정을 두는데, 신규 상장 토큰은 이게 없는 경우가 있다.
+    // 없으면 Manifest 주문 생성 API가 내부에서 null을 참조해
+    // "Cannot read properties of null (reading 'publicKey')" 500 에러로 실패한다.
+    // Global 주소는 민트에서 파생되는 PDA라 아무나 rent(약 0.0016 SOL)만 내면 생성 가능.
+    // → setup 단계에서 함께 만들어 신규 토큰도 별도 조치 없이 거래되도록 한다.
+    const missingGlobalMints = await this.findMissingGlobalMints([
+      baseMintAddress,
+      quoteMintAddress,
+    ]);
+
+    // ── setup tx (ATA 생성 + Global 생성) ──
     let setupTx: string | undefined;
-    if (needsAtaSetup) {
+    if (needsAtaSetup || missingGlobalMints.length > 0) {
       try {
-        const ataAddress = isNativeSol
-          ? getAssociatedTokenAddressSync(NATIVE_MINT, traderPubkey, true)
-          : getAssociatedTokenAddressSync(depositMint, traderPubkey);
+        const setupIxs = [];
 
-        const createAtaIx = createAssociatedTokenAccountIdempotentInstruction(
-          traderPubkey, // payer
-          ataAddress,   // associated token account
-          traderPubkey, // owner
-          isNativeSol ? NATIVE_MINT : depositMint,
-        );
+        if (needsAtaSetup) {
+          const ataAddress = isNativeSol
+            ? getAssociatedTokenAddressSync(NATIVE_MINT, traderPubkey, true)
+            : getAssociatedTokenAddressSync(depositMint, traderPubkey);
 
-        // fresh blockhash로 legacy 트랜잭션 빌드 (ATA 생성은 단순)
+          setupIxs.push(
+            createAssociatedTokenAccountIdempotentInstruction(
+              traderPubkey, // payer
+              ataAddress,   // associated token account
+              traderPubkey, // owner
+              isNativeSol ? NATIVE_MINT : depositMint,
+            ),
+          );
+        }
+
+        if (missingGlobalMints.length > 0) {
+          const { ManifestClient } = await import('@cks-systems/manifest-sdk');
+          for (const mint of missingGlobalMints) {
+            // createGlobalCreateIx는 SDK에서 private static이지만 런타임 호출 가능.
+            // payer 외에 다른 서명자가 필요 없어 사용자 서명만으로 생성된다.
+            const globalIx = await (
+              ManifestClient as unknown as {
+                createGlobalCreateIx: (
+                  c: Connection,
+                  payer: PublicKey,
+                  mint: PublicKey,
+                ) => Promise<import('@solana/web3.js').TransactionInstruction>;
+              }
+            ).createGlobalCreateIx(this.connection, traderPubkey, new PublicKey(mint));
+            setupIxs.push(globalIx);
+            this.logger.log(`[createOrder] Global 계정 생성 ix 추가 — mint=${mint.slice(0, 8)}...`);
+          }
+        }
+
+        // fresh blockhash로 legacy 트랜잭션 빌드
         const bhRes = await fetch(this.rpcUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -214,23 +290,44 @@ export class OrdersService {
         const blockhash = bhData.result?.value?.blockhash;
         const lastValidBlockHeight = bhData.result?.value?.lastValidBlockHeight ?? 0;
 
-        if (blockhash) {
+        if (blockhash && setupIxs.length > 0) {
           const setupTransaction = new Transaction({
             feePayer: traderPubkey,
             blockhash,
             lastValidBlockHeight,
-          }).add(createAtaIx);
+          }).add(...setupIxs);
 
           setupTx = setupTransaction.serialize({
             requireAllSignatures: false,
             verifySignatures: false,
           }).toString('base64');
 
-          this.logger.log(`ATA setup tx created for ${dto.side} ${token.symbol} (wallet ${walletPublicKey.slice(0, 8)}...)`);
+          this.logger.log(
+            `[createOrder] setup tx created — ata=${needsAtaSetup} global=${missingGlobalMints.length} (wallet ${walletPublicKey.slice(0, 8)}...)`,
+          );
         }
       } catch (err) {
-        this.logger.error(`Failed to build ATA setup tx: ${err instanceof Error ? err.message : String(err)}`);
+        this.logger.error(`Failed to build setup tx: ${err instanceof Error ? err.message : String(err)}`);
       }
+    }
+
+    // Global 계정이 없으면 Manifest 주문 생성 API가 무조건 500으로 실패한다.
+    // Global은 사용자 서명이 있어야 만들 수 있으므로, 여기서 주문을 진행하지 말고
+    // setup tx만 돌려주고 종료한다. 클라이언트가 이걸 서명·제출(컨펌까지)한 뒤
+    // 주문을 다시 요청하면 그때는 정상 처리된다.
+    // (주문 row를 만들기 전에 반환해 실패한 orphan 주문이 쌓이지 않도록 함)
+    if (missingGlobalMints.length > 0) {
+      if (!setupTx) {
+        throw new BadRequestException(
+          '거래 준비(Global 계정 생성) 트랜잭션 생성에 실패했습니다. 잠시 후 다시 시도해주세요.',
+        );
+      }
+      this.logger.log(
+        `[createOrder] SETUP REQUIRED — global 미생성 mint=${missingGlobalMints
+          .map((m) => m.slice(0, 8))
+          .join(',')} → 주문 보류하고 setupTx 반환`,
+      );
+      return { setupRequired: true, setupTx };
     }
 
     // 수수료 계산 — DB에서 동적 수수료율 조회 (실패 시 기본값 1%)
@@ -387,7 +484,29 @@ export class OrdersService {
       throw new BadRequestException('트랜잭션 제출에 실패했습니다.');
     }
 
-    this.logger.log(`[submitSetupTx] DONE — tx=${txSignature.slice(0, 12)}... (fire-and-forget)`);
+    // 온체인 컨펌 대기 — setup(ATA/Global 생성)이 확정돼야 이어지는 주문 생성이 성공한다.
+    // 예전엔 fire-and-forget이라, Global 생성 직후 재요청하면 아직 계정이 없어 다시 실패했음.
+    try {
+      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
+      const confirmed = await this.connection.confirmTransaction(
+        { signature: txSignature, blockhash, lastValidBlockHeight },
+        'confirmed',
+      );
+      if (!confirmed.value || confirmed.value.err) {
+        this.logger.warn(
+          `[submitSetupTx] NOT CONFIRMED — tx=${txSignature} err=${JSON.stringify(confirmed.value?.err)}`,
+        );
+        throw new BadRequestException('거래 준비 트랜잭션이 체인에 반영되지 않았습니다. 다시 시도해주세요.');
+      }
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      this.logger.warn(
+        `[submitSetupTx] confirm timeout: ${txSignature} — ${err instanceof Error ? err.message : String(err)}`,
+      );
+      throw new BadRequestException('거래 준비 컨펌이 지연되었습니다. 잠시 후 다시 시도해주세요.');
+    }
+
+    this.logger.log(`[submitSetupTx] CONFIRMED — tx=${txSignature.slice(0, 12)}...`);
     return { txSignature };
   }
 
