@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
+import { PriceService } from '../price/price.service';
 
 @Injectable()
 export class BalanceService {
@@ -10,6 +11,7 @@ export class BalanceService {
   constructor(
     private readonly configService: ConfigService,
     private readonly supabaseService: SupabaseService,
+    private readonly priceService: PriceService,
   ) {
     this.rpcUrl = this.configService.get<string>('SOLANA_RPC_URL') || '';
   }
@@ -53,7 +55,7 @@ export class BalanceService {
    */
   async getTokenBalances(
     walletAddress: string,
-  ): Promise<Array<{ mint: string; symbol: string; decimals: number; balance: number; logoUrl?: string }>> {
+  ): Promise<Array<{ mint: string; symbol: string; decimals: number; balance: number; usdValue: number; logoUrl?: string }>> {
     const { data: tokens } = await this.client
       .from('tokens')
       .select('*')
@@ -61,7 +63,7 @@ export class BalanceService {
 
     if (!tokens || tokens.length === 0) return [];
 
-    const balances: Array<{ mint: string; symbol: string; decimals: number; balance: number; logoUrl?: string }> = [];
+    const balances: Array<{ mint: string; symbol: string; decimals: number; balance: number; usdValue: number; logoUrl?: string }> = [];
 
     for (const token of tokens) {
       try {
@@ -88,11 +90,19 @@ export class BalanceService {
         if (accounts.length > 0) {
           const amount = Number(accounts[0].account?.data?.parsed?.info?.tokenAmount?.amount || 0);
           const decimals = token.decimals;
+          const balance = amount / Math.pow(10, decimals);
+
+          // 스테이블코인은 1:1 고정, 그 외는 Manifest <mint>/USDT 오더북 중간가
+          const symbolUpper = (token.symbol as string).toUpperCase();
+          const isStable = symbolUpper === 'USDT' || symbolUpper === 'USDC';
+          const price = isStable ? 1 : await this.priceService.getTokenPrice(token.mint_address);
+
           balances.push({
             mint: token.mint_address,
             symbol: token.symbol,
             decimals,
-            balance: amount / Math.pow(10, decimals),
+            balance,
+            usdValue: balance * price,
             logoUrl: this.getTokenLogoUrl(token.symbol),
           });
         }
@@ -125,11 +135,14 @@ export class BalanceService {
       this.getTokenBalances(walletAddress),
     ]);
 
+    // SOL은 프론트에서 별도 시세(/api/price/sol)로 합산하므로 여기선 SPL 토큰 가치만 더함
+    const totalUsdtValue = tokenBalances.reduce((sum, t) => sum + t.usdValue, 0);
+
     return {
       walletAddress,
       sol: solBalance,
       tokens: tokenBalances,
-      totalUsdtValue: 0, // TODO: 가격 API 연동 후 계산
+      totalUsdtValue,
     };
   }
 

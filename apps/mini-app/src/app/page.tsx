@@ -38,6 +38,8 @@ interface DisplayToken {
   symbol: string;
   decimals: number;
   balance: number;
+  /** 서버에서 계산한 USD 환산가 (Manifest 오더북 기준, 스테이블은 1:1) — 미보유/유동성 없으면 0 */
+  usdValue?: number;
   badge?: 'Stable' | 'Staking';
   isNative?: boolean;
   logoUrl?: string;
@@ -208,6 +210,7 @@ function HomePage() {
       symbol: tok.symbol,
       decimals: tok.decimals,
       balance: tok.balance,
+      usdValue: tok.usdValue,
       logoUrl: tok.logoUrl || getTokenLogoUrl(tok.symbol),
     }));
 
@@ -482,7 +485,7 @@ function HomePage() {
                     ? tok.balance
                     : isSol
                       ? solUsdValue
-                      : tok.balance
+                      : tok.usdValue ?? 0
                 }
                 changePct={assetChangePct}
                 editMode={isEditingOrder}

@@ -7,5 +7,6 @@ import { OrdersModule } from '../orders/orders.module';
   imports: [OrdersModule], // OrdersService.getOrderbook() 재사용
   controllers: [PriceController],
   providers: [PriceService],
+  exports: [PriceService],
 })
 export class PriceModule {}

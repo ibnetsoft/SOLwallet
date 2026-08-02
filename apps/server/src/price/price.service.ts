@@ -36,7 +36,40 @@ interface JupiterPriceEntry {
 export class PriceService {
   private readonly logger = new Logger(PriceService.name);
 
+  /** 민트별 시세 캐시 — 잔액 조회가 지갑당 토큰 개수만큼 이 메서드를 호출하므로 캐시 없인 폴링 부하가 배가됨 */
+  private readonly tokenPriceCache = new Map<string, { price: number; ts: number }>();
+  private readonly TOKEN_PRICE_TTL_MS = 30_000;
+
   constructor(private readonly ordersService: OrdersService) {}
+
+  /**
+   * 임의 SPL 토큰의 USDT 환산 시세 — Manifest <mint>/USDT 오더북 중간가
+   *
+   * 오더북이 비어있으면(유동성 없음) 0을 반환한다 — 임의로 $1 등을 가정하지 않음.
+   * 30초 캐시로 홈 화면 잔액 폴링(10초 주기 × 보유 토큰 수)이 그대로
+   * Manifest 호출로 증폭되는 것을 막는다.
+   */
+  async getTokenPrice(mintAddress: string): Promise<number> {
+    const cached = this.tokenPriceCache.get(mintAddress);
+    if (cached && Date.now() - cached.ts < this.TOKEN_PRICE_TTL_MS) {
+      return cached.price;
+    }
+
+    let price = 0;
+    try {
+      const orderbook = await this.ordersService.getOrderbook(mintAddress, USDT_MINT);
+      const bestBid = orderbook.bids.length > 0 ? Math.max(...orderbook.bids.map((b) => b.price)) : 0;
+      const bestAsk = orderbook.asks.length > 0 ? Math.min(...orderbook.asks.map((a) => a.price)) : 0;
+      price = bestBid > 0 && bestAsk > 0 ? (bestBid + bestAsk) / 2 : bestBid || bestAsk || 0;
+    } catch (err) {
+      this.logger.warn(
+        `Token price fetch failed for ${mintAddress.slice(0, 8)}...: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    this.tokenPriceCache.set(mintAddress, { price, ts: Date.now() });
+    return price;
+  }
 
   /**
    * SOL 시세 조회 — Manifest SOL/USDC 오더북 중간가 (Jupiter 폴백)
