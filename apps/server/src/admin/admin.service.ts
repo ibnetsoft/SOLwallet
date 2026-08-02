@@ -1009,6 +1009,7 @@ export class AdminService {
       fee: o.fee,
       status: o.status,
       txSignature: o.tx_signature,
+      cancelTxSignature: o.cancel_tx_signature ?? null,
       createdAt: o.created_at,
       updatedAt: o.updated_at || null,
       statusMessage: this.buildOrderStatusMessage(o),

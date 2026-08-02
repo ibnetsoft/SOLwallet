@@ -1318,18 +1318,33 @@ export class OrdersService {
       throw new BadRequestException('취소 컨펌 대기 시간 초과. 다시 시도해주세요.');
     }
 
-    // DB 업데이트 — 'cancelled' 상태로
+    // DB 업데이트 — 'cancelled' 상태로.
+    // ⚠️ tx_signature(주문 tx)는 덮어쓰지 않는다. 취소 tx는 별도 컬럼에 보관해
+    //    "언제 주문했고 언제 취소했는지" 두 tx를 모두 추적할 수 있게 한다.
     const { error: updateError } = await this.client
       .from('orders')
       .update({
-        tx_signature: txSignature,
+        cancel_tx_signature: txSignature,
         status: 'cancelled',
         updated_at: new Date().toISOString(),
       })
       .eq('id', orderId);
 
     if (updateError) {
-      this.logger.error(`Failed to update cancelled order: ${updateError.message}`);
+      // cancel_tx_signature 컬럼이 아직 없는 DB(마이그레이션 008 미적용) 대응 —
+      // 상태만이라도 반영해 주문이 계속 활성으로 남지 않도록 한다
+      if (/cancel_tx_signature|column/i.test(updateError.message)) {
+        this.logger.warn('cancel_tx_signature column missing, updating status only');
+        const { error: retryError } = await this.client
+          .from('orders')
+          .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+          .eq('id', orderId);
+        if (retryError) {
+          this.logger.error(`Failed to update cancelled order: ${retryError.message}`);
+        }
+      } else {
+        this.logger.error(`Failed to update cancelled order: ${updateError.message}`);
+      }
     }
 
     return { txSignature };

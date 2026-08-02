@@ -72,9 +72,11 @@ interface TradeState {
   // Order actions
   // pin은 지갑이 잠겨있을 때만 필요 — 이미 잠금 해제된 세션이면 생략 가능
   createAndSubmitOrder: (pin?: string) => Promise<{ txSignature?: string }>;
-  cancelOrder: (orderId: string, pin?: string) => Promise<{ txSignature?: string }>;
+  /** 취소 성공 시 withdrawnTx가 있으면 묶여있던 자금이 지갑으로 반환된 것 */
+  cancelOrder: (orderId: string, pin?: string) => Promise<{ txSignature?: string; withdrawnTx?: string }>;
   withdrawFunds: (pin: string) => Promise<{ txSignature?: string }>;
-  autoWithdrawIfPossible: () => Promise<void>;
+  /** @returns 인출 tx 서명 (인출할 잔액이 없거나 실패하면 null) */
+  autoWithdrawIfPossible: () => Promise<string | null>;
 }
 
 export const useTradeStore = create<TradeState>((set, get) => ({
@@ -379,11 +381,17 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     // 3. 서명된 cancel tx 제출
     const result = await ordersApi.submitCancelOrder(orderId, signedTx);
 
-    // 4. 활성 주문 새로고침
+    // 4. 취소된 주문에 묶여있던 자금을 지갑으로 자동 인출.
+    //    Manifest는 주문을 취소해도 자금을 마켓 계정에 "인출 가능 잔액"으로 남겨두고
+    //    지갑으로 돌려주지 않는다. 이걸 안 하면 사용자는 "취소했는데 코인이 안 돌아왔다"고
+    //    느끼고, 실제로 자금이 방치된다.
+    const withdrawnTx = await get().autoWithdrawIfPossible();
+
+    // 5. 활성 주문 새로고침
     get().fetchActiveOrders();
 
     // 세션 유지 — 다음 거래/취소는 PIN 재입력 없이 진행
-    return result;
+    return { ...result, withdrawnTx: withdrawnTx || undefined };
   },
 
   withdrawFunds: async (pin) => {
@@ -423,16 +431,19 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     return result;
   },
 
-  /** 체결 감지 후 자동 withdraw — 지갑이 unlock 상태면 PIN 없이 실행 */
+  /**
+   * 체결/취소 후 자동 withdraw — 지갑이 unlock 상태면 PIN 없이 실행
+   * @returns 인출 성공 시 tx 서명, 인출할 잔액이 없거나 실패하면 null
+   */
   autoWithdrawIfPossible: async () => {
     const wallets = useWalletStore.getState().wallets;
     const activeWallet = wallets.find((w) => w.isActive) || wallets[0];
-    if (!activeWallet) return;
+    if (!activeWallet) return null;
 
     const secretKey = useWalletStore.getState().wallets.find((w) => w.id === activeWallet.id)?.secretKey;
     if (!secretKey) {
       console.log('[autoWithdraw] wallet locked — skip (user must withdraw manually)');
-      return;
+      return null;
     }
 
     try {
@@ -447,9 +458,11 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       // 잔액 새로고침
       get().fetchActiveOrders();
       get().fetchOrderHistory();
+      return result.txSignature || null;
     } catch (err) {
-      console.warn('[autoWithdraw] failed:', err instanceof Error ? err.message : String(err));
-      // 실패해도 무시 — 사용자가 수동 withdraw 가능
+      // "인출할 잔액이 없습니다"는 정상 흐름(이미 인출됐거나 잠긴 자금이 없음)
+      console.warn('[autoWithdraw] skipped/failed:', err instanceof Error ? err.message : String(err));
+      return null;
     }
   },
 }));

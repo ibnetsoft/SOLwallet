@@ -268,10 +268,14 @@ function TradeContent() {
   const executeCancelOrder = async (orderId: string, pin?: string) => {
     setCancelPinError('');
     try {
-      await cancelOrder(orderId, pin);
+      const result = await cancelOrder(orderId, pin);
       setShowCancelPinModal(false);
       setPendingCancelOrderId(null);
       showToast(t('trade.orderCancelled'));
+      // 취소로 풀린 자금이 지갑으로 반환된 경우 안내 (반환이 없으면 조용히 넘어감)
+      if (result.withdrawnTx) {
+        setTimeout(() => showToast(t('trade.cancelRefunded')), 500);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : t('trade.cancelFailed');
       if (showCancelPinModal) setCancelPinError(msg);

@@ -124,6 +124,7 @@ const ja: Record<string, string> = {
   'trade.withdraw': '収益を引き出す',
   'trade.withdrawSuccess': '収益が引き出されました。',
   'trade.withdrawFailed': '引き出しに失敗しました。',
+  'trade.cancelRefunded': '💰 注文にロックされていた資金がウォレットに返却されました。',
   'trade.history': '取引履歴',
   'trade.noHistory': '取引履歴がありません',
   'trade.statusFilled': '約定',

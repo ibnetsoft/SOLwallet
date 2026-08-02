@@ -124,6 +124,7 @@ const zh: Record<string, string> = {
   'trade.withdraw': '提取收益',
   'trade.withdrawSuccess': '收益已提取。',
   'trade.withdrawFailed': '提取失败。',
+  'trade.cancelRefunded': '💰 订单中锁定的资金已返还到您的钱包。',
   'trade.history': '交易记录',
   'trade.noHistory': '暂无交易记录',
   'trade.statusFilled': '已成交',

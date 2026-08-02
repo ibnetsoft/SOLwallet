@@ -144,7 +144,8 @@ export default function TransactionsPage() {
                 <th className="text-right py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">가격</th>
                 <th className="text-right py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">수량</th>
                 <th className="text-right py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">수수료</th>
-                <th className="text-left py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">Tx Hash</th>
+                <th className="text-left py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">주문 Tx</th>
+                <th className="text-left py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">취소 Tx</th>
                 <th className="text-left py-3 px-2 text-gray-400 font-medium">메세지</th>
                 <th className="text-center py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">상태</th>
               </tr>
@@ -152,11 +153,11 @@ export default function TransactionsPage() {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={11} className="text-center py-8 text-gray-400">로딩 중...</td>
+                  <td colSpan={12} className="text-center py-8 text-gray-400">로딩 중...</td>
                 </tr>
               ) : orders.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="text-center py-8 text-gray-400">데이터가 없습니다</td>
+                  <td colSpan={12} className="text-center py-8 text-gray-400">데이터가 없습니다</td>
                 </tr>
               ) : (
                 orders.map((order) => {
@@ -194,6 +195,18 @@ export default function TransactionsPage() {
                             className="text-primary-400 hover:text-primary-300 transition"
                           >
                             {formatTxHash(order.txSignature)}
+                          </a>
+                        ) : '—'}
+                      </td>
+                      <td className="py-2 px-1 font-mono text-xs text-gray-400 whitespace-nowrap">
+                        {order.cancelTxSignature ? (
+                          <a
+                            href={buildSolscanTxUrl(order.cancelTxSignature)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-red-400 hover:text-red-300 transition"
+                          >
+                            {formatTxHash(order.cancelTxSignature)}
                           </a>
                         ) : '—'}
                       </td>

@@ -223,7 +223,10 @@ export interface AdminOrderDetail {
   filledQty: string | number;
   fee: string;
   status: string;
+  /** 주문 등록 트랜잭션 */
   txSignature: string | null;
+  /** 취소 트랜잭션 — 주문 tx와 별개로 보관 (덮어쓰지 않음) */
+  cancelTxSignature: string | null;
   createdAt: string;
   updatedAt: string | null;
   /** 어느 단계에서 멈췄는지 사람이 읽을 수 있게 풀어쓴 상태 설명 */
