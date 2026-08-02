@@ -78,7 +78,7 @@ interface TradeState {
   createAndSubmitOrder: (pin?: string) => Promise<{ txSignature?: string }>;
   /** 취소 성공 시 withdrawnTx가 있으면 묶여있던 자금이 지갑으로 반환된 것 */
   cancelOrder: (orderId: string, pin?: string) => Promise<{ txSignature?: string; withdrawnTx?: string }>;
-  withdrawFunds: (pin: string) => Promise<{ txSignature?: string }>;
+  withdrawFunds: (pin?: string) => Promise<{ txSignature?: string }>;
   /** @returns 인출 tx 서명 (인출할 잔액이 없거나 실패하면 null) */
   autoWithdrawIfPossible: () => Promise<string | null>;
 }
@@ -433,10 +433,21 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       throw new Error(getMsg('error.noActiveWallet'));
     }
 
-    // 출금은 특수 케이스 — 이미 잠금 해제된 세션이어도 매번 PIN으로 재확인
-    await useWalletStore.getState().unlockWallet(activeWallet.id, pin);
-
-    const secretKey = useWalletStore.getState().wallets.find((w) => w.id === activeWallet.id)?.secretKey;
+    // Manifest 잔액 인출("수익 인출")은 외부 주소로 자금이 나가는 게 아니라
+    // 이미 본인 소유인 자금을 자기 지갑으로 옮기는 것뿐이라 위험도가 낮음 —
+    // 거래/취소와 동일하게 이미 잠금 해제된 세션이면 PIN 없이 재사용한다.
+    // (외부 전송 출금인 WithdrawModal은 실제로 자금이 밖으로 나가므로 별개로
+    // 매번 PIN 재확인을 유지함)
+    let secretKey = activeWallet.secretKey;
+    if (!secretKey) {
+      if (!pin) {
+        throw new Error(getMsg('error.walletLocked'));
+      }
+      await useWalletStore.getState().unlockWallet(activeWallet.id, pin);
+      secretKey = useWalletStore.getState().wallets.find((w) => w.id === activeWallet.id)?.secretKey;
+    } else {
+      useWalletStore.getState().extendSession();
+    }
     if (!secretKey) {
       throw new Error(getMsg('error.walletUnlockFailed'));
     }

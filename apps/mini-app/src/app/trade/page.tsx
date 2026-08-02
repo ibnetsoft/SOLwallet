@@ -297,8 +297,8 @@ function TradeContent() {
     }
   };
 
-  // 수익 인출 → PIN 입력 → Manifest 잔액 withdraw
-  const handleWithdrawExecute = async (pin: string) => {
+  // 수익 인출 — 잠금 해제 상태면 PIN 없이 즉시 실행, 아니면 PIN 모달 표시
+  const handleWithdrawExecute = async (pin?: string) => {
     setWithdrawPinError('');
     try {
       const result = await withdrawFunds(pin);
@@ -308,7 +308,9 @@ function TradeContent() {
         showToast(`📝 Tx: ${result.txSignature.slice(0, 8)}...`);
       }
     } catch (err) {
-      setWithdrawPinError(err instanceof Error ? err.message : t('trade.withdrawFailed'));
+      const msg = err instanceof Error ? err.message : t('trade.withdrawFailed');
+      if (showWithdrawPinModal) setWithdrawPinError(msg);
+      else showToast(msg);
     }
   };
 
@@ -671,7 +673,13 @@ function TradeContent() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setShowWithdrawPinModal(true)}
+              onClick={() => {
+                if (isWalletUnlocked()) {
+                  handleWithdrawExecute();
+                } else {
+                  setShowWithdrawPinModal(true);
+                }
+              }}
               className="text-xs px-2.5 py-1 rounded-lg bg-primary-500/10 text-primary-400 hover:bg-primary-500/20 transition font-medium"
             >
               {t('trade.withdraw')}

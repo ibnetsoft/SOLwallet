@@ -833,6 +833,9 @@ export class OrdersService {
       const withdrawIxs = [];
       const wrapperKeypairs: Array<Parameters<typeof Transaction.prototype.partialSign>[0]> = [];
       const withdrawnFrom: string[] = [];
+      // 이번 인출 tx에서 이미 ATA 존재를 확인/생성한 민트 — 마켓마다 중복 체크 방지
+      // (USDT는 모든 마켓에서 quote로 공유되므로 특히 중요)
+      const ataChecked = new Set<string>();
 
       // 트랜잭션 크기 한도가 있으므로 한 번에 인출할 마켓 수를 제한.
       // 초과분은 다음 인출에서 처리되며(잔액이 남아있으므로) 자금이 유실되지는 않음.
@@ -878,6 +881,34 @@ export class OrdersService {
           if (setupData.setupNeeded) {
             withdrawIxs.push(...setupData.instructions);
             if (setupData.wrapperKeypair) wrapperKeypairs.push(setupData.wrapperKeypair);
+          }
+
+          // Manifest wrapper의 withdraw 프로그램은 trader_token_account.data[0..32]를
+          // 그대로 읽어 mint를 판별한다 — 그 계정(ATA)이 아예 없으면(데이터 길이 0)
+          // "range end index 32 out of range for slice of length 0"으로 패닉한다.
+          // 이 토큰을 한 번도 받아본 적 없는 지갑(예: USDT를 산 적 없는 지갑이
+          // 처음으로 USDT 인출)에서 실제로 재현됨. 인출 전에 ATA가 없으면 만든다.
+          const mintsToWithdraw: string[] = [];
+          if (baseBalance > 0) mintsToWithdraw.push(baseMintStr);
+          if (quoteBalance > 0) mintsToWithdraw.push(USDT_MINT);
+          for (const mintStr of mintsToWithdraw) {
+            if (ataChecked.has(mintStr)) continue;
+            ataChecked.add(mintStr);
+            const isNative = mintStr === NATIVE_MINT.toBase58();
+            const mintPk = new PublicKey(mintStr);
+            const ata = getAssociatedTokenAddressSync(mintPk, traderPubkey, isNative);
+            const ataInfo = await this.connection.getAccountInfo(ata);
+            if (!ataInfo) {
+              withdrawIxs.push(
+                createAssociatedTokenAccountIdempotentInstruction(
+                  traderPubkey,
+                  ata,
+                  traderPubkey,
+                  mintPk,
+                ),
+              );
+              this.logger.log(`[getWithdrawTx] ATA 생성 ix 추가 — mint=${mintStr.slice(0, 8)}...`);
+            }
           }
 
           const client = await ManifestClient.getClientForMarketNoPrivateKey(
