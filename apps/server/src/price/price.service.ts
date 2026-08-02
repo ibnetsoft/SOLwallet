@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OrdersService } from '../orders/orders.service';
+import { SupabaseService } from '../supabase/supabase.service';
 import { WSOL_MINT, USDT_MINT } from '@solwallet/config';
 
 const SOL_MINT = WSOL_MINT;
@@ -40,14 +41,26 @@ export class PriceService {
   private readonly tokenPriceCache = new Map<string, { price: number; ts: number }>();
   private readonly TOKEN_PRICE_TTL_MS = 30_000;
 
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly supabaseService: SupabaseService,
+  ) {}
+
+  private get client() {
+    return this.supabaseService.getClient();
+  }
 
   /**
-   * 임의 SPL 토큰의 USDT 환산 시세 — Manifest <mint>/USDT 오더북 중간가
+   * 임의 SPL 토큰의 USDT 환산 시세 — 우리 DB에 기록된 최근 체결가(마지막 filled 주문의 price)
    *
-   * 오더북이 비어있으면(유동성 없음) 0을 반환한다 — 임의로 $1 등을 가정하지 않음.
-   * 30초 캐시로 홈 화면 잔액 폴링(10초 주기 × 보유 토큰 수)이 그대로
-   * Manifest 호출로 증폭되는 것을 막는다.
+   * 오더북 최우선호가 중간값은 처음에 써봤으나, DUDE처럼 유동성이 거의 없는 마켓에서는
+   * 먼지 수량 호가 하나만으로도 자산가치가 실제와 무관하게 폭등하는 문제가 있었다
+   * (bestBid $1 vs bestAsk $19 → mid $10, 실제로는 그 가격에 아무도 사고팔 수 없음).
+   * 실제로 누군가 그 가격에 체결시킨 적이 있는 최근 체결가가 훨씬 신뢰할 수 있다.
+   * 체결 이력이 없으면(신규 상장 직후 등) 0을 반환 — 임의로 $1 등을 가정하지 않음.
+   *
+   * 30초 캐시로 홈 화면 잔액 폴링(10초 주기 × 보유 토큰 수)이 그대로 DB 조회로
+   * 증폭되는 것을 막는다.
    */
   async getTokenPrice(mintAddress: string): Promise<number> {
     const cached = this.tokenPriceCache.get(mintAddress);
@@ -57,10 +70,24 @@ export class PriceService {
 
     let price = 0;
     try {
-      const orderbook = await this.ordersService.getOrderbook(mintAddress, USDT_MINT);
-      const bestBid = orderbook.bids.length > 0 ? Math.max(...orderbook.bids.map((b) => b.price)) : 0;
-      const bestAsk = orderbook.asks.length > 0 ? Math.min(...orderbook.asks.map((a) => a.price)) : 0;
-      price = bestBid > 0 && bestAsk > 0 ? (bestBid + bestAsk) / 2 : bestBid || bestAsk || 0;
+      const { data: token } = await this.client
+        .from('tokens')
+        .select('id')
+        .eq('mint_address', mintAddress)
+        .maybeSingle();
+
+      if (token) {
+        const { data: lastFilled } = await this.client
+          .from('orders')
+          .select('price')
+          .eq('token_id', token.id)
+          .eq('status', 'filled')
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        price = Number(lastFilled?.price ?? 0);
+      }
     } catch (err) {
       this.logger.warn(
         `Token price fetch failed for ${mintAddress.slice(0, 8)}...: ${err instanceof Error ? err.message : String(err)}`,
