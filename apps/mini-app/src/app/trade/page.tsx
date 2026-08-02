@@ -183,6 +183,20 @@ function TradeContent() {
     return () => clearInterval(interval);
   }, [selectedToken?.mint_address]);
 
+  // 주문 상태 주기적 재조회 — 15초마다.
+  // 체결은 서버의 백그라운드 폴러가 비동기로(주문 생성 후 한참 뒤에도) 감지하는데,
+  // fetchOrderHistory는 마운트 시 한 번만 호출돼서 그 이후 체결은 사용자가 History
+  // 탭에서 수동 새로고침하기 전까진 클라이언트가 전혀 몰랐다. 그 결과 새로 체결된
+  // 주문을 감지해 자동 인출(autoWithdrawIfPossible)하는 로직이 사실상 거의 안 타서
+  // 매도 대금(USDT 등)이 Manifest 잔액에 묶인 채 지갑에 안 들어오는 것처럼 보였음.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchActiveOrders();
+      fetchOrderHistory();
+    }, 15_000);
+    return () => clearInterval(interval);
+  }, [fetchActiveOrders, fetchOrderHistory]);
+
   // 활성 지갑 잔액 조회 (최대 수량 계산용)
   const activeWallet = wallets.find((w) => w.isActive) || wallets[0];
 
