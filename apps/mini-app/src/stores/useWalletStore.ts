@@ -141,14 +141,8 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       isInitialized: true,
     });
 
-    // 페이지 가시성 변경 시 자동 잠금 (보안)
-    if (typeof window !== 'undefined') {
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') {
-          get().lockWallets();
-        }
-      });
-    }
+    // 요청에 따라 탭/앱 숨김 시 즉시 잠금은 제거 — 다른 화면 갔다 와도 세션 유지.
+    // 잠금은 이제 AUTO_LOCK_TIMEOUT(2시간) 타이머로만 관리됨.
 
     // 서버 동기화 — 로컬 우선 렌더 후 백그라운드에서 진행 (fire and forget).
     // 실패해도 로컬 상태는 유지된다.
