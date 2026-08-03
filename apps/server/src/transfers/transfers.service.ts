@@ -17,6 +17,12 @@ export interface TransferItem {
   postBalance: number;
 }
 
+export interface AdminTransferItem extends TransferItem {
+  userId: string;
+  userName: string;
+  walletAddress: string;
+}
+
 const USDT_MINT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
 
 @Injectable()
@@ -60,6 +66,49 @@ export class TransfersService {
       .single();
     if (!data) return '—';
     return data.username || data.first_name || String(data.telegram_uid);
+  }
+
+  /**
+   * 전체 유저(활성 지갑 기준) 입출금 내역 — 관리자 트랜잭션 페이지용.
+   *
+   * 입금은 DB에 별도 기록되지 않으므로(어떤 지갑이 언제 입금받을지 알 방법이
+   * 없어 매번 온체인에서 직접 확인해야 함) 지갑마다 하나씩 온체인 스캔이
+   * 필요하다. 지갑 수가 많아지면(수백~수천) 매 요청마다 이렇게 전부 스캔하는
+   * 방식은 느려지므로, 그때는 입금도 백그라운드로 미리 인덱싱해 DB에 쌓아두는
+   * 방식으로 바꿔야 한다. 지금은 테스트 유저 규모라 실시간 스캔으로 충분하다.
+   *
+   * @param perWalletLimit 지갑 하나당 조회할 최근 건수 (RPC 부하 제한용)
+   */
+  async getAllTransfers(perWalletLimit = 20): Promise<AdminTransferItem[]> {
+    const { data: wallets, error } = await this.client
+      .from('wallets')
+      .select('public_key, user_id, users(username, first_name, telegram_uid)')
+      .eq('is_active', true);
+
+    if (error || !wallets || wallets.length === 0) return [];
+
+    const results = await Promise.all(
+      wallets.map(async (w) => {
+        const walletAddress = w.public_key as string;
+        const userId = w.user_id as string;
+        const u = w.users as { username?: string; first_name?: string; telegram_uid?: number } | null;
+        const userName = u?.username || u?.first_name || String(u?.telegram_uid ?? '—');
+
+        try {
+          const items = await this.getTransferHistory(walletAddress, perWalletLimit);
+          return items.map((item) => ({ ...item, userId, userName, walletAddress }));
+        } catch (err) {
+          this.logger.warn(
+            `[getAllTransfers] wallet ${walletAddress.slice(0, 8)}... 조회 실패: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          return [];
+        }
+      }),
+    );
+
+    return results
+      .flat()
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
   /**

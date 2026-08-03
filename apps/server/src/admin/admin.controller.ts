@@ -262,6 +262,15 @@ export class AdminController {
 
   // ─── 입출금 내역 ───
 
+  /** 전체 유저(활성 지갑) 입출금 내역 — 지갑 검색 없이 한 번에 조회 */
+  @Get('transfers/all')
+  async getAllTransfers(@Query('limit') limit?: string) {
+    const items = await this.transfersService.getAllTransfers(
+      limit ? parseInt(limit, 10) : 20,
+    );
+    return { success: true, data: items };
+  }
+
   @Get('transfers')
   async getTransfers(
     @Query('walletAddress') walletAddress: string,

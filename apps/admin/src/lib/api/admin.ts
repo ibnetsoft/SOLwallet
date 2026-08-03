@@ -278,3 +278,14 @@ export interface AdminTransferResponse {
 export function getTransfers(walletAddress: string, limit = 50): Promise<AdminTransferResponse> {
   return apiFetch(`/admin/transfers?walletAddress=${encodeURIComponent(walletAddress)}&limit=${limit}`);
 }
+
+export interface AdminAllTransferItem extends AdminTransferItem {
+  userId: string;
+  userName: string;
+  walletAddress: string;
+}
+
+/** 전체 유저(활성 지갑) 입출금 내역 — 지갑 검색 없이 한 번에 조회 */
+export function getAllTransfers(perWalletLimit = 20): Promise<AdminAllTransferItem[]> {
+  return apiFetch(`/admin/transfers/all?limit=${perWalletLimit}`);
+}

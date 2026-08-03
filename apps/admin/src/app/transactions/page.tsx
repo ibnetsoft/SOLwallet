@@ -1,7 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getOrders, getTokens, getTransfers, type AdminTransferResponse, type AdminTransferItem } from '@/lib/api/admin';
+import {
+  getOrders,
+  getTokens,
+  getAllTransfers,
+  type AdminAllTransferItem,
+} from '@/lib/api/admin';
 import type { AdminOrderDetail, AdminTokenDetail } from '@solwallet/shared-types';
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -374,23 +379,30 @@ export default function TransactionsPage() {
 }
 
 // ─── 입출금 내역 섹션 ───
+// 활성 지갑 전체를 온체인에서 실시간 스캔해 한 번에 보여준다(가벼운 실시간 조회 —
+// 지갑 수가 늘어나면 백그라운드 인덱싱 방식으로 전환 필요, 지금은 테스트 규모라 충분).
+type TransferSortKey = 'createdAt' | 'userName' | 'type' | 'tokenSymbol' | 'amount';
+
 function TransferHistorySection() {
-  const [walletAddress, setWalletAddress] = useState('');
-  const [transfers, setTransfers] = useState<AdminTransferItem[]>([]);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [userName, setUserName] = useState<string | null>(null);
-  const [isLoadingTransfers, setIsLoadingTransfers] = useState(false);
+  const [transfers, setTransfers] = useState<AdminAllTransferItem[]>([]);
+  const [isLoadingTransfers, setIsLoadingTransfers] = useState(true);
   const [transferError, setTransferError] = useState('');
 
+  // 입금/출금 따로 볼 수 있는 필터
+  const [typeFilter, setTypeFilter] = useState<'all' | 'deposit' | 'withdraw'>('all');
+  // 유저명/지갑주소로 간단히 좁혀보기 (전체 조회 후 클라이언트에서 필터)
+  const [search, setSearch] = useState('');
+
+  // 정렬 — 전부 클라이언트 사이드(이미 한 번에 다 불러온 가벼운 조회라 서버 정렬 불필요)
+  const [sortBy, setSortBy] = useState<TransferSortKey>('createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
   const fetchTransfers = async () => {
-    if (!walletAddress.trim()) return;
     setIsLoadingTransfers(true);
     setTransferError('');
     try {
-      const data = await getTransfers(walletAddress.trim(), 50);
-      setTransfers(data.transfers);
-      setUserId(data.userId);
-      setUserName(data.userName);
+      const data = await getAllTransfers(20);
+      setTransfers(data);
     } catch (err) {
       setTransferError(err instanceof Error ? err.message : '입출금 내역 조회 실패');
       setTransfers([]);
@@ -399,38 +411,78 @@ function TransferHistorySection() {
     }
   };
 
+  useEffect(() => {
+    fetchTransfers();
+  }, []);
+
+  const toggleSort = (column: TransferSortKey) => {
+    if (sortBy === column) {
+      setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(column);
+      setSortOrder('desc');
+    }
+  };
+
+  const sortIcon = (column: TransferSortKey) =>
+    sortBy === column ? (sortOrder === 'asc' ? ' ▲' : ' ▼') : '';
+
+  const displayed = transfers
+    .filter((tr) => typeFilter === 'all' || tr.type === typeFilter)
+    .filter((tr) => {
+      if (!search.trim()) return true;
+      const q = search.trim().toLowerCase();
+      return tr.userName.toLowerCase().includes(q) || tr.walletAddress.toLowerCase().includes(q);
+    })
+    .sort((a, b) => {
+      let cmp = 0;
+      if (sortBy === 'createdAt') cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      else if (sortBy === 'amount') cmp = a.amount - b.amount;
+      else cmp = String(a[sortBy]).localeCompare(String(b[sortBy]));
+      return sortOrder === 'asc' ? cmp : -cmp;
+    });
+
+  const depositCount = transfers.filter((t) => t.type === 'deposit').length;
+  const withdrawCount = transfers.filter((t) => t.type === 'withdraw').length;
+
   const SOLSCAN_TX_BASE = 'https://solscan.io/tx';
   const formatAddr = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
   const formatTxHash = (hash: string) => `${hash.slice(0, 8)}...${hash.slice(-4)}`;
 
   return (
     <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 mt-6">
-      <div className="p-6 pb-0">
-        <h2 className="text-lg font-bold mb-3">💳 입출금 내역 (On-chain)</h2>
-        <p className="text-xs text-gray-500 mb-3">지갑 주소를 입력하면 SOL / SPL 토큰 입출금 내역을 조회합니다.</p>
-        <div className="flex gap-2">
+      <div className="p-6 pb-0 flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-lg font-bold">💳 입출금 내역 (On-chain)</h2>
+          <p className="text-xs text-gray-500 mt-1">
+            활성 지갑 전체 기준 · 입금 {depositCount}건 · 출금 {withdrawCount}건
+          </p>
+        </div>
+        <div className="flex gap-2 items-center flex-wrap">
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value as 'all' | 'deposit' | 'withdraw')}
+            className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary-500 transition"
+          >
+            <option value="all">전체</option>
+            <option value="deposit">입금만</option>
+            <option value="withdraw">출금만</option>
+          </select>
           <input
             type="text"
-            value={walletAddress}
-            onChange={(e) => setWalletAddress(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && fetchTransfers()}
-            placeholder="지갑 주소 입력..."
-            className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white font-mono outline-none focus:border-primary-500 transition"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="유저명 / 지갑주소 검색..."
+            className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary-500 transition w-52"
           />
           <button
             onClick={fetchTransfers}
-            disabled={!walletAddress.trim() || isLoadingTransfers}
+            disabled={isLoadingTransfers}
             className="px-4 py-2 rounded-lg bg-primary-600 text-sm font-medium text-white disabled:opacity-50 hover:bg-primary-500 transition"
           >
-            {isLoadingTransfers ? '조회 중...' : '조회'}
+            {isLoadingTransfers ? '조회 중...' : '새로고침'}
           </button>
         </div>
-        {userId && (
-          <p className="mt-2 text-xs text-gray-400">
-            유저: <span className="text-white font-medium">{userName || '—'}</span>
-            {' '}({userId.slice(0, 8)}...)
-          </p>
-        )}
       </div>
 
       {transferError && (
@@ -439,34 +491,63 @@ function TransferHistorySection() {
         </div>
       )}
 
-      {transfers.length > 0 && (
-        <div className="overflow-x-auto mt-3">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-700">
-                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">발생 날짜</th>
-                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">유저 ID</th>
-                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">구분</th>
-                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">Sender</th>
-                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">Receiver</th>
-                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">토큰</th>
-                <th className="text-right py-3 px-2 text-gray-400 font-medium whitespace-nowrap">발송 전 잔고</th>
-                <th className="text-right py-3 px-2 text-gray-400 font-medium whitespace-nowrap">발송 금액</th>
-                <th className="text-right py-3 px-2 text-gray-400 font-medium whitespace-nowrap">발송 후 잔고</th>
-                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">Tx Hash</th>
-                <th className="text-center py-3 px-2 text-gray-400 font-medium whitespace-nowrap">상태</th>
+      <div className="overflow-x-auto mt-3">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-700">
+              <th
+                onClick={() => toggleSort('createdAt')}
+                className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap cursor-pointer select-none hover:text-white transition"
+              >
+                발생 날짜{sortIcon('createdAt')}
+              </th>
+              <th
+                onClick={() => toggleSort('userName')}
+                className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap cursor-pointer select-none hover:text-white transition"
+              >
+                유저{sortIcon('userName')}
+              </th>
+              <th
+                onClick={() => toggleSort('type')}
+                className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap cursor-pointer select-none hover:text-white transition"
+              >
+                구분{sortIcon('type')}
+              </th>
+              <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">Sender</th>
+              <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">Receiver</th>
+              <th
+                onClick={() => toggleSort('tokenSymbol')}
+                className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap cursor-pointer select-none hover:text-white transition"
+              >
+                토큰{sortIcon('tokenSymbol')}
+              </th>
+              <th
+                onClick={() => toggleSort('amount')}
+                className="text-right py-3 px-2 text-gray-400 font-medium whitespace-nowrap cursor-pointer select-none hover:text-white transition"
+              >
+                금액{sortIcon('amount')}
+              </th>
+              <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">Tx Hash</th>
+              <th className="text-center py-3 px-2 text-gray-400 font-medium whitespace-nowrap">상태</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoadingTransfers ? (
+              <tr>
+                <td colSpan={9} className="text-center py-8 text-gray-400">조회 중...</td>
               </tr>
-            </thead>
-            <tbody>
-              {transfers.map((tr) => (
-                <tr key={`${tr.id}-${tr.tokenSymbol}`} className="border-b border-gray-700/50 hover:bg-gray-700/30 transition">
+            ) : displayed.length === 0 ? (
+              <tr>
+                <td colSpan={9} className="text-center py-8 text-gray-400">입출금 내역이 없습니다.</td>
+              </tr>
+            ) : (
+              displayed.map((tr) => (
+                <tr key={`${tr.walletAddress}-${tr.id}-${tr.tokenSymbol}`} className="border-b border-gray-700/50 hover:bg-gray-700/30 transition">
                   <td className="py-2 px-2 text-gray-400 text-xs whitespace-nowrap">
                     {new Date(tr.createdAt).toLocaleString('ko-KR')}
                   </td>
-                  <td className="py-2 px-2 text-xs text-gray-400">
-                    {userId ? (
-                      <span title={userId}>{userId.slice(0, 8)}...</span>
-                    ) : '—'}
+                  <td className="py-2 px-2 text-xs whitespace-nowrap" title={tr.walletAddress}>
+                    {tr.userName}
                   </td>
                   <td className="py-2 px-2">
                     <span className={`text-xs px-1.5 py-0.5 rounded ${
@@ -484,16 +565,10 @@ function TransferHistorySection() {
                     {formatAddr(tr.receiver)}
                   </td>
                   <td className="py-2 px-2 font-medium">{tr.tokenSymbol}</td>
-                  <td className="py-2 px-2 text-right font-mono text-xs text-gray-400">
-                    {tr.preBalance.toFixed(tr.tokenSymbol === 'SOL' ? 6 : 2)}
-                  </td>
                   <td className="py-2 px-2 text-right font-mono text-xs">
                     <span className={tr.type === 'deposit' ? 'text-green-400' : 'text-red-400'}>
                       {tr.type === 'deposit' ? '+' : '-'}{tr.amount.toFixed(tr.tokenSymbol === 'SOL' ? 6 : 2)}
                     </span>
-                  </td>
-                  <td className="py-2 px-2 text-right font-mono text-xs text-gray-400">
-                    {tr.postBalance.toFixed(tr.tokenSymbol === 'SOL' ? 6 : 2)}
                   </td>
                   <td className="py-2 px-2 font-mono text-xs text-gray-400">
                     <a
@@ -515,15 +590,11 @@ function TransferHistorySection() {
                     </span>
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {walletAddress && !isLoadingTransfers && transfers.length === 0 && !transferError && (
-        <div className="text-center py-6 text-gray-400 text-sm">입출금 내역이 없습니다.</div>
-      )}
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
