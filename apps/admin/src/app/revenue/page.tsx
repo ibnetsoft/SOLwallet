@@ -87,7 +87,6 @@ export default function RevenuePage() {
             <thead>
               <tr className="border-b border-gray-700 text-gray-400">
                 <th className="py-3 px-4 text-left font-medium">시간</th>
-                <th className="py-3 px-4 text-left font-medium">시간</th>
                 <th className="py-3 px-4 text-left font-medium">사용자</th>
                 <th className="py-3 px-4 text-left font-medium">거래</th>
                 <th className="py-3 px-4 text-right font-medium">거래금액</th>
