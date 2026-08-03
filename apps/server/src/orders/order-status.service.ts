@@ -183,26 +183,30 @@ export class OrderStatusService {
   }
 
   /**
-   * pending 상태로 방치된 고아 주문 정리 — status='failed'로 전환.
+   * 서명·제출이 끝내 안 된 고아 주문 정리 — status='failed'로 전환.
    *
-   * createOrder는 DB에 status='pending'으로 주문을 먼저 만들고 unsigned tx를
-   * 클라이언트에 반환한다. 클라이언트가 그 tx에 서명해 submitOrder까지 성공해야
-   * 비로소 tx_signature가 채워지고 status='submitted'로 넘어간다.
+   * createOrder는 DB에 status='pending'으로 주문을 먼저 만들고, Manifest가
+   * unsigned tx 생성 요청을 받아주면 그 즉시(!) — 클라이언트가 서명하기도
+   * 전에 — status='active'로 바꿔버린다(orders.service.ts:572 부근). 실제로
+   * 체인에 올라간 것과는 무관하게, "Manifest가 주문 요청 자체는 접수했다"만
+   * 반영하는 상태 전이다. tx_signature는 클라이언트가 서명 후 submitOrder를
+   * 호출해야 비로소 채워진다.
    *
-   * 문제는 그 사이에 클라이언트 쪽에서 서명 실패·네트워크 끊김·앱 종료 등으로
-   * submitOrder를 영영 호출하지 못하면, 이 주문이 tx_signature 없이 status=
-   * 'pending'인 채로 영원히 남는다는 것. checkSubmittedOrders/checkActiveOrders는
-   * 둘 다 tx_signature가 있는 주문만 조회하므로 이 상태는 그 어떤 정리 로직에도
-   * 걸리지 않았다 — 실제로는 Manifest에 전달된 적조차 없는 주문인데도 관리자
-   * 화면·유저 화면 양쪽에서 "미체결"로 영원히 남아 취소도 안 되는 유령 주문이 됨
-   * (취소 시도 시 Manifest가 "no open orders"로 응답하는 게 바로 이 케이스).
+   * 그래서 orphan은 'pending'이 아니라 실제로는 대부분 'active'에서 발생한다
+   * (실측 확인: DUDE 15.555×10.5 주문이 status=active, tx_signature=null로
+   * 영구 정체). 클라이언트 서명 실패·네트워크 끊김·앱 종료 등으로 submitOrder가
+   * 끝내 안 불리면, checkSubmittedOrders/checkActiveOrders는 둘 다 tx_signature가
+   * 있는 주문만 조회하므로 이 상태는 그 어떤 정리 로직에도 걸리지 않는다 —
+   * 실제로는 체인에 전달된 적조차 없는데도 관리자·유저 화면 양쪽에서 "미체결"로
+   * 영원히 남아 취소도 안 되는 유령 주문이 됨(취소 시도 시 Manifest가 "no open
+   * orders"로 응답하는 게 바로 이 케이스).
    */
   private async checkOrphanedPendingOrders(): Promise<void> {
     const cutoff = new Date(Date.now() - this.PENDING_ORPHAN_TIMEOUT_MS).toISOString();
     const { data: orphans, error } = await this.client
       .from('orders')
       .select('id, created_at')
-      .eq('status', 'pending')
+      .in('status', ['pending', 'active'])
       .is('tx_signature', null)
       .lt('created_at', cutoff)
       .limit(this.BATCH_SIZE);
