@@ -48,6 +48,9 @@ export default function TransactionsPage() {
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
+  // 상단 탭 — 주문 내역 / 입출금 내역을 위아래로 쌓지 않고 탭으로 전환
+  const [activeTab, setActiveTab] = useState<'orders' | 'transfers'>('orders');
+
   const pageSize = 50;
   const totalPages = Math.ceil(total / pageSize);
 
@@ -127,6 +130,32 @@ export default function TransactionsPage() {
     <div>
       <h1 className="text-2xl font-bold mb-6">📋 트랜잭션 모니터링</h1>
 
+      {/* 탭 — 주문 내역 / 입출금 내역 */}
+      <div className="flex gap-1 border-b border-gray-700 mb-6">
+        <button
+          onClick={() => setActiveTab('orders')}
+          className={`px-4 py-2.5 text-sm font-medium transition border-b-2 -mb-px ${
+            activeTab === 'orders'
+              ? 'border-primary-500 text-white'
+              : 'border-transparent text-gray-400 hover:text-gray-200'
+          }`}
+        >
+          주문 내역
+        </button>
+        <button
+          onClick={() => setActiveTab('transfers')}
+          className={`px-4 py-2.5 text-sm font-medium transition border-b-2 -mb-px ${
+            activeTab === 'transfers'
+              ? 'border-primary-500 text-white'
+              : 'border-transparent text-gray-400 hover:text-gray-200'
+          }`}
+        >
+          입출금 내역
+        </button>
+      </div>
+
+      {activeTab === 'orders' && (
+      <>
       {error && (
         <div className="bg-danger/10 border border-danger/30 rounded-xl p-4 mb-6 text-danger text-sm">
           {error}
@@ -371,9 +400,10 @@ export default function TransactionsPage() {
           </div>
         )}
       </div>
+      </>
+      )}
 
-      {/* ─── 입출금 내역 (On-chain) ─── */}
-      <TransferHistorySection />
+      {activeTab === 'transfers' && <TransferHistorySection />}
     </div>
   );
 }
@@ -450,7 +480,7 @@ function TransferHistorySection() {
   const formatTxHash = (hash: string) => `${hash.slice(0, 8)}...${hash.slice(-4)}`;
 
   return (
-    <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 mt-6">
+    <div className="bg-gray-800/50 rounded-xl border border-gray-700/50">
       <div className="p-6 pb-0 flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-lg font-bold">💳 입출금 내역 (On-chain)</h2>
