@@ -13,7 +13,7 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
   active:    { label: '미체결', color: 'bg-blue-500/20 text-blue-400' },
   submitted: { label: '미체결', color: 'bg-blue-500/20 text-blue-400' },
   filled:    { label: '체결',   color: 'bg-success/20 text-success' },
-  cancelled: { label: '취소',   color: 'bg-danger/20 text-danger' },
+  cancelled: { label: '취소',   color: 'bg-orange-500/20 text-orange-400' },
   expired:   { label: '만료',   color: 'bg-gray-600/20 text-gray-400' },
   // failed 매핑이 없어 실패한 주문이 "미체결"로 잘못 표시되던 문제 수정
   failed:    { label: '실패',   color: 'bg-danger/20 text-danger' },
