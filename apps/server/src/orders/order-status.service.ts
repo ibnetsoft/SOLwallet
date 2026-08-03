@@ -55,6 +55,8 @@ export class OrderStatusService {
   private readonly BATCH_SIZE = 20;
   /** fill 이벤트 식별용 discriminant (Manifest SDK와 동일) */
   private fillDiscriminant: Buffer | null = null;
+  /** 주문 생성(PlaceOrder) 이벤트 식별용 discriminant */
+  private placeOrderDiscriminant: Buffer | null = null;
   private readonly connection: Connection;
 
   constructor(
@@ -87,6 +89,77 @@ export class OrderStatusService {
       this.logger.error(`[fillCheck] Failed to load fillDiscriminant: ${err instanceof Error ? err.message : String(err)}`);
       this.fillDiscriminant = Buffer.alloc(0);
       return this.fillDiscriminant;
+    }
+  }
+
+  /**
+   * placeOrderDiscriminant lazy 로드 — fillDiscriminant와 동일한 방식(keccak256)으로
+   * 프로그램ID + 계정명("manifest::logs::PlaceOrderLog")으로부터 직접 계산.
+   */
+  private async getPlaceOrderDiscriminant(): Promise<Buffer> {
+    if (this.placeOrderDiscriminant) return this.placeOrderDiscriminant;
+    try {
+      const { genAccDiscriminator } = await import('@cks-systems/manifest-sdk/dist/cjs/utils/discriminator');
+      this.placeOrderDiscriminant = genAccDiscriminator('manifest::logs::PlaceOrderLog');
+      this.logger.log(`[fillCheck] placeOrderDiscriminant loaded: ${this.placeOrderDiscriminant.toString('hex')}`);
+      return this.placeOrderDiscriminant;
+    } catch (err) {
+      this.logger.error(`[fillCheck] Failed to load placeOrderDiscriminant: ${err instanceof Error ? err.message : String(err)}`);
+      this.placeOrderDiscriminant = Buffer.alloc(0);
+      return this.placeOrderDiscriminant;
+    }
+  }
+
+  /**
+   * 주문 제출(placement) tx 로그에서 Manifest가 부여한 orderSequenceNumber를 추출.
+   *
+   * ⚠️ 이게 없으면(지금까지 쭉 그랬음) checkActiveOrders의 2단계 검사
+   * (isOrderStillOpen — 다른 트레이더가 나중에 체결시킨 경우 감지)가
+   * `sequenceNumber != null` 가드에 막혀 항상 건너뛰어진다. 그 결과 self-cross가
+   * 아닌 일반적인 체결은 영원히 감지되지 않고 주문이 계속 "미체결"로 남으며,
+   * 정작 Manifest에는 이미 사라진 주문이라 취소 시도 시 "no open orders" 404로
+   * 실패하는 형태로 드러남 — 실제로 사용자가 겪은 증상과 일치.
+   */
+  private async extractOrderSequenceNumber(signature: string): Promise<number | null> {
+    try {
+      const res = await fetch(this.rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'getTransaction',
+          params: [signature, { maxSupportedTransactionVersion: 0 }],
+        }),
+      });
+      const data = await res.json() as { result?: RpcTransactionResponse | null };
+      const logs = data.result?.meta?.logMessages;
+      if (!logs) return null;
+
+      const discriminant = await this.getPlaceOrderDiscriminant();
+      if (discriminant.length === 0) return null;
+
+      for (const log of logs) {
+        if (!log.startsWith('Program data: ')) continue;
+        const base64Data = log.split(' ')[2];
+        if (!base64Data) continue;
+
+        try {
+          const buffer = Buffer.from(base64Data, 'base64');
+          if (!buffer.subarray(0, 8).equals(discriminant)) continue;
+
+          const { PlaceOrderLog } = await import('@cks-systems/manifest-sdk/dist/cjs/manifest/accounts/PlaceOrderLog');
+          const placeLog = PlaceOrderLog.deserialize(buffer.subarray(8))[0];
+          const seq = Number(placeLog.orderSequenceNumber.toString());
+          return Number.isFinite(seq) ? seq : null;
+        } catch {
+          continue;
+        }
+      }
+      return null;
+    } catch (err) {
+      this.logger.warn(`[fillCheck] Failed to extract sequence number for ${signature}: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
     }
   }
 
@@ -129,7 +202,24 @@ export class OrderStatusService {
       if (result === 'success') {
         // tx 성공 = orderbook에 등록 → active
         await this.updateOrderStatus(order.id, 'active');
-        this.logger.log(`[submitted] order ${order.id} confirmed → active (orderbook registered)`);
+
+        // 이후 2단계 체결 감지(온체인 오더북 대조)에 필요한 orderSequenceNumber를
+        // 지금 확보해둔다 — placement tx 로그에서만 얻을 수 있고, 나중에 다시
+        // 시도하면 fresh-tx로 재제출돼 시퀀스 번호도 바뀌므로 반드시 이 시점에 잡아야 함.
+        const seq = await this.extractOrderSequenceNumber(order.tx_signature);
+        if (seq != null) {
+          const { error: seqError } = await this.client
+            .from('orders')
+            .update({ manifest_sequence_number: seq })
+            .eq('id', order.id);
+          if (seqError) {
+            this.logger.warn(`[submitted] Failed to save sequence number for ${order.id}: ${seqError.message}`);
+          } else {
+            this.logger.log(`[submitted] order ${order.id} confirmed → active (seq=${seq})`);
+          }
+        } else {
+          this.logger.log(`[submitted] order ${order.id} confirmed → active (orderbook registered, seq 추출 실패)`);
+        }
       } else if (result === 'failed') {
         await this.updateOrderStatus(order.id, 'failed');
         this.logger.log(`[submitted] order ${order.id} tx failed → failed`);
