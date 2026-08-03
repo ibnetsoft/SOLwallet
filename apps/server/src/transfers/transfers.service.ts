@@ -184,6 +184,29 @@ export class TransfersService {
   }
 
   /**
+   * mint → symbol 조회 맵. USDT/USDC는 quote 통화라 tokens 테이블에 없을 수도
+   * 있어 하드코딩으로 먼저 깔고, 등록된 모든 토큰(DUDE 등)을 그 위에 얹는다.
+   *
+   * 예전엔 이 맵 없이 USDT/USDC만 하드코딩 체크하고 나머지는 전부 'Token'으로
+   * 표시했음 — 입금 쪽(받는 사람)은 DB에 기록이 없어 이 온체인 스캔 결과가
+   * 유일한 소스라, DUDE를 출금하면 보내는 사람 쪽엔 DB에 기록된 정확한
+   * 심볼(DUDE)이 보이는데 받는 사람 쪽엔 'Token'으로만 보이는 비대칭이 생겼음.
+   */
+  private async getMintSymbolMap(): Promise<Map<string, string>> {
+    const map = new Map<string, string>([
+      [USDT_MINT, 'USDT'],
+      ['EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', 'USDC'],
+    ]);
+    try {
+      const { data: tokens } = await this.client.from('tokens').select('mint_address, symbol');
+      (tokens || []).forEach((t) => map.set(t.mint_address as string, t.symbol as string));
+    } catch (err) {
+      this.logger.warn(`[getMintSymbolMap] tokens 조회 실패: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return map;
+  }
+
+  /**
    * 온체인 입출금 내역 조회 (RPC)
    */
   private async getOnchainTransfers(walletAddress: string, limit: number): Promise<TransferItem[]> {
@@ -194,6 +217,7 @@ export class TransfersService {
     if (signatures.length === 0) return [];
 
     const sigs = signatures.map((s) => s.signature);
+    const mintSymbolMap = await this.getMintSymbolMap();
 
     // 2. 파싱된 트랜잭션 상세 조회
     const txs = await this.connection.getParsedTransactions(sigs, { maxSupportedTransactionVersion: 0 });
@@ -283,9 +307,7 @@ export class TransfersService {
           const diff = entry.post - entry.pre;
           if (Math.abs(diff) === 0) continue;
 
-          let symbol = 'Token';
-          if (entry.mint === USDT_MINT) symbol = 'USDT';
-          else if (entry.mint === 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v') symbol = 'USDC';
+          const symbol = mintSymbolMap.get(entry.mint) ?? 'Token';
 
           // SPL 토큰의 sender/receiver — pre/post token balances에서 owner가 다른 쪽을 찾기
           const { sender, receiver } = this.findSplCounterparties(
