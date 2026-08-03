@@ -15,6 +15,22 @@ const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 /** 스테이블코인 — USDT 환산 시 1:1로 계산 */
 const STABLE_MINTS = new Set([USDT_MINT_ADDR, USDC_MINT_ADDR]);
 
+/**
+ * "오늘"의 시작 시각(KST 00:00)을 UTC Date로 반환.
+ *
+ * `new Date(); .setHours(0,0,0,0)`는 컨테이너의 시스템 타임존(EC2 Docker는 보통
+ * UTC) 기준 자정을 계산한다 — KST는 UTC+9라 실제로는 한국 시간 오전 9시가
+ * "오늘 시작"으로 잡혀, 오전 9시 이전 활동(가입/거래/입금)이 전부 "어제"로
+ * 빠지는 버그가 있었다. 대시보드의 오늘 가입·오늘 트랜잭션·오늘 입금액이
+ * 전부 이 함수를 거치지 않은 계산을 썼던 게 원인.
+ */
+function getKstTodayStart(): Date {
+  const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+  const kstWallClock = new Date(Date.now() + KST_OFFSET_MS);
+  kstWallClock.setUTCHours(0, 0, 0, 0);
+  return new Date(kstWallClock.getTime() - KST_OFFSET_MS);
+}
+
 // 내부 트리 노드 타입 (buildTree/getReferralTree에서 사용)
 export interface TreeNodeShape {
   id: string;
@@ -96,13 +112,11 @@ export class AdminService {
       .from('users')
       .select('*', { count: 'exact', head: true });
 
-    // 오늘 신규 가입
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // 오늘 신규 가입 (KST 자정 기준)
     const { count: todaySignups } = await this.client
       .from('users')
       .select('*', { count: 'exact', head: true })
-      .gte('created_at', today.toISOString());
+      .gte('created_at', getKstTodayStart().toISOString());
 
     // 총 수수료 수익 (체결 완료된 주문만 — 실제 발생한 수익)
     const { data: feeData } = await this.client
@@ -138,8 +152,7 @@ export class AdminService {
    * 대시보드 전체 데이터 — 기존 통계 + 입금 현황 + 오늘의 가입/트랜잭션 목록
    */
   async getDashboard(): Promise<AdminDashboard> {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    const todayStart = getKstTodayStart();
     const todayIso = todayStart.toISOString();
 
     const [stats, deposit, todayUsers, todayOrders] = await Promise.all([
