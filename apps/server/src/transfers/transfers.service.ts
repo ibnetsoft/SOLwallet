@@ -78,8 +78,11 @@ export class TransfersService {
    * 방식으로 바꿔야 한다. 지금은 테스트 유저 규모라 실시간 스캔으로 충분하다.
    *
    * @param perWalletLimit 지갑 하나당 조회할 최근 건수 (RPC 부하 제한용)
+   * @param sinceIso 지정하면 이 시각 이후 항목만 반환 (예: 대시보드의 "오늘의 입출금").
+   *   ⚠️ perWalletLimit 안에 그 시각 이후 항목이 다 안 들어올 정도로 한 지갑이
+   *   짧은 시간에 활발하면 일부 누락될 수 있음 — 지금 규모에서는 충분히 여유 있음.
    */
-  async getAllTransfers(perWalletLimit = 20): Promise<AdminTransferItem[]> {
+  async getAllTransfers(perWalletLimit = 20, sinceIso?: string): Promise<AdminTransferItem[]> {
     const { data: wallets, error } = await this.client
       .from('wallets')
       .select('public_key, user_id, users(username, first_name, telegram_uid)')
@@ -106,8 +109,10 @@ export class TransfersService {
       }),
     );
 
+    const sinceMs = sinceIso ? new Date(sinceIso).getTime() : null;
     return results
       .flat()
+      .filter((item) => sinceMs == null || new Date(item.createdAt).getTime() >= sinceMs)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 

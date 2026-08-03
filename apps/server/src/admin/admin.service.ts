@@ -1,11 +1,13 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
+import { TransfersService } from '../transfers/transfers.service';
 import type {
   AdminStats,
   AdminDashboard,
   DashboardTodayUser,
   DashboardTodayOrder,
+  DashboardTodayTransfer,
 } from '@solwallet/shared-types';
 
 const SOL_MINT_ADDR = 'So11111111111111111111111111111111111111112';
@@ -51,6 +53,7 @@ export class AdminService {
   constructor(
     private readonly supabaseService: SupabaseService,
     private readonly configService: ConfigService,
+    private readonly transfersService: TransfersService,
   ) {}
 
   private get client() {
@@ -155,11 +158,12 @@ export class AdminService {
     const todayStart = getKstTodayStart();
     const todayIso = todayStart.toISOString();
 
-    const [stats, deposit, todayUsers, todayOrders] = await Promise.all([
+    const [stats, deposit, todayUsers, todayOrders, todayTransfers] = await Promise.all([
       this.getStats(),
       this.getDepositStats(todayStart),
       this.getTodayUsers(todayIso),
       this.getTodayOrders(todayIso),
+      this.getTodayTransfers(todayIso),
     ]);
 
     return {
@@ -169,6 +173,7 @@ export class AdminService {
       depositStatsPartial: deposit.partial,
       todayUsers,
       todayOrders,
+      todayTransfers,
     };
   }
 
@@ -234,6 +239,19 @@ export class AdminService {
         txSignature: o.tx_signature ?? null,
       };
     });
+  }
+
+  /**
+   * 오늘의 입출금 내역 — 활성 지갑 전체를 온체인에서 실시간 스캔(트랜잭션
+   * 페이지의 getAllTransfers와 동일 로직)해 KST 오늘 자정 이후 항목만 추림.
+   */
+  private async getTodayTransfers(todayIso: string): Promise<DashboardTodayTransfer[]> {
+    try {
+      return await this.transfersService.getAllTransfers(20, todayIso);
+    } catch (err) {
+      this.logger.warn(`[getTodayTransfers] 조회 실패: ${err instanceof Error ? err.message : String(err)}`);
+      return [];
+    }
   }
 
   /**

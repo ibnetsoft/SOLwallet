@@ -163,6 +163,21 @@ export interface DashboardTodayOrder {
   txSignature: string | null;
 }
 
+/** 대시보드 — 오늘의 입출금 내역 (온체인 실시간 조회) */
+export interface DashboardTodayTransfer {
+  id: string;
+  type: 'deposit' | 'withdraw';
+  amount: number;
+  tokenSymbol: string;
+  status: string;
+  createdAt: string;
+  sender: string;
+  receiver: string;
+  userId: string;
+  userName: string;
+  walletAddress: string;
+}
+
 /**
  * 대시보드 전체 데이터 — 기존 통계 + 입금 현황 + 오늘의 목록
  *
@@ -178,6 +193,7 @@ export interface AdminDashboard extends AdminStats {
   depositStatsPartial: boolean;
   todayUsers: DashboardTodayUser[];
   todayOrders: DashboardTodayOrder[];
+  todayTransfers: DashboardTodayTransfer[];
 }
 
 export interface AdminUserDetail {

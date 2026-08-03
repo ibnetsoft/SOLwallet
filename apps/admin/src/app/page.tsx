@@ -221,6 +221,83 @@ export default function AdminDashboardPage() {
         </p>
       </div>
 
+      {/* ─── 오늘의 입출금 내역 ─── */}
+      <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 mb-6">
+        <div className="p-6 pb-0 flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold">💳 오늘의 입출금 내역</h2>
+          <span className="text-sm text-gray-400">총 {data?.todayTransfers.length ?? 0}건</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-700">
+                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">시간</th>
+                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">유저</th>
+                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">구분</th>
+                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">토큰</th>
+                <th className="text-right py-3 px-2 text-gray-400 font-medium whitespace-nowrap">금액</th>
+                <th className="text-left py-3 px-2 text-gray-400 font-medium whitespace-nowrap">Tx Hash</th>
+                <th className="text-center py-3 px-2 text-gray-400 font-medium whitespace-nowrap">상태</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr><td colSpan={7} className="text-center py-8 text-gray-400">로딩 중...</td></tr>
+              ) : !data || data.todayTransfers.length === 0 ? (
+                <tr><td colSpan={7} className="text-center py-8 text-gray-400">오늘 발생한 입출금이 없습니다</td></tr>
+              ) : (
+                data.todayTransfers.map((tr) => (
+                  <tr key={`${tr.walletAddress}-${tr.id}-${tr.tokenSymbol}`} className="border-b border-gray-700/50 hover:bg-gray-700/30 transition">
+                    <td className="py-2 px-2 text-gray-400 text-xs whitespace-nowrap">
+                      {new Date(tr.createdAt).toLocaleTimeString('ko-KR')}
+                    </td>
+                    <td className="py-2 px-2 text-xs whitespace-nowrap" title={tr.walletAddress}>
+                      {tr.userName}
+                    </td>
+                    <td className="py-2 px-2">
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${
+                        tr.type === 'deposit'
+                          ? 'bg-green-600/20 text-green-400'
+                          : 'bg-red-600/20 text-red-400'
+                      }`}>
+                        {tr.type === 'deposit' ? 'Receive' : 'Send'}
+                      </span>
+                    </td>
+                    <td className="py-2 px-2 font-medium">{tr.tokenSymbol}</td>
+                    <td className="py-2 px-2 text-right font-mono text-xs">
+                      <span className={tr.type === 'deposit' ? 'text-green-400' : 'text-red-400'}>
+                        {tr.type === 'deposit' ? '+' : '-'}{tr.amount.toFixed(tr.tokenSymbol === 'SOL' ? 6 : 2)}
+                      </span>
+                    </td>
+                    <td className="py-2 px-2 font-mono text-xs text-gray-400">
+                      {tr.id ? (
+                        <a
+                          href={`${SOLSCAN_TX_BASE}/${tr.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary-400 hover:text-primary-300 transition"
+                        >
+                          {formatTxHash(tr.id)}
+                        </a>
+                      ) : '—'}
+                    </td>
+                    <td className="py-2 px-2 text-center">
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        tr.status === 'completed'
+                          ? 'bg-success/20 text-success'
+                          : 'bg-danger/20 text-danger'
+                      }`}>
+                        {tr.status === 'completed' ? '완료' : '실패'}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* Quick Links */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         <Link
