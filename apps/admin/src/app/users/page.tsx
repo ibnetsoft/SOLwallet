@@ -212,6 +212,14 @@ export default function UsersPage() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [wallets, setWallets] = useState<AdminWalletDetail[]>([]);
   const [walletsLoading, setWalletsLoading] = useState(false);
+  const [copiedWalletId, setCopiedWalletId] = useState<string | null>(null);
+
+  const handleCopyAddress = (walletId: string, address: string) => {
+    navigator.clipboard.writeText(address).then(() => {
+      setCopiedWalletId(walletId);
+      setTimeout(() => setCopiedWalletId((cur) => (cur === walletId ? null : cur)), 1500);
+    }).catch(() => {});
+  };
 
   const [pageSize, setPageSize] = useState(20);
   const totalPages = Math.ceil(total / pageSize);
@@ -533,37 +541,60 @@ export default function UsersPage() {
         )}
       </div>
 
-      {/* Wallets Detail Panel */}
+      {/* Wallets Detail Modal — 중앙 팝업 */}
       {selectedUserId && (
-        <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 mt-6 p-6">
-          <h3 className="text-lg font-bold mb-4">🔗 지갑 상세</h3>
-          {walletsLoading ? (
-            <p className="text-gray-400 text-sm">로딩 중...</p>
-          ) : wallets.length === 0 ? (
-            <p className="text-gray-400 text-sm">지갑이 없습니다.</p>
-          ) : (
-            <div className="space-y-3">
-              {wallets.map((wallet) => {
-                return (
-                  <div key={wallet.id} className="bg-gray-900/50 rounded-lg p-4 flex items-center justify-between">
-                    <div>
-                      <p className="text-xs text-gray-400 mb-1">지갑 #{wallet.walletIndex} · {wallet.label}</p>
-                      <p className="text-sm font-mono text-gray-300">
-                        {wallet.publicKey.slice(0, 12)}...{wallet.publicKey.slice(-6)}
-                      </p>
-                    </div>
-                    <span className={`text-xs px-2 py-1 rounded-full ${
-                      wallet.isActive
-                        ? 'bg-success/20 text-success'
-                        : 'bg-gray-700 text-gray-400'
-                    }`}>
-                      {wallet.isActive ? '활성' : '비활성'}
-                    </span>
-                  </div>
-                );
-              })}
+        <div
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => { setSelectedUserId(null); setWallets([]); }}
+        >
+          <div
+            className="bg-gray-800 rounded-2xl border border-gray-700 w-full max-w-lg max-h-[80vh] overflow-y-auto p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold">🔗 지갑 상세</h3>
+              <button
+                onClick={() => { setSelectedUserId(null); setWallets([]); }}
+                className="text-gray-400 hover:text-white transition text-xl leading-none px-1"
+                aria-label="닫기"
+              >
+                ✕
+              </button>
             </div>
-          )}
+            {walletsLoading ? (
+              <p className="text-gray-400 text-sm">로딩 중...</p>
+            ) : wallets.length === 0 ? (
+              <p className="text-gray-400 text-sm">지갑이 없습니다.</p>
+            ) : (
+              <div className="space-y-3">
+                {wallets.map((wallet) => (
+                  <div key={wallet.id} className="bg-gray-900/50 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs text-gray-400">지갑 #{wallet.walletIndex} · {wallet.label}</p>
+                      <span className={`text-xs px-2 py-1 rounded-full whitespace-nowrap ${
+                        wallet.isActive
+                          ? 'bg-success/20 text-success'
+                          : 'bg-gray-700 text-gray-400'
+                      }`}>
+                        {wallet.isActive ? '활성' : '비활성'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-mono text-gray-300 break-all flex-1">
+                        {wallet.publicKey}
+                      </p>
+                      <button
+                        onClick={() => handleCopyAddress(wallet.id, wallet.publicKey)}
+                        className="shrink-0 text-xs px-2.5 py-1.5 rounded-lg bg-primary-600/20 text-primary-400 hover:bg-primary-600/30 transition whitespace-nowrap"
+                      >
+                        {copiedWalletId === wallet.id ? '복사됨!' : '복사'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
