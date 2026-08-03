@@ -202,25 +202,6 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
-      {/* ─── 오늘의 입금액 ─── */}
-      <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 p-6 mb-6">
-        <h2 className="text-lg font-bold mb-4">📥 오늘의 입금액</h2>
-        <div className="flex items-baseline gap-3">
-          <span className="text-4xl font-bold text-teal-400">
-            {isLoading ? (
-              <span className="inline-block w-40 h-10 bg-gray-700 rounded animate-pulse" />
-            ) : (
-              formatUsdt(data?.todayDepositUsdt ?? 0)
-            )}
-          </span>
-          <span className="text-sm text-gray-400">USDT 기준 환산</span>
-        </div>
-        <p className="text-xs text-gray-500 mt-3">
-          전체 회원 지갑으로 오늘 들어온 입금을 온체인에서 집계한 값입니다.
-          SOL은 실시간 시세로, USDT/USDC는 1:1로 환산됩니다. (시세 정보가 없는 토큰은 제외)
-        </p>
-      </div>
-
       {/* ─── 오늘의 입출금 내역 ─── */}
       <div className="bg-gray-800/50 rounded-xl border border-gray-700/50 mb-6">
         <div className="p-6 pb-0 flex items-center justify-between mb-4">

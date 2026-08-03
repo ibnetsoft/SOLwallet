@@ -74,8 +74,15 @@ export class AdminService {
   } | null = null;
   private readonly DEPOSIT_CACHE_MS = 60_000;
 
-  /** RPC JSON-RPC 호출 헬퍼 */
-  private async rpc<T>(method: string, params: unknown[]): Promise<T | null> {
+  /**
+   * RPC JSON-RPC 호출 헬퍼 — 1회 재시도 포함.
+   *
+   * 오늘의 입금액 집계는 지갑 수 × (서명조회 + 트랜잭션조회) 만큼 순차 RPC
+   * 호출을 하는데, 그중 단 하나만 일시적으로 실패해도 그 지갑분이 통째로
+   * 누락돼 총액이 들쭉날쭉해지는 원인이었다(새로고침마다 0원↔정상 금액을
+   * 오갔음). 즉시 1번 재시도해서 순간적인 실패를 흡수한다.
+   */
+  private async rpc<T>(method: string, params: unknown[], _retried = false): Promise<T | null> {
     try {
       const res = await fetch(this.rpcUrl, {
         method: 'POST',
@@ -84,11 +91,19 @@ export class AdminService {
       });
       const json = (await res.json()) as { result?: T; error?: { message?: string } };
       if (json.error) {
+        if (!_retried) {
+          await new Promise((r) => setTimeout(r, 300));
+          return this.rpc<T>(method, params, true);
+        }
         this.logger.warn(`RPC ${method} error: ${json.error.message}`);
         return null;
       }
       return json.result ?? null;
     } catch (err) {
+      if (!_retried) {
+        await new Promise((r) => setTimeout(r, 300));
+        return this.rpc<T>(method, params, true);
+      }
       this.logger.warn(`RPC ${method} failed: ${err instanceof Error ? err.message : String(err)}`);
       return null;
     }
@@ -345,6 +360,15 @@ export class AdminService {
       todayDepositUsdt: Math.round(todayDepositUsdt * 1e6) / 1e6,
       partial,
     };
+
+    // 이번 집계가 일부 RPC 실패로 불완전한데, 직전에 이미 완전히 성공한 값이
+    // 있다면 그걸 유지한다 — 재시도까지 다 실패한 극히 일부 경우에 화면이
+    // 정상 금액 → 0(또는 더 작은 값) → 다시 정상으로 깜빡이는 걸 막기 위함.
+    if (partial && cached && !cached.data.partial) {
+      this.logger.warn('[getDepositStats] 이번 집계 partial — 직전 성공 캐시 유지');
+      return cached.data;
+    }
+
     this.depositStatsCache = { at: Date.now(), data: result };
     return result;
   }
