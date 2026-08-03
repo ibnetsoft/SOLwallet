@@ -1,5 +1,6 @@
 import { Keypair, Transaction, VersionedTransaction } from '@solana/web3.js';
 import { getMsg } from '@/lib/i18n';
+import { reportClientError } from '@/lib/reportError';
 
 /**
  * 트랜잭션 서명 포맷
@@ -64,6 +65,14 @@ export function signTransaction(
     if (/already been processed|blockhash|BlockhashNotFound/i.test(detail)) {
       throw new Error('트랜잭션이 만료되었습니다. 다시 시도해주세요.');
     }
+
+    // 브라우저 콘솔에만 남고 서버 로그엔 안 보이던 서명 실패 — 원격 진단 가능하도록 보고
+    reportClientError(`[signTransaction] ${detail}`, {
+      format,
+      txLength: serializedTransaction.length,
+      secretKeyLength: secretKey.length,
+    });
+
     throw new Error(getMsg('error.invalidTx'));
   } finally {
     // 작업용 복사본 키 제로화
