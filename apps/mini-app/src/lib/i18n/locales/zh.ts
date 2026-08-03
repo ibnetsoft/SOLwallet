@@ -280,7 +280,7 @@ const zh: Record<string, string> = {
   'error.invalidResponse': '无效响应',
   'error.devLoginFailed': '开发登录失败',
   'error.invalidSeed': '无效的助记词。',
-  'error.invalidTx': '无效的交易。',
+  'error.invalidTx': '由于临时网络问题，交易准备失败。请稍后重试。',
 
   // ─── Store Errors ───
   'error.maxWallets': '最多可创建 {max} 个钱包。',

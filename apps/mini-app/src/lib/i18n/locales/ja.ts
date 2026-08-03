@@ -280,7 +280,7 @@ const ja: Record<string, string> = {
   'error.invalidResponse': '無効なレスポンス',
   'error.devLoginFailed': '開発ログイン失敗',
   'error.invalidSeed': '無効なシードフレーズです。',
-  'error.invalidTx': '無効なトランザクションです。',
+  'error.invalidTx': '一時的なネットワークの問題で取引準備に失敗しました。しばらくしてからもう一度お試しください。',
 
   // ─── Store Errors ───
   'error.maxWallets': '最大{max}個のウォレットまで作成可能です。',

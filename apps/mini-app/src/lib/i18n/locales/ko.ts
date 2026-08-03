@@ -282,7 +282,7 @@ const ko: Record<string, string> = {
   'error.invalidResponse': '유효하지 않은 응답',
   'error.devLoginFailed': '개발 로그인 실패',
   'error.invalidSeed': '유효하지 않은 시드 구문입니다.',
-  'error.invalidTx': '유효하지 않은 트랜잭션입니다.',
+  'error.invalidTx': '일시적인 네트워크 문제로 거래 준비에 실패했습니다. 잠시 후 다시 시도해주세요.',
 
   // ─── Store Errors ───
   'error.maxWallets': '최대 {max}개의 지갑만 생성할 수 있습니다.',

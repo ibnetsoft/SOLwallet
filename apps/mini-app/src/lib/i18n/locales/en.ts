@@ -282,7 +282,7 @@ const en: Record<TranslationKey, string> = {
   'error.invalidResponse': 'Invalid response',
   'error.devLoginFailed': 'Dev login failed',
   'error.invalidSeed': 'Invalid seed phrase.',
-  'error.invalidTx': 'Invalid transaction.',
+  'error.invalidTx': 'Trade preparation failed due to a temporary network issue. Please try again shortly.',
 
   // ─── Store Errors ───
   'error.maxWallets': 'Maximum {max} wallets allowed.',

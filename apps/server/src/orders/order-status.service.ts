@@ -51,6 +51,9 @@ export class OrderStatusService {
 
   /** submitted/active 주문을 타임아웃 처리할 기준 (1시간) */
   private readonly ORDER_TIMEOUT_MS = 60 * 60 * 1000;
+  /** pending인데 tx_signature가 끝내 안 채워진 고아 주문 정리 기준 (5분) —
+   *  정상적인 서명·제출은 수십 초 내로 끝나므로 충분히 넉넉한 값 */
+  private readonly PENDING_ORPHAN_TIMEOUT_MS = 5 * 60 * 1000;
   /** 단일 폴링에서 처리할 최대 주문 수 */
   private readonly BATCH_SIZE = 20;
   /** fill 이벤트 식별용 discriminant (Manifest SDK와 동일) */
@@ -167,6 +170,9 @@ export class OrderStatusService {
    * submitted + active 주문의 체결 상태를 확인하고 DB 업데이트
    */
   async checkPendingOrders(): Promise<{ filled: number; failed: number; expired: number; pending: number }> {
+    // pending 고아 주문: 클라이언트가 서명·제출에 끝내 실패한 경우 정리
+    await this.checkOrphanedPendingOrders();
+
     // submitted 주문: tx 블록 포함 확인
     await this.checkSubmittedOrders();
 
@@ -174,6 +180,39 @@ export class OrderStatusService {
     const result = await this.checkActiveOrders();
 
     return result;
+  }
+
+  /**
+   * pending 상태로 방치된 고아 주문 정리 — status='failed'로 전환.
+   *
+   * createOrder는 DB에 status='pending'으로 주문을 먼저 만들고 unsigned tx를
+   * 클라이언트에 반환한다. 클라이언트가 그 tx에 서명해 submitOrder까지 성공해야
+   * 비로소 tx_signature가 채워지고 status='submitted'로 넘어간다.
+   *
+   * 문제는 그 사이에 클라이언트 쪽에서 서명 실패·네트워크 끊김·앱 종료 등으로
+   * submitOrder를 영영 호출하지 못하면, 이 주문이 tx_signature 없이 status=
+   * 'pending'인 채로 영원히 남는다는 것. checkSubmittedOrders/checkActiveOrders는
+   * 둘 다 tx_signature가 있는 주문만 조회하므로 이 상태는 그 어떤 정리 로직에도
+   * 걸리지 않았다 — 실제로는 Manifest에 전달된 적조차 없는 주문인데도 관리자
+   * 화면·유저 화면 양쪽에서 "미체결"로 영원히 남아 취소도 안 되는 유령 주문이 됨
+   * (취소 시도 시 Manifest가 "no open orders"로 응답하는 게 바로 이 케이스).
+   */
+  private async checkOrphanedPendingOrders(): Promise<void> {
+    const cutoff = new Date(Date.now() - this.PENDING_ORPHAN_TIMEOUT_MS).toISOString();
+    const { data: orphans, error } = await this.client
+      .from('orders')
+      .select('id, created_at')
+      .eq('status', 'pending')
+      .is('tx_signature', null)
+      .lt('created_at', cutoff)
+      .limit(this.BATCH_SIZE);
+
+    if (error || !orphans || orphans.length === 0) return;
+
+    for (const order of orphans) {
+      await this.updateOrderStatus(order.id as string, 'failed');
+    }
+    this.logger.warn(`[pending] ${orphans.length}개 고아 주문(서명/제출 미완료) → failed 처리`);
   }
 
   /**
