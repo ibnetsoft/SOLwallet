@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Copy } from 'lucide-react';
 import { useWalletStore } from '@/stores/useWalletStore';
+import { loadWallets } from '@/lib/storage';
 import { useToast } from '@/components/Toast';
 import PinModal from '@/components/PinModal';
 import { BottomNav } from '@/components/BottomNav';
@@ -29,6 +30,7 @@ export default function SettingsPage() {
     importWallet,
     activateWallet,
     deleteWallet,
+    unlockWallet,
   } = useWalletStore();
 
   const { showToast } = useToast();
@@ -39,6 +41,9 @@ export default function SettingsPage() {
   const [showImportPin, setShowImportPin] = useState(false);
   const [pendingMnemonic, setPendingMnemonic] = useState('');
   const [showMnemonic, setShowMnemonic] = useState(false);
+  const [showDeletePin, setShowDeletePin] = useState(false);
+  const [pendingDeleteWalletId, setPendingDeleteWalletId] = useState<string | null>(null);
+  const [deletePinError, setDeletePinError] = useState('');
   const [createdMnemonic, setCreatedMnemonic] = useState('');
   const [pinError, setPinError] = useState('');
   const [actionLoading, setActionLoading] = useState<string | false>(false);
@@ -132,15 +137,43 @@ export default function SettingsPage() {
     }
   };
 
-  // 지갑 삭제
+  // 지갑 삭제 — PIN 확인 필요 (되돌릴 수 없는 파괴적 작업이라 실수 방지).
+  // 단, 다른 기기에서 만든 지갑이라 이 기기에 암호화된 키 자체가 없으면
+  // 검증할 PIN이 없으므로(이 기기 기준 로컬 키가 없음) 바로 삭제 진행.
   const handleDelete = async (walletId: string) => {
-    if (!confirm(t('settings.deleteConfirm'))) return;
+    const hasLocalKey = !!loadWallets().find((w) => w.id === walletId)?.encrypted;
+    if (!hasLocalKey) {
+      if (!confirm(t('settings.deleteConfirm'))) return;
+      setActionLoading(`delete-${walletId}`);
+      try {
+        await deleteWallet(walletId);
+        showToast(t('settings.walletDeleted'));
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : t('settings.deleteFailed'));
+      } finally {
+        setActionLoading('');
+      }
+      return;
+    }
+    setPendingDeleteWalletId(walletId);
+    setDeletePinError('');
+    setShowDeletePin(true);
+  };
+
+  const handleDeleteExecute = async (pin: string) => {
+    if (!pendingDeleteWalletId) return;
+    const walletId = pendingDeleteWalletId;
+    setDeletePinError('');
     setActionLoading(`delete-${walletId}`);
     try {
+      // PIN이 이 지갑의 것이 맞는지 먼저 검증 (틀리면 여기서 throw)
+      await unlockWallet(walletId, pin);
       await deleteWallet(walletId);
+      setShowDeletePin(false);
+      setPendingDeleteWalletId(null);
       showToast(t('settings.walletDeleted'));
     } catch (err) {
-      showToast(err instanceof Error ? err.message : t('settings.deleteFailed'));
+      setDeletePinError(err instanceof Error ? err.message : t('settings.deleteFailed'));
     } finally {
       setActionLoading('');
     }
@@ -400,6 +433,20 @@ export default function SettingsPage() {
           setPendingMnemonic('');
         }}
         error={pinError}
+      />
+
+      {/* 지갑 삭제 — PIN 확인 */}
+      <PinModal
+        isOpen={showDeletePin}
+        title={t('settings.deletePinTitle')}
+        subtitle={t('settings.deleteConfirm')}
+        onConfirm={handleDeleteExecute}
+        onCancel={() => {
+          setShowDeletePin(false);
+          setPendingDeleteWalletId(null);
+          setDeletePinError('');
+        }}
+        error={deletePinError}
       />
 
       {/* 시드 구문 표시 (최초 생성 시만) */}

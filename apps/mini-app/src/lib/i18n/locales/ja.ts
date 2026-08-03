@@ -193,6 +193,7 @@ const ja: Record<string, string> = {
   'settings.pinSubtitleImport': 'インポートしたウォレットのPINを設定',
   'settings.walletActivated': '✅ アクティブウォレットを変更しました。',
   'settings.activateFailed': 'ウォレット切替失敗',
+  'settings.deletePinTitle': '🔒 ウォレット削除',
   'settings.deleteConfirm': 'このウォレットを削除しますか？\n暗号化データがデバイスから削除されます。',
   'settings.walletDeleted': '🗑️ ウォレットを削除しました。',
   'settings.deleteFailed': 'ウォレット削除失敗',

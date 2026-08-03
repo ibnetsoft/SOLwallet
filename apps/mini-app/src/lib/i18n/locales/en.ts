@@ -195,6 +195,7 @@ const en: Record<TranslationKey, string> = {
   'settings.pinSubtitleImport': 'Set a PIN for the imported wallet',
   'settings.walletActivated': '✅ Active wallet changed.',
   'settings.activateFailed': 'Failed to switch wallet',
+  'settings.deletePinTitle': '🔒 Delete Wallet',
   'settings.deleteConfirm': 'Delete this wallet?\nEncrypted data will be removed from your device.',
   'settings.walletDeleted': '🗑️ Wallet deleted.',
   'settings.deleteFailed': 'Failed to delete wallet',

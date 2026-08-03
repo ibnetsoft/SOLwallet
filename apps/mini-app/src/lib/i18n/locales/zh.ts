@@ -193,6 +193,7 @@ const zh: Record<string, string> = {
   'settings.pinSubtitleImport': '为导入的钱包设置 PIN 密码',
   'settings.walletActivated': '✅ 活跃钱包已更改。',
   'settings.activateFailed': '钱包切换失败',
+  'settings.deletePinTitle': '🔒 删除钱包',
   'settings.deleteConfirm': '确定删除此钱包？\n加密数据将从设备中移除。',
   'settings.walletDeleted': '🗑️ 钱包已删除。',
   'settings.deleteFailed': '钱包删除失败',

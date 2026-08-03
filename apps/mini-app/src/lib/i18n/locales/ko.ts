@@ -195,6 +195,7 @@ const ko: Record<string, string> = {
   'settings.pinSubtitleImport': '가져온 지갑의 암호 PIN을 설정합니다',
   'settings.walletActivated': '✅ 활성 지갑이 변경되었습니다.',
   'settings.activateFailed': '지갑 전환 실패',
+  'settings.deletePinTitle': '🔒 지갑 삭제',
   'settings.deleteConfirm': '이 지갑을 삭제하시겠습니까?\n암호화된 데이터가 로컬에서 제거됩니다.',
   'settings.walletDeleted': '🗑️ 지갑이 삭제되었습니다.',
   'settings.deleteFailed': '지갑 삭제 실패',
