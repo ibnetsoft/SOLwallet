@@ -8,6 +8,7 @@ import { FEE_RATE, QUICK_AMOUNT_RATIOS, USDT_MINT } from '@solwallet/config';
 import { useWalletStore } from './useWalletStore';
 import type { Token } from '@/lib/api/tokens';
 import { getMsg } from '@/lib/i18n';
+import { truncateDecimals } from '@/lib/format';
 
 interface OrderInfo {
   id: string;
@@ -106,7 +107,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     // 시장가 전환 시 자동으로 현재가 적용
     if (orderType === 'market') {
       const { currentPrice } = get();
-      set({ orderType, price: currentPrice > 0 ? String(currentPrice) : '' });
+      set({ orderType, price: currentPrice > 0 ? truncateDecimals(currentPrice) : '' });
     } else {
       set({ orderType });
     }
@@ -123,7 +124,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
   applyCurrentPrice: () => {
     const { currentPrice } = get();
     if (currentPrice > 0) {
-      set({ price: String(currentPrice) });
+      set({ price: truncateDecimals(currentPrice) });
     }
   },
 
@@ -181,7 +182,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       // 시장가 모드일 때 가격 자동 동기화
       const { orderType } = get();
       if (orderType === 'market' && price > 0) {
-        set({ price: String(price) });
+        set({ price: truncateDecimals(price) });
       }
     } catch {
       // 무시

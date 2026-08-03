@@ -15,6 +15,7 @@ import { getWalletBalance, type WalletBalance } from '@/lib/api/balance';
 import { isLoggedIn } from '@/lib/api/auth';
 import { getTokenLogoUrl } from '@/lib/tokenLogo';
 import { useT } from '@/lib/i18n';
+import { truncateDecimals } from '@/lib/format';
 
 // ===== Token Logo (로고 이미지 + fallback) =====
 function TokenLogo({ symbol }: { symbol: string }) {
@@ -115,7 +116,7 @@ function TradeContent() {
   // 가격이 없고 currentPrice가 로드되었을 때 지정가 자동 채우기
   useEffect(() => {
     if (orderType === 'limit' && currentPrice > 0 && !price) {
-      setPrice(currentPrice.toString());
+      setPrice(truncateDecimals(currentPrice));
     }
   }, [currentPrice, orderType]);
 
