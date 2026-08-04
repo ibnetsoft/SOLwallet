@@ -59,10 +59,10 @@ export class OrderStatusService {
   private readonly logger = new Logger(OrderStatusService.name);
   private readonly rpcUrl: string;
 
-  /** submitted/active 주문을 타임아웃 처리할 기준 (1시간) */
-  private readonly ORDER_TIMEOUT_MS = 60 * 60 * 1000;
   /** pending인데 tx_signature가 끝내 안 채워진 고아 주문 정리 기준 (5분) —
-   *  정상적인 서명·제출은 수십 초 내로 끝나므로 충분히 넉넉한 값 */
+   *  정상적인 서명·제출은 수십 초 내로 끝나므로 충분히 넉넉한 값.
+   *  ⚠️ Manifest 지정가 주문은 체인에서 만료되지 않으므로, tx_signature가 있는
+   *     정상 오픈 주문은 임의로 만료시키지 않는다 (사용자가 취소하기 전까지 활성). */
   private readonly PENDING_ORPHAN_TIMEOUT_MS = 5 * 60 * 1000;
   /** 단일 폴링에서 처리할 최대 주문 수 */
   private readonly BATCH_SIZE = 100;
@@ -226,21 +226,13 @@ export class OrderStatusService {
     if (error || !orders || orders.length === 0) return;
 
     for (const order of orders as unknown as SubmittedOrder[]) {
-      const ageMs = Date.now() - new Date(order.created_at).getTime();
-      if (ageMs > this.ORDER_TIMEOUT_MS) {
-        await this.updateOrderStatus(order.id, 'expired');
-        continue;
-      }
-
       const result = await this.checkTransactionStatus(order.tx_signature);
 
       if (result === 'success') {
         // tx 성공 = orderbook에 등록 → active
         await this.updateOrderStatus(order.id, 'active');
 
-        // 이후 2단계 체결 감지(온체인 오더북 대조)에 필요한 orderSequenceNumber를
-        // 지금 확보해둔다 — placement tx 로그에서만 얻을 수 있고, 나중에 다시
-        // 시도하면 fresh-tx로 재제출돼 시퀀스 번호도 바뀌므로 반드시 이 시점에 잡아야 함.
+        // 체결 감지에 필요한 orderSequenceNumber를 placement tx 로그에서 확보
         const seq = await this.extractOrderSequenceNumber(order.tx_signature);
         if (seq != null) {
           const { error: seqError } = await this.client
@@ -259,6 +251,7 @@ export class OrderStatusService {
         await this.updateOrderStatus(order.id, 'failed');
         this.logger.log(`[submitted] order ${order.id} tx failed → failed`);
       }
+      // result === 'pending': tx가 아직 컨펌되지 않음 — 다음 폴링에서 재확인
     }
   }
 
@@ -287,9 +280,6 @@ export class OrderStatusService {
     let pending = 0;
 
     for (const order of typedOrders) {
-      const ageMs = Date.now() - new Date(order.created_at).getTime();
-      const isOverTimeout = ageMs > this.ORDER_TIMEOUT_MS;
-
       // 체결 감지 — 오직 placement tx 로그에서 실제 FillEvent가 확인된 경우만 filled.
       // ⚠️ "오더북에서 사라짐 = 체결" 휴리스틱은 사용하지 않는다 — 취소/만료/부분체결도
       //    오더북에서 사라지므로, 이것만으로는 체결을 확정할 수 없다.
@@ -306,25 +296,27 @@ export class OrderStatusService {
           );
           continue;
         }
+      } else {
+        // tx_signature가 없는 주문 = 클라이언트 서명 실패로 체인에 올라간 적 없음.
+        // Manifest 지정가 주문은 체인에서 만료되지 않으므로(사용자가 취소하기 전까지
+        // 영구 유지), 서버에서 임의로 만료시키지 않는다. 단 tx_signature가 없는 주문은
+        // 실제로 체인에 존재하지 않으므로 failed로 정리한다.
+        const ageMs = Date.now() - new Date(order.created_at).getTime();
+        if (ageMs > this.PENDING_ORPHAN_TIMEOUT_MS) {
+          await this.updateOrderStatus(order.id, 'failed');
+          continue;
+        }
       }
 
-      // FillEvent가 없으면 미체결(오픈) 상태 유지 — 타임아웃 시에만 정리
-      if (isOverTimeout) {
-        // tx_signature가 없는 주문은 체인에 올라간 적이 없으므로 failed, 있으면 expired
-        await this.updateOrderStatus(order.id, order.tx_signature ? 'expired' : 'failed');
-        if (order.tx_signature) expired++;
-        else { /* failed는 집계에서 제외하되 카운트는 추적 */ }
-        continue;
-      }
-
+      // FillEvent가 없고 tx_signature가 있으면 정상적인 오픈 주문 — 만료시키지 않고 유지
       pending++;
     }
 
-    if (filled + expired > 0) {
-      this.logger.log(`[active] fill check: ${filled} filled, ${expired} expired, ${pending} pending`);
+    if (filled > 0) {
+      this.logger.log(`[active] fill check: ${filled} filled, ${pending} pending`);
     }
 
-    return { filled, failed: 0, expired, pending };
+    return { filled, failed: 0, expired: 0, pending };
   }
 
   /**
