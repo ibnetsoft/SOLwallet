@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { RefreshCw, ArrowDownToLine } from 'lucide-react';
 import { useTradeStore } from '@/stores/useTradeStore';
 import { useWalletStore } from '@/stores/useWalletStore';
-import { useToast } from '@/components/Toast';
+import { useToast, type ToastVariant } from '@/components/Toast';
 import PinModal from '@/components/PinModal';
 import { BottomNav } from '@/components/BottomNav';
 import { SkeletonCard } from '@/components/Skeleton';
@@ -16,6 +16,7 @@ import { isLoggedIn } from '@/lib/api/auth';
 import { getTokenLogoUrl } from '@/lib/tokenLogo';
 import { useT } from '@/lib/i18n';
 import { truncateDecimals } from '@/lib/format';
+import { getErrorVariant } from '@/lib/api/errorSeverity';
 
 // ===== Token Logo (로고 이미지 + fallback) =====
 function TokenLogo({ symbol }: { symbol: string }) {
@@ -74,13 +75,13 @@ function TradeContent() {
   const searchParams = useSearchParams();
 
   const [showPinModal, setShowPinModal] = useState(false);
-  const [pinError, setPinError] = useState('');
+  const [pinError, setPinError] = useState<{ msg: string; variant: ToastVariant } | null>(null);
   const [showTokenDropdown, setShowTokenDropdown] = useState(false);
   const [showCancelPinModal, setShowCancelPinModal] = useState(false);
-  const [cancelPinError, setCancelPinError] = useState('');
+  const [cancelPinError, setCancelPinError] = useState<{ msg: string; variant: ToastVariant } | null>(null);
   const [pendingCancelOrderId, setPendingCancelOrderId] = useState<string | null>(null);
   const [showWithdrawPinModal, setShowWithdrawPinModal] = useState(false);
-  const [withdrawPinError, setWithdrawPinError] = useState('');
+  const [withdrawPinError, setWithdrawPinError] = useState<{ msg: string; variant: ToastVariant } | null>(null);
   const [activeTab, setActiveTab] = useState<'open' | 'history'>('open');
 
   // 무한 스크롤 — History 탭에서 sentinel이 보이면 다음 페이지 로드
@@ -262,7 +263,7 @@ function TradeContent() {
 
   // 주문 실행 → 잠금 해제 상태면 즉시 서명/제출, 아니면 PIN 모달 표시
   const handleExecute = async (pin?: string) => {
-    setPinError('');
+    setPinError(null);
     try {
       const result = await createAndSubmitOrder(pin);
       setShowPinModal(false);
@@ -274,14 +275,14 @@ function TradeContent() {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : t('trade.orderFailed');
-      if (showPinModal) setPinError(msg);
-      else showToast(msg);
+      if (showPinModal) setPinError({ msg, variant: getErrorVariant(err) });
+      else showToast(msg, getErrorVariant(err));
     }
   };
 
   // 주문 취소 → 잠금 해제 상태면 즉시 서명/제출, 아니면 PIN 모달 표시
   const executeCancelOrder = async (orderId: string, pin?: string) => {
-    setCancelPinError('');
+    setCancelPinError(null);
     try {
       const result = await cancelOrder(orderId, pin);
       setShowCancelPinModal(false);
@@ -293,14 +294,14 @@ function TradeContent() {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : t('trade.cancelFailed');
-      if (showCancelPinModal) setCancelPinError(msg);
-      else showToast(msg);
+      if (showCancelPinModal) setCancelPinError({ msg, variant: getErrorVariant(err) });
+      else showToast(msg, getErrorVariant(err));
     }
   };
 
   // 수익 인출 — 잠금 해제 상태면 PIN 없이 즉시 실행, 아니면 PIN 모달 표시
   const handleWithdrawExecute = async (pin?: string) => {
-    setWithdrawPinError('');
+    setWithdrawPinError(null);
     try {
       const result = await withdrawFunds(pin);
       setShowWithdrawPinModal(false);
@@ -310,8 +311,8 @@ function TradeContent() {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : t('trade.withdrawFailed');
-      if (showWithdrawPinModal) setWithdrawPinError(msg);
-      else showToast(msg);
+      if (showWithdrawPinModal) setWithdrawPinError({ msg, variant: getErrorVariant(err) });
+      else showToast(msg, getErrorVariant(err));
     }
   };
 
@@ -725,7 +726,7 @@ function TradeContent() {
                           executeCancelOrder(order.id);
                         } else {
                           setPendingCancelOrderId(order.id);
-                          setCancelPinError('');
+                          setCancelPinError(null);
                           setShowCancelPinModal(true);
                         }
                       }}
@@ -753,9 +754,13 @@ function TradeContent() {
                     : order.status === 'failed' ? t('trade.statusFailed')
                     : order.status === 'expired' ? t('trade.statusExpired')
                     : order.status;
+                  // 실패/만료는 tx가 없으면 전송 실패(주황), tx가 있으면 체인 오류(빨강)
+                  const isFailed = order.status === 'failed' || order.status === 'expired';
+                  const isSoftFail = isFailed && !order.txSignature;
                   const statusColor = order.status === 'filled' ? 'text-blue-400 bg-blue-600/20'
                     : order.status === 'cancelled' ? 'text-gray-400 bg-gray-600/20'
-                    : order.status === 'failed' ? 'text-red-400 bg-red-600/20'
+                    : isSoftFail ? 'text-amber-400 bg-amber-600/20'
+                    : isFailed ? 'text-red-400 bg-red-600/20'
                     : 'text-gray-400 bg-gray-600/20';
                   return (
                     <div key={order.id} className="bg-gray-800/50 rounded-xl p-3">
@@ -863,9 +868,10 @@ function TradeContent() {
         onConfirm={handleExecute}
         onCancel={() => {
           setShowPinModal(false);
-          setPinError('');
+          setPinError(null);
         }}
-        error={pinError}
+        error={pinError?.msg}
+        errorVariant={pinError?.variant}
       />
 
       {/* PIN Modal for cancel signing */}
@@ -880,9 +886,10 @@ function TradeContent() {
         onCancel={() => {
           setShowCancelPinModal(false);
           setPendingCancelOrderId(null);
-          setCancelPinError('');
+          setCancelPinError(null);
         }}
-        error={cancelPinError}
+        error={cancelPinError?.msg}
+        errorVariant={cancelPinError?.variant}
       />
 
       {/* PIN Modal for withdraw signing */}
@@ -893,9 +900,10 @@ function TradeContent() {
         onConfirm={handleWithdrawExecute}
         onCancel={() => {
           setShowWithdrawPinModal(false);
-          setWithdrawPinError('');
+          setWithdrawPinError(null);
         }}
-        error={withdrawPinError}
+        error={withdrawPinError?.msg}
+        errorVariant={withdrawPinError?.variant}
       />
     </main>
   );

@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { PIN_MIN_LENGTH } from '@solwallet/config';
 import { useT } from '@/lib/i18n';
+import type { ToastVariant } from '@/components/Toast';
 
 interface PinModalProps {
   isOpen: boolean;
@@ -12,6 +13,8 @@ interface PinModalProps {
   onConfirm: (pin: string) => Promise<void>;
   onCancel: () => void;
   error?: string;
+  /** 에러 색상 — 'warning'이면 주황색, 그 외 빨간색 (기본) */
+  errorVariant?: ToastVariant;
 }
 
 export default function PinModal({
@@ -22,6 +25,7 @@ export default function PinModal({
   onConfirm,
   onCancel,
   error,
+  errorVariant = 'error',
 }: PinModalProps) {
   const { t } = useT();
   const [pin, setPin] = useState('');
@@ -167,7 +171,9 @@ export default function PinModal({
         </div>
 
         {(localError || error) && (
-          <p className="text-red-400 text-sm text-center mt-3">{localError || error}</p>
+          <p className={`text-sm text-center mt-3 ${
+            errorVariant === 'warning' ? 'text-amber-400' : 'text-red-400'
+          }`}>{localError || error}</p>
         )}
 
         <div className="flex gap-2 mt-4">

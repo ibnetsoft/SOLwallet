@@ -1,4 +1,5 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, HttpException } from '@nestjs/common';
+import { CodedException } from '../common/filters/global-exception.filter';
 import { SupabaseService } from '../supabase/supabase.service';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -399,14 +400,16 @@ export class OrdersService {
                 this.logger.warn(
                   `[createOrder] setup 잔액 부족 — have=${haveSol} need=${needSol} wallet=${walletPublicKey.slice(0, 8)}`,
                 );
-                throw new BadRequestException(
-                  `거래 준비를 위해 최소 ${needSol.toFixed(4)} SOL이 필요합니다 ` +
-                    `(현재 ${haveSol.toFixed(4)} SOL). 지갑에 SOL을 충전한 뒤 다시 시도해주세요.`,
+                throw new CodedException(
+                  `SOL이 부족합니다. 거래 수수료 및 렌트비용으로 최소 ${needSol.toFixed(4)} SOL이 필요하지만 ` +
+                    `현재 ${haveSol.toFixed(4)} SOL만 있습니다. ` +
+                    `${(needSol - haveSol).toFixed(4)} SOL 이상을 지갑으로 보낸 뒤 다시 시도해주세요.`,
+                  'INSUFFICIENT_SOL',
                 );
               }
             }
           } catch (simErr) {
-            if (simErr instanceof BadRequestException) throw simErr;
+            if (simErr instanceof HttpException) throw simErr;
             this.logger.warn(
               `[createOrder] setup 시뮬레이션 건너뜀: ${simErr instanceof Error ? simErr.message : String(simErr)}`,
             );
@@ -423,7 +426,7 @@ export class OrdersService {
         }
       } catch (err) {
         // 잔액 부족 등 사용자에게 그대로 전달해야 하는 안내는 삼키지 않고 재throw
-        if (err instanceof BadRequestException) throw err;
+        if (err instanceof HttpException) throw err;
         this.logger.error(`Failed to build setup tx: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
@@ -435,8 +438,9 @@ export class OrdersService {
     // (주문 row를 만들기 전에 반환해 실패한 orphan 주문이 쌓이지 않도록 함)
     if (missingGlobalMints.length > 0 || marketSetup.setupNeeded) {
       if (!setupTx) {
-        throw new BadRequestException(
+        throw new CodedException(
           '거래 준비 트랜잭션 생성에 실패했습니다. 잠시 후 다시 시도해주세요.',
+          'SETUP_FAILED',
         );
       }
       const reasons = [
@@ -557,9 +561,10 @@ export class OrdersService {
       // 못한 상태 — 신규 상장 직후 DEX 반영이 늦어질 때 발생한다. 일반 문구로 뭉개면
       // 원인 파악이 불가능하므로 상황을 구체적으로 안내한다.
       if (/reading 'publicKey'|Cannot read properties of null/i.test(manifestErrorDetail)) {
-        throw new BadRequestException(
+        throw new CodedException(
           '거래소가 아직 이 토큰의 마켓 정보를 인식하지 못했습니다. ' +
             '신규 상장 직후에는 반영까지 몇 분 걸릴 수 있으니 잠시 후 다시 시도해주세요.',
+          'MARKET_NOT_READY',
         );
       }
       throw new BadRequestException(
@@ -633,14 +638,14 @@ export class OrdersService {
         this.logger.warn(
           `[submitSetupTx] NOT CONFIRMED — tx=${txSignature} err=${JSON.stringify(confirmed.value?.err)}`,
         );
-        throw new BadRequestException('거래 준비 트랜잭션이 체인에 반영되지 않았습니다. 다시 시도해주세요.');
+        throw new CodedException('거래 준비 트랜잭션이 체인에 반영되지 않았습니다. 다시 시도해주세요.', 'SETUP_FAILED');
       }
     } catch (err) {
-      if (err instanceof BadRequestException) throw err;
+      if (err instanceof HttpException) throw err;
       this.logger.warn(
         `[submitSetupTx] confirm timeout: ${txSignature} — ${err instanceof Error ? err.message : String(err)}`,
       );
-      throw new BadRequestException('거래 준비 컨펌이 지연되었습니다. 잠시 후 다시 시도해주세요.');
+      throw new CodedException('거래 준비 컨펌이 지연되었습니다. 잠시 후 다시 시도해주세요.', 'SETUP_FAILED');
     }
 
     this.logger.log(`[submitSetupTx] CONFIRMED — tx=${txSignature.slice(0, 12)}...`);
@@ -699,7 +704,7 @@ export class OrdersService {
         throw new BadRequestException('wSOL 래핑이 체인에 반영되지 않았습니다. 다시 시도해주세요.');
       }
     } catch (err) {
-      if (err instanceof BadRequestException) throw err;
+      if (err instanceof HttpException) throw err;
       this.logger.warn(`[submitWrapTx] confirm timeout: ${txSignature} — ${err instanceof Error ? err.message : String(err)}`);
       throw new BadRequestException('wSOL 래핑 컨펌이 지연되었습니다. 다시 시도해주세요.');
     }
@@ -958,7 +963,7 @@ export class OrdersService {
       this.logger.log(`[getWithdrawTx] DONE — wallet ${walletPublicKey.slice(0, 8)}...`);
       return { unsignedTx };
     } catch (err) {
-      if (err instanceof BadRequestException) throw err;
+      if (err instanceof HttpException) throw err;
       this.logger.error(`[getWithdrawTx] error: ${err instanceof Error ? err.message : String(err)}`);
       throw new BadRequestException('인출 트랜잭션 생성에 실패했습니다. 잠시 후 다시 시도해주세요.');
     }
@@ -1015,7 +1020,7 @@ export class OrdersService {
         throw new BadRequestException('인출이 체인에 반영되지 않았습니다. 다시 시도해주세요.');
       }
     } catch (err) {
-      if (err instanceof BadRequestException) throw err;
+      if (err instanceof HttpException) throw err;
       this.logger.warn(`[submitWithdrawTx] confirm timeout: ${txSignature} — ${err instanceof Error ? err.message : String(err)}`);
       throw new BadRequestException('인출 컨펌이 지연되었습니다. 다시 시도해주세요.');
     }
@@ -1149,7 +1154,7 @@ export class OrdersService {
       this.logger.error(`RPC submit error: ${lastError}`);
       // blockhash 만료 에러는 사용자에게 명확한 안내
       if (/blockhash|BlockhashNotFound/i.test(lastError)) {
-        throw new BadRequestException('트랜잭션이 만료되었습니다. 다시 시도해주세요.');
+        throw new CodedException('트랜잭션이 만료되었습니다. 다시 시도해주세요.', 'TX_EXPIRED');
       }
       throw new BadRequestException('트랜잭션 제출에 실패했습니다.');
     }
@@ -1171,14 +1176,14 @@ export class OrdersService {
         this.logger.warn(
           `[submitOrder] NOT CONFIRMED — tx=${txSignature} err=${JSON.stringify(confirmed.value?.err)}`,
         );
-        throw new BadRequestException('트랜잭션이 체인에 반영되지 않았습니다. 다시 시도해주세요.');
+        throw new CodedException('트랜잭션이 체인에 반영되지 않았습니다. 다시 시도해주세요.', 'CONFIRM_TIMEOUT');
       }
       this.logger.log(`[submitOrder] CONFIRMED — tx=${txSignature.slice(0, 12)}...`);
     } catch (err) {
       // TimeoutError(confirm 실패)도 포함
-      if (err instanceof BadRequestException) throw err;
+      if (err instanceof HttpException) throw err;
       this.logger.warn(`[submitOrder] confirm timeout: ${txSignature} — ${err instanceof Error ? err.message : String(err)}`);
-      throw new BadRequestException('트랜잭션 컨펌 대기 시간 초과. 체인 상태를 확인 후 다시 시도해주세요.');
+      throw new CodedException('트랜잭션 컨펌 대기 시간 초과. 체인 상태를 확인 후 다시 시도해주세요.', 'CONFIRM_TIMEOUT');
     }
 
     // DB 업데이트 — on-chain confirm 확인 후 'submitted' 상태로
@@ -1559,12 +1564,12 @@ export class OrdersService {
         }
       }
     } catch (err) {
-      if (err instanceof BadRequestException) throw err; // 위에서 던진 에러 재throw
+      if (err instanceof HttpException) throw err; // 위에서 던진 에러 재throw
       this.logger.error(`Manifest cancel error: ${err instanceof Error ? err.message : String(err)}`);
     }
 
     if (!unsignedTx) {
-      throw new BadRequestException('취소 트랜잭션 생성에 실패했습니다.');
+      throw new CodedException('취소 트랜잭션 생성에 실패했습니다. 잠시 후 다시 시도해주세요.', 'SETUP_FAILED');
     }
 
     return { order: order as Record<string, unknown>, unsignedTx };
@@ -1638,13 +1643,13 @@ export class OrdersService {
 
       if (!confirmed.value || confirmed.value.err) {
         this.logger.warn(`[submitCancelOrder] NOT CONFIRMED — tx=${txSignature} err=${JSON.stringify(confirmed.value?.err)}`);
-        throw new BadRequestException('취소 트랜잭션이 체인에 반영되지 않았습니다. 다시 시도해주세요.');
+        throw new CodedException('취소 트랜잭션이 체인에 반영되지 않았습니다. 다시 시도해주세요.', 'CONFIRM_TIMEOUT');
       }
       this.logger.log(`[submitCancelOrder] CONFIRMED — tx=${txSignature.slice(0, 12)}...`);
     } catch (err) {
-      if (err instanceof BadRequestException) throw err;
+      if (err instanceof HttpException) throw err;
       this.logger.warn(`[submitCancelOrder] confirm timeout: ${txSignature} — ${err instanceof Error ? err.message : String(err)}`);
-      throw new BadRequestException('취소 컨펌 대기 시간 초과. 다시 시도해주세요.');
+      throw new CodedException('취소 컨펌 대기 시간 초과. 다시 시도해주세요.', 'CONFIRM_TIMEOUT');
     }
 
     // DB 업데이트 — 'cancelled' 상태로.

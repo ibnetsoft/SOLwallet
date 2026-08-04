@@ -17,6 +17,29 @@ interface ApiResponse<T> {
 }
 
 /**
+ * 서버 에러 응답을 그대로 담는 커스텀 에러 — code 필드로 심각도 분류 가능.
+ *
+ * code는 서버가 에러 응답에 포함시키는 머신 리더블 식별자:
+ *   INSUFFICIENT_SOL  — SOL 가스/렌트 부족 (사용자 조치 가능)
+ *   MARKET_NOT_READY  — 신규 상장 토큰 (재시도 가능)
+ *   TX_EXPIRED        — 블록해시 만료 (재시도 가능)
+ *   SETUP_FAILED      — 거래 준비 실패 (재시도 가능)
+ *   CONFIRM_TIMEOUT   — 컨펌 지연 (재시도 가능)
+ *   (없음)            — 일반 실패 (심각)
+ */
+export class ApiError extends Error {
+  code?: string;
+  statusCode?: number;
+
+  constructor(message: string, code?: string, statusCode?: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = code;
+    this.statusCode = statusCode;
+  }
+}
+
+/**
  * API fetch 래퍼 — auth token 자동 첨부, 타임아웃, 401 처리
  */
 export async function apiFetch<T>(
@@ -51,29 +74,39 @@ export async function apiFetch<T>(
         clearAuthToken();
         window.location.href = '/login';
       }
-      throw new Error(getMsg('error.authExpired'));
+      throw new ApiError(getMsg('error.authExpired'), 'AUTH_EXPIRED', 401);
     }
 
     if (!res.ok) {
       const error = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
-      throw new Error(error.message || getMsg('error.apiFailed'));
+      throw new ApiError(
+        error.message || getMsg('error.apiFailed'),
+        error.code,
+        res.status,
+      );
     }
 
     const json: ApiResponse<T> = await res.json();
 
     if (!json.success) {
-      throw new Error(json.message || getMsg('error.apiResponse'));
+      throw new ApiError(
+        json.message || getMsg('error.apiResponse'),
+        (json as { code?: string }).code,
+        res.status,
+      );
     }
 
     return json.data;
   } catch (err) {
+    // 이미 ApiError면 그대로 전달 (code 보존)
+    if (err instanceof ApiError) throw err;
     // 타임아웃
     if (err instanceof Error && err.name === 'AbortError') {
-      throw new Error(getMsg('error.timeout'));
+      throw new ApiError(getMsg('error.timeout'), 'TIMEOUT');
     }
     // 네트워크 에러
     if (err instanceof TypeError && err.message.includes('Failed to fetch')) {
-      throw new Error(getMsg('error.network'));
+      throw new ApiError(getMsg('error.network'), 'NETWORK');
     }
     throw err;
   } finally {
