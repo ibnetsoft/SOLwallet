@@ -22,6 +22,7 @@ import { CreateTokenDto } from '../common/dto/token.dto';
 import type { ToggleTokenDto, ReorderTokensDto } from '@solwallet/shared-types';
 import { BalanceService } from '../balance/balance.service';
 import { TransfersService } from '../transfers/transfers.service';
+import { OrderStatusService } from '../orders/order-status.service';
 
 @Controller('admin')
 @UseGuards(AdminGuard)
@@ -30,6 +31,7 @@ export class AdminController {
     private readonly adminService: AdminService,
     private readonly balanceService: BalanceService,
     private readonly transfersService: TransfersService,
+    private readonly orderStatusService: OrderStatusService,
   ) {}
 
   // ─── 대시보드 ───
@@ -214,6 +216,13 @@ export class AdminController {
       page,
       pageSize,
     });
+    return { success: true, data: result };
+  }
+
+  // 과거 주문 복구 — 잘못 분류된 expired/failed 주문을 온체인에서 재조회해 filled로 복구
+  @Post('orders/reconcile')
+  async reconcileOrders() {
+    const result = await this.orderStatusService.reconcilePastOrders();
     return { success: true, data: result };
   }
 
