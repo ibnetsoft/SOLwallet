@@ -57,10 +57,12 @@ export class PriceService {
    * 먼지 수량 호가 하나만으로도 자산가치가 실제와 무관하게 폭등하는 문제가 있었다
    * (bestBid $1 vs bestAsk $19 → mid $10, 실제로는 그 가격에 아무도 사고팔 수 없음).
    * 실제로 누군가 그 가격에 체결시킨 적이 있는 최근 체결가가 훨씬 신뢰할 수 있다.
-   * 체결 이력이 없으면(신규 상장 직후 등) 0을 반환 — 임의로 $1 등을 가정하지 않음.
+   *
+   * 체결 이력이 없으면(신규 상장 직후 등) Manifest 오더북 중간가로 폴백한다.
+   * 거래 화면용 getTradePrice()와 동일한 로직을 내부에서 재사용하여 중복을 제거한다.
    *
    * 30초 캐시로 홈 화면 잔액 폴링(10초 주기 × 보유 토큰 수)이 그대로 DB 조회로
-   * 증폭되는 것을 막는다.
+   * 증폭되는 것을 막는다. 단 price=0은 5초만 캐시하여 빠르게 재조회하게 한다.
    */
   async getTokenPrice(mintAddress: string): Promise<number> {
     const cached = this.tokenPriceCache.get(mintAddress);
@@ -87,6 +89,20 @@ export class PriceService {
           .maybeSingle();
 
         price = Number(lastFilled?.price ?? 0);
+
+        // 체결 이력이 없으면 오더북 중간가로 폴백 (getTradePrice와 동일 로직)
+        if (price === 0) {
+          try {
+            const orderbook = await this.ordersService.getOrderbook(mintAddress, USDT_MINT);
+            const bestBid = orderbook.bids.length > 0 ? Math.max(...orderbook.bids.map((b) => b.price)) : 0;
+            const bestAsk = orderbook.asks.length > 0 ? Math.min(...orderbook.asks.map((a) => a.price)) : 0;
+            price = bestBid > 0 && bestAsk > 0 ? (bestBid + bestAsk) / 2 : bestBid || bestAsk || 0;
+          } catch (err) {
+            this.logger.debug(
+              `Token price orderbook fallback failed for ${mintAddress.slice(0, 8)}...: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
       }
     } catch (err) {
       this.logger.warn(
@@ -94,34 +110,21 @@ export class PriceService {
       );
     }
 
-    this.tokenPriceCache.set(mintAddress, { price, ts: Date.now() });
+    // price=0은 5초만 캐시하여 다음 폴링에서 빠르게 재조회
+    const ttl = price > 0 ? this.TOKEN_PRICE_TTL_MS : 5_000;
+    this.tokenPriceCache.set(mintAddress, { price, ts: Date.now() - (this.TOKEN_PRICE_TTL_MS - ttl) });
     return price;
   }
 
   /**
-   * 거래 화면(시장가/현재가 표시)용 참고가 — 최근 체결가 우선, 없으면(신규 상장
-   * 직후라 아직 체결 이력이 전무한 경우) 오더북 중간값으로 폴백.
+   * 거래 화면(시장가/현재가 표시)용 참고가
    *
-   * getSolPrice가 "manifest 중간값 우선 + Jupiter 폴백"인 것과 반대로 이쪽은
-   * "체결가 우선 + 중간값 폴백"이다 — 이미 실제 체결가가 있는데 그 시점 이후
-   * 누군가 저유동성 마켓에 극단적인 호가를 걸어놔도(예: bestBid $1 vs bestAsk
-   * $19 → 중간값 $10) 거래 화면 참고가가 흔들리지 않도록 하기 위함.
+   * getTokenPrice()가 이미 "최근 체결가 우선 + 오더북 중간가 폴백"을 수행하므로
+   * 이 메서드는 getTokenPrice()를 위임 호출한다. trade 화면만의 별도 폴백 로직은
+   * 더 이상 필요하지 않다.
    */
   async getTradePrice(mintAddress: string): Promise<number> {
-    const lastTrade = await this.getTokenPrice(mintAddress);
-    if (lastTrade > 0) return lastTrade;
-
-    try {
-      const orderbook = await this.ordersService.getOrderbook(mintAddress, USDT_MINT);
-      const bestBid = orderbook.bids.length > 0 ? Math.max(...orderbook.bids.map((b) => b.price)) : 0;
-      const bestAsk = orderbook.asks.length > 0 ? Math.min(...orderbook.asks.map((a) => a.price)) : 0;
-      return bestBid > 0 && bestAsk > 0 ? (bestBid + bestAsk) / 2 : bestBid || bestAsk || 0;
-    } catch (err) {
-      this.logger.warn(
-        `Trade price orderbook fallback failed for ${mintAddress.slice(0, 8)}...: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return 0;
-    }
+    return this.getTokenPrice(mintAddress);
   }
 
   /**

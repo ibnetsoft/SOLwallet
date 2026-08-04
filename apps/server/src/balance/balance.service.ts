@@ -10,6 +10,10 @@ export class BalanceService {
   private readonly logger = new Logger(BalanceService.name);
   private readonly rpcUrl: string;
 
+  /** SOL 잔고 캐시 — RPC 장애 시 마지막 성공값 반환용 */
+  private readonly solBalanceCache = new Map<string, { balance: number; ts: number }>();
+  private readonly SOL_BALANCE_TTL_MS = 60_000;
+
   constructor(
     private readonly configService: ConfigService,
     private readonly supabaseService: SupabaseService,
@@ -24,71 +28,86 @@ export class BalanceService {
   }
 
   /**
-   * 특정 지갑의 SOL 잔액 조회
+   * RPC 호출 헬퍼 — 1회 재시도 로직 (AdminService.rpc 패턴과 동일)
+   *
+   * 순간적인 RPC 장애(레이트 리밋, 타임아웃 등)가 잔고 0으로 전락하는 것을
+   * 방지하기 위해 즉시 1번 재시도하여 일시적 실패를 흡수한다.
    */
-  async getSolBalance(walletAddress: string): Promise<number> {
+  private async rpc<T>(method: string, params: unknown[], _retried = false): Promise<T | null> {
     try {
       const res = await fetch(this.rpcUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'getBalance',
-          params: [walletAddress],
-        }),
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
       });
-
-      const data = await res.json() as { result?: { value?: number }; error?: { message?: string } };
-
-      if (data.error) {
-        this.logger.error(`SOL balance RPC error: ${data.error.message}`);
-        return 0;
+      const json = (await res.json()) as { result?: T; error?: { message?: string } };
+      if (json.error) {
+        if (!_retried) {
+          await new Promise((r) => setTimeout(r, 300));
+          return this.rpc<T>(method, params, true);
+        }
+        this.logger.warn(`RPC ${method} error: ${json.error.message}`);
+        return null;
       }
-      // lamports → SOL
-      return (data.result?.value || 0) / 1e9;
+      return json.result ?? null;
     } catch (err) {
-      this.logger.error(`Failed to get SOL balance: ${err instanceof Error ? err.message : String(err)}`);
-      return 0;
+      if (!_retried) {
+        await new Promise((r) => setTimeout(r, 300));
+        return this.rpc<T>(method, params, true);
+      }
+      this.logger.warn(`RPC ${method} failed: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
     }
   }
 
   /**
-   * 특정 지갑의 SPL 토큰 잔액 조회
+   * 특정 지갑의 SOL 잔액 조회 — 재시도 + 캐시 폴백
+   */
+  async getSolBalance(walletAddress: string): Promise<number> {
+    const result = await this.rpc<{ value?: number }>('getBalance', [walletAddress]);
+
+    if (result === null) {
+      // RPC 전체 실패 시 마지막 성공 캐시 반환
+      const cached = this.solBalanceCache.get(walletAddress);
+      if (cached && Date.now() - cached.ts < this.SOL_BALANCE_TTL_MS) {
+        this.logger.warn(`SOL balance RPC failed for ${walletAddress.slice(0, 8)}... — using cached value`);
+        return cached.balance;
+      }
+      this.logger.error(`SOL balance RPC failed and no cache for ${walletAddress.slice(0, 8)}...`);
+      return 0;
+    }
+
+    const balance = (result.value || 0) / 1e9;
+    this.solBalanceCache.set(walletAddress, { balance, ts: Date.now() });
+    return balance;
+  }
+
+  /**
+   * 특정 지갑의 SPL 토큰 잔액 조회 — 재시도 + Supabase 에러 체크
    */
   async getTokenBalances(
     walletAddress: string,
   ): Promise<Array<{ mint: string; symbol: string; decimals: number; balance: number; usdValue: number; logoUrl?: string }>> {
-    const { data: tokens } = await this.client
+    const { data: tokens, error: tokenErr } = await this.client
       .from('tokens')
       .select('*')
       .eq('is_active', true);
 
+    if (tokenErr) {
+      this.logger.error(`Supabase tokens query failed: ${tokenErr.message}`);
+      return [];
+    }
     if (!tokens || tokens.length === 0) return [];
 
     const balances: Array<{ mint: string; symbol: string; decimals: number; balance: number; usdValue: number; logoUrl?: string }> = [];
 
     for (const token of tokens) {
       try {
-        const res = await fetch(this.rpcUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            id: 1,
-            method: 'getTokenAccountsByOwner',
-            params: [
-              walletAddress,
-              { mint: token.mint_address },
-              { encoding: 'jsonParsed' },
-            ],
-          }),
-        });
+        const data = await this.rpc<{
+          value: Array<{ account?: { data?: { parsed?: { info?: { tokenAmount?: { amount?: string } } } } } }>
+        }>('getTokenAccountsByOwner', [walletAddress, { mint: token.mint_address }, { encoding: 'jsonParsed' }]);
 
-        const data = await res.json() as {
-          result?: { value: Array<{ account?: { data?: { parsed?: { info?: { tokenAmount?: { amount?: string } } } } } }> }
-        };
-        const accounts = data.result?.value || [];
+        const accounts = data?.value || [];
 
         if (accounts.length > 0) {
           const amount = Number(accounts[0].account?.data?.parsed?.info?.tokenAmount?.amount || 0);
@@ -264,12 +283,16 @@ export class BalanceService {
    * 유저의 전체 포트폴리오 조회 — 모든 활성 지갑 포함
    */
   async getPortfolio(userId: string) {
-    const { data: wallets } = await this.client
+    const { data: wallets, error: walletErr } = await this.client
       .from('wallets')
       .select('*')
       .eq('user_id', userId)
       .eq('is_active', true);
 
+    if (walletErr) {
+      this.logger.error(`Supabase wallets query failed for user ${userId}: ${walletErr.message}`);
+      return { wallets: [], totalUsdt: 0, roiBaseline: 0, withdrawnTotal: 0 };
+    }
     if (!wallets || wallets.length === 0) {
       return { wallets: [], totalUsdt: 0, roiBaseline: 0, withdrawnTotal: 0 };
     }

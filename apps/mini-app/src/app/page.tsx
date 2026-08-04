@@ -98,7 +98,7 @@ function HomePage() {
       const data = await getPortfolio();
       setPortfolio(data);
     } catch {
-      // 무시
+      // API 호출 실패 시 기존 portfolio 상태를 유지하여 화면이 0으로 깜빡이는 것을 방지
     } finally {
       setIsLoadingPortfolio(false);
     }
@@ -124,8 +124,13 @@ function HomePage() {
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      const p = await fetchSolPrice();
-      if (!cancelled && p) setSolPrice(p);
+      try {
+        const p = await fetchSolPrice();
+        if (!cancelled && p) setSolPrice(p);
+        // p가 null이면 기존 solPrice 상태 유지 (0으로 깜빡이지 않음)
+      } catch {
+        // SOL 가격 fetch 실패 시 기존 상태 유지
+      }
     };
     load();
     const interval = setInterval(load, 10_000);
