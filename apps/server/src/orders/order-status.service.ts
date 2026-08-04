@@ -566,10 +566,17 @@ export class OrderStatusService {
       if (!market) return null;
 
       const openOrders = market.openOrders();
+      // claimedSeats는 인덱스 기반 배열이라 사용되지 않은 슬롯이 undefined일 수 있음.
+      // findIndex로 원본 인덱스를 보존하되, undefined 요소에서 toBase58() 호출을 방지한다.
       const seats = market.claimedSeats();
-
-      // traderPubkey → traderIndex 역매핑
-      const traderIndex = seats.findIndex((s) => s.trader.toBase58() === traderPubkey);
+      const traderIndex = seats.findIndex((s) => {
+        if (!s) return false;
+        try {
+          return s.trader.toBase58() === traderPubkey;
+        } catch {
+          return false;
+        }
+      });
       if (traderIndex === -1) {
         // 이 트레이더는 현재 이 마켓에서 seat를 점유하지 않음 — 주문이 있을 수 없음
         // → 체결되거나 취소된 것으로 간주 (false = 사라짐)
