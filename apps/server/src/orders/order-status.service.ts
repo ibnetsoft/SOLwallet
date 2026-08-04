@@ -41,6 +41,19 @@ interface RpcTransactionResponse {
 
 /** Manifest SDK Market 타입 — 동적 import로만 사용하므로 필요한 형태만 구조적으로 정의 */
 
+/**
+ * Manifest 프로그램 로그 discriminant (8바이트, hex).
+ *
+ * genAccDiscriminator("manifest::logs::XXX") = keccak256(name)의 첫 8바이트.
+ * SDK의 lazy import가 실패하면 fill 감지 자체가 불가능해지므로(과거에 이것이
+ * 원인이 되어 모든 주문이 가짜 체결로 분류됨), 검증된 값을 상수로 하드코딩한다.
+ *
+ *   FillLog:      3ae6f2034b7104a9  ← 실제 체결(매칭 성사) 이벤트
+ *   PlaceOrderLog: 9d76f7d52f13a478  ← 주문 접수(오픈 오더 등록) 이벤트
+ */
+const FILL_DISCRIMINANT = Buffer.from('3ae6f2034b7104a9', 'hex');
+const PLACE_ORDER_DISCRIMINANT = Buffer.from('9d76f7d52f13a478', 'hex');
+
 @Injectable()
 export class OrderStatusService {
   private readonly logger = new Logger(OrderStatusService.name);
@@ -53,10 +66,6 @@ export class OrderStatusService {
   private readonly PENDING_ORPHAN_TIMEOUT_MS = 5 * 60 * 1000;
   /** 단일 폴링에서 처리할 최대 주문 수 */
   private readonly BATCH_SIZE = 100;
-  /** fill 이벤트 식별용 discriminant (Manifest SDK와 동일) */
-  private fillDiscriminant: Buffer | null = null;
-  /** 주문 생성(PlaceOrder) 이벤트 식별용 discriminant */
-  private placeOrderDiscriminant: Buffer | null = null;
   private readonly connection: Connection;
 
   constructor(
@@ -72,53 +81,7 @@ export class OrderStatusService {
   }
 
   /**
-   * fillDiscriminant lazy 로드 — Manifest SDK fillFeed 서브모듈에서 가져옴
-   */
-  private async getFillDiscriminant(): Promise<Buffer> {
-    if (this.fillDiscriminant) return this.fillDiscriminant;
-    try {
-      // fillDiscriminant는 최상위 export에 없고 fillFeed 서브모듈에 있음
-      const fillFeed = await import('@cks-systems/manifest-sdk/dist/cjs/fillFeed') as { fillDiscriminant?: Buffer };
-      if (fillFeed.fillDiscriminant) {
-        this.fillDiscriminant = fillFeed.fillDiscriminant;
-        this.logger.log(`[fillCheck] fillDiscriminant loaded: ${this.fillDiscriminant.toString('hex')}`);
-        return this.fillDiscriminant;
-      }
-      throw new Error('fillDiscriminant not found in fillFeed exports');
-    } catch (err) {
-      this.logger.error(`[fillCheck] Failed to load fillDiscriminant: ${err instanceof Error ? err.message : String(err)}`);
-      this.fillDiscriminant = Buffer.alloc(0);
-      return this.fillDiscriminant;
-    }
-  }
-
-  /**
-   * placeOrderDiscriminant lazy 로드 — fillDiscriminant와 동일한 방식(keccak256)으로
-   * 프로그램ID + 계정명("manifest::logs::PlaceOrderLog")으로부터 직접 계산.
-   */
-  private async getPlaceOrderDiscriminant(): Promise<Buffer> {
-    if (this.placeOrderDiscriminant) return this.placeOrderDiscriminant;
-    try {
-      const { genAccDiscriminator } = await import('@cks-systems/manifest-sdk/dist/cjs/utils/discriminator');
-      this.placeOrderDiscriminant = genAccDiscriminator('manifest::logs::PlaceOrderLog');
-      this.logger.log(`[fillCheck] placeOrderDiscriminant loaded: ${this.placeOrderDiscriminant.toString('hex')}`);
-      return this.placeOrderDiscriminant;
-    } catch (err) {
-      this.logger.error(`[fillCheck] Failed to load placeOrderDiscriminant: ${err instanceof Error ? err.message : String(err)}`);
-      this.placeOrderDiscriminant = Buffer.alloc(0);
-      return this.placeOrderDiscriminant;
-    }
-  }
-
-  /**
    * 주문 제출(placement) tx 로그에서 Manifest가 부여한 orderSequenceNumber를 추출.
-   *
-   * ⚠️ 이게 없으면(지금까지 쭉 그랬음) checkActiveOrders의 2단계 검사
-   * (isOrderStillOpen — 다른 트레이더가 나중에 체결시킨 경우 감지)가
-   * `sequenceNumber != null` 가드에 막혀 항상 건너뛰어진다. 그 결과 self-cross가
-   * 아닌 일반적인 체결은 영원히 감지되지 않고 주문이 계속 "미체결"로 남으며,
-   * 정작 Manifest에는 이미 사라진 주문이라 취소 시도 시 "no open orders" 404로
-   * 실패하는 형태로 드러남 — 실제로 사용자가 겪은 증상과 일치.
    */
   private async extractOrderSequenceNumber(signature: string): Promise<number | null> {
     try {
@@ -136,9 +99,6 @@ export class OrderStatusService {
       const logs = data.result?.meta?.logMessages;
       if (!logs) return null;
 
-      const discriminant = await this.getPlaceOrderDiscriminant();
-      if (discriminant.length === 0) return null;
-
       for (const log of logs) {
         if (!log.startsWith('Program data: ')) continue;
         const base64Data = log.split(' ')[2];
@@ -146,7 +106,7 @@ export class OrderStatusService {
 
         try {
           const buffer = Buffer.from(base64Data, 'base64');
-          if (!buffer.subarray(0, 8).equals(discriminant)) continue;
+          if (!buffer.subarray(0, 8).equals(PLACE_ORDER_DISCRIMINANT)) continue;
 
           const { PlaceOrderLog } = await import('@cks-systems/manifest-sdk/dist/cjs/manifest/accounts/PlaceOrderLog');
           const placeLog = PlaceOrderLog.deserialize(buffer.subarray(8))[0];
@@ -399,14 +359,8 @@ export class OrderStatusService {
         return { filled: false, checked: false };
       }
 
-      const discriminant = await this.getFillDiscriminant();
-
-      // discriminant 로드 실패 시 fill 감지 불가 — 미체결로 처리
-      if (discriminant.length === 0) {
-        return { filled: false, checked: true };
-      }
-
       // "Program data: <base64>" 항목에서 fill 이벤트 찾기
+      // FILL_DISCRIMINANT는 상수(3ae6f2034b7104a9)이므로 로드 실패 불가
       for (const log of logs) {
         if (!log.startsWith('Program data: ')) continue;
 
@@ -416,8 +370,8 @@ export class OrderStatusService {
         try {
           const buffer = Buffer.from(base64Data, 'base64');
 
-          // 첫 8바이트가 fillDiscriminant와 일치하는지 확인
-          if (!buffer.subarray(0, 8).equals(discriminant)) continue;
+          // 첫 8바이트가 FILL_DISCRIMINANT와 일치하는지 확인
+          if (!buffer.subarray(0, 8).equals(FILL_DISCRIMINANT)) continue;
 
           // fill 이벤트 발견 — FillLog 역직렬화
           const { FillLog } = await import('@cks-systems/manifest-sdk/dist/cjs/manifest/accounts/FillLog');
