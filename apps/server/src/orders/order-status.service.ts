@@ -28,6 +28,20 @@ interface SubmittedOrder {
   wallet_id?: string;
   token_id?: string;
   manifest_sequence_number?: number | string | null;
+  user_id?: string;
+}
+
+/** 온체인 오더북에서 주문 매칭에 사용하는 정보 */
+interface ChainOrderInfo {
+  sequenceNumber: string;
+  lastValidSlot: number;
+  trader: string;
+}
+
+/** 토큰별로 그룹화된 온체인 마켓 데이터 */
+interface MarketCache {
+  /** sequenceNumber → ChainOrderInfo */
+  ordersBySeq: Map<string, ChainOrderInfo>;
 }
 
 interface RpcTransactionResponse {
@@ -82,8 +96,12 @@ export class OrderStatusService {
 
   /**
    * 주문 제출(placement) tx 로그에서 Manifest가 부여한 orderSequenceNumber를 추출.
+   * DB에 manifest_sequence_number가 없으면 저장. lastValidSlot도 함께 반환.
    */
-  private async extractOrderSequenceNumber(signature: string): Promise<number | null> {
+  private async extractOrderSequenceNumber(
+    signature: string,
+    orderId?: string,
+  ): Promise<{ seq: number | null; lastValidSlot: number | null }> {
     try {
       const res = await fetch(this.rpcUrl, {
         method: 'POST',
@@ -97,7 +115,7 @@ export class OrderStatusService {
       });
       const data = await res.json() as { result?: RpcTransactionResponse | null };
       const logs = data.result?.meta?.logMessages;
-      if (!logs) return null;
+      if (!logs) return { seq: null, lastValidSlot: null };
 
       for (const log of logs) {
         if (!log.startsWith('Program data: ')) continue;
@@ -111,15 +129,29 @@ export class OrderStatusService {
           const { PlaceOrderLog } = await import('@cks-systems/manifest-sdk/dist/cjs/manifest/accounts/PlaceOrderLog');
           const placeLog = PlaceOrderLog.deserialize(buffer.subarray(8))[0];
           const seq = Number(placeLog.orderSequenceNumber.toString());
-          return Number.isFinite(seq) ? seq : null;
+          const lvs = Number(placeLog.lastValidSlot);
+          const seqValid = Number.isFinite(seq) ? seq : null;
+
+          // DB에 sequence number가 없으면 저장
+          if (seqValid != null && orderId) {
+            const { error: seqError } = await this.client
+              .from('orders')
+              .update({ manifest_sequence_number: seqValid })
+              .eq('id', orderId);
+            if (seqError) {
+              this.logger.warn(`[extractSeq] Failed to save seq for ${orderId}: ${seqError.message}`);
+            }
+          }
+
+          return { seq: seqValid, lastValidSlot: Number.isFinite(lvs) ? lvs : null };
         } catch {
           continue;
         }
       }
-      return null;
+      return { seq: null, lastValidSlot: null };
     } catch (err) {
       this.logger.warn(`[fillCheck] Failed to extract sequence number for ${signature}: ${err instanceof Error ? err.message : String(err)}`);
-      return null;
+      return { seq: null, lastValidSlot: null };
     }
   }
 
@@ -140,17 +172,18 @@ export class OrderStatusService {
   }
 
   /**
-   * 일회성 과거 주문 복구 — 이미 expired/failed로 잘못 분류된 주문 중
-   * tx 로그에 실제 FillEvent가 있는 것을 찾아 filled로 되돌린다.
+   * 일회성 과거 주문 복구 — 잘못 분류된 주문 상태를 온체인 실제 상태와 맞춤.
    *
    * 어드민에서 수동 실행 (POST /api/admin/orders/reconcile).
-   * ⚠️ "오더북에서 사라짐 = 체결" 휴리스틱은 사용하지 않는다 — 취소/만료와
-   * 구분이 안 되어 가짜 체결을 양산한다. 오직 FillEvent 로그만이 체결의 증거.
-   * 따라서 tx_signature가 있는 주문만 대상이 된다.
+   * - expired/failed 주문 중 FillEvent가 있는 것 → filled로 복구
+   * - active 주문 중 온체인에서 사라진 것 → cancelled/expired로 보정
+   * - active 주문 중 FillEvent가 있는 것 → filled로 보정
    */
-  async reconcilePastOrders(): Promise<{ checked: number; recovered: number }> {
-    // expired/failed 주문 중 tx_signature가 있는 것만 (FillEvent 확인 가능)
-    const { data: orders, error } = await this.client
+  async reconcilePastOrders(): Promise<{ checked: number; recovered: number; corrected: number }> {
+    const results = { checked: 0, recovered: 0, corrected: 0 };
+
+    // ── 1. expired/failed 주문 복구 (FillEvent 확인) ──
+    const { data: pastOrders, error: pastError } = await this.client
       .from('orders')
       .select('id, status, tx_signature, quantity')
       .in('status', ['expired', 'failed'])
@@ -158,27 +191,116 @@ export class OrderStatusService {
       .order('created_at', { ascending: false })
       .limit(200);
 
-    if (error || !orders || orders.length === 0) {
-      return { checked: 0, recovered: 0 };
-    }
+    if (!pastError && pastOrders && pastOrders.length > 0) {
+      for (const order of pastOrders) {
+        results.checked++;
+        const fillResult = await this.checkFillFromTxLogs(order.tx_signature as string, order.id as string);
 
-    let recovered = 0;
-
-    for (const order of orders) {
-      const fillResult = await this.checkFillFromTxLogs(order.tx_signature as string, order.id as string);
-
-      if (fillResult.filled) {
-        const fillQty = Number.isFinite(fillResult.baseAtomsTokens)
-          ? fillResult.baseAtomsTokens
-          : (order.quantity as number);
-        await this.updateOrderStatus(order.id as string, 'filled', fillQty);
-        recovered++;
-        this.logger.log(`[reconcile] order ${order.id} recovered: ${order.status} → filled (FillEvent confirmed)`);
+        if (fillResult.filled) {
+          const fillQty = Number.isFinite(fillResult.baseAtomsTokens)
+            ? fillResult.baseAtomsTokens
+            : (order.quantity as number);
+          await this.updateOrderStatus(order.id as string, 'filled', fillQty);
+          results.recovered++;
+          this.logger.log(`[reconcile] order ${order.id} recovered: ${order.status} → filled (FillEvent confirmed)`);
+        }
       }
     }
 
-    this.logger.log(`[reconcile] checked ${orders.length} orders, recovered ${recovered} to filled`);
-    return { checked: orders.length, recovered };
+    // ── 2. active 주문 온체인 대조 보정 ──
+    const { data: activeOrders, error: activeError } = await this.client
+      .from('orders')
+      .select('id, tx_signature, quantity, created_at, token_id, manifest_sequence_number')
+      .eq('status', 'active')
+      .order('created_at', { ascending: true })
+      .limit(200);
+
+    if (!activeError && activeOrders && activeOrders.length > 0) {
+      // token별로 그룹화하여 마켓 로드 최적화
+      const ordersByToken = new Map<string, typeof activeOrders>();
+      for (const order of activeOrders) {
+        const tid = order.token_id as string;
+        if (!tid) continue;
+        if (!ordersByToken.has(tid)) ordersByToken.set(tid, []);
+        ordersByToken.get(tid)!.push(order);
+      }
+
+      for (const [tokenId, tokenOrders] of ordersByToken) {
+        let marketCache: MarketCache | null = null;
+        try {
+          marketCache = await this.loadMarketCache(tokenId);
+        } catch (err) {
+          this.logger.warn(`[reconcile] 마켓 로드 실패 token=${tokenId}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+
+        for (const order of tokenOrders) {
+          results.checked++;
+
+          if (!order.tx_signature) {
+            await this.updateOrderStatus(order.id, 'failed');
+            results.corrected++;
+            this.logger.log(`[reconcile] order ${order.id}: active → failed (no tx_signature)`);
+            continue;
+          }
+
+          // sequenceNumber 추출
+          let seqNum = order.manifest_sequence_number;
+          if (seqNum == null) {
+            const { seq } = await this.extractOrderSequenceNumber(order.tx_signature, order.id);
+            if (seq != null) seqNum = seq;
+          }
+
+          if (seqNum == null || !marketCache) {
+            // seq 추출 불가 → FillEvent만 확인
+            const fillResult = await this.checkFillFromTxLogs(order.tx_signature, order.id);
+            if (fillResult.filled) {
+              const fillQty = Number.isFinite(fillResult.baseAtomsTokens) ? fillResult.baseAtomsTokens : (order.quantity as number);
+              await this.updateOrderStatus(order.id, 'filled', fillQty);
+              results.corrected++;
+              results.recovered++;
+              this.logger.log(`[reconcile] order ${order.id}: active → filled (FillEvent, seq 없음)`);
+            } else if (seqNum == null) {
+              await this.updateOrderStatus(order.id, 'cancelled');
+              results.corrected++;
+              this.logger.log(`[reconcile] order ${order.id}: active → cancelled (PlaceOrderLog 없음)`);
+            }
+            continue;
+          }
+
+          // 온체인 매칭
+          const onChainOrder = marketCache.ordersBySeq.get(String(seqNum));
+          if (onChainOrder) {
+            // 만료 확인
+            if (onChainOrder.lastValidSlot > 0) {
+              const currentSlot = await this.getCurrentSlot();
+              if (currentSlot > 0 && onChainOrder.lastValidSlot < currentSlot) {
+                await this.updateOrderStatus(order.id, 'expired');
+                results.corrected++;
+                this.logger.log(`[reconcile] order ${order.id}: active → expired (lvs=${onChainOrder.lastValidSlot})`);
+              }
+            }
+            // 정상 active → 변경 없음
+          } else {
+            // 온체인에서 사라짐 → FillEvent 확인
+            const fillResult = await this.checkFillFromTxLogs(order.tx_signature, order.id);
+            if (fillResult.filled) {
+              const fillQty = Number.isFinite(fillResult.baseAtomsTokens) ? fillResult.baseAtomsTokens : (order.quantity as number);
+              await this.updateOrderStatus(order.id, 'filled', fillQty);
+              results.corrected++;
+              results.recovered++;
+              this.logger.log(`[reconcile] order ${order.id}: active → filled (FillEvent confirmed)`);
+            } else {
+              await this.updateOrderStatus(order.id, 'cancelled');
+              results.corrected++;
+              this.logger.log(`[reconcile] order ${order.id}: active → cancelled (vanished, no FillEvent)`);
+            }
+          }
+        }
+      }
+    }
+
+    this.logger.log(`[reconcile] checked ${results.checked}, recovered ${results.recovered} to filled, corrected ${results.corrected} statuses`);
+    return results;
   }
 
   /**
@@ -233,17 +355,9 @@ export class OrderStatusService {
         await this.updateOrderStatus(order.id, 'active');
 
         // 체결 감지에 필요한 orderSequenceNumber를 placement tx 로그에서 확보
-        const seq = await this.extractOrderSequenceNumber(order.tx_signature);
+        const { seq } = await this.extractOrderSequenceNumber(order.tx_signature, order.id);
         if (seq != null) {
-          const { error: seqError } = await this.client
-            .from('orders')
-            .update({ manifest_sequence_number: seq })
-            .eq('id', order.id);
-          if (seqError) {
-            this.logger.warn(`[submitted] Failed to save sequence number for ${order.id}: ${seqError.message}`);
-          } else {
-            this.logger.log(`[submitted] order ${order.id} confirmed → active (seq=${seq})`);
-          }
+          this.logger.log(`[submitted] order ${order.id} confirmed → active (seq=${seq})`);
         } else {
           this.logger.log(`[submitted] order ${order.id} confirmed → active (orderbook registered, seq 추출 실패)`);
         }
@@ -256,67 +370,208 @@ export class OrderStatusService {
   }
 
   /**
-   * active 주문 처리 — 체결 여부 확인 (placement tx 로그에서 FillEvent 파싱)
+   * active 주문 처리 — 온체인 오더북 대조 + 체결 여부 확인
    *
-   * ⚠️ "오더북에서 사라짐 = 체결" 휴리스틱은 사용하지 않는다 — 취소/만료/부분체결도
-   * 오더북에서 사라지므로 체결과 구분할 수 없다. 오직 실제 FillEvent 로그만이
-   * 체결의 증거다. 타임아웃 전까지 FillEvent가 없으면 미체결(오픈)로 둔다.
+   * 1. active 주문을 token_id별로 그룹화
+   * 2. 각 토큰의 Manifest 마켓을 한 번만 로드하여 온체인 오더북 스냅샷 구축
+   * 3. 각 주문의 manifest_sequence_number로 온체인 매칭:
+   *    - 온체인에 없음 + FillEvent 있음 → filled
+   *    - 온체인에 없음 + FillEvent 없음 → cancelled (cancel/evict)
+   *    - 온체인에 있음 + lastValidSlot 만료 → expired
+   *    - 온체인에 있음 + 정상 → active 유지
+   *    - seq 추출 불가(tx_signature 없음) → 5분 후 failed
    */
-  private async checkActiveOrders(): Promise<{ filled: number; failed: number; expired: number; pending: number }> {
+  private async checkActiveOrders(): Promise<{ filled: number; failed: number; expired: number; pending: number; cancelled: number }> {
     const { data: orders, error } = await this.client
       .from('orders')
-      .select('id, tx_signature, quantity, created_at')
+      .select('id, tx_signature, quantity, created_at, token_id, user_id, manifest_sequence_number')
       .eq('status', 'active')
-      .order('created_at', { ascending: true }) // 오래된 주문 우선 처리
+      .order('created_at', { ascending: true })
       .limit(this.BATCH_SIZE);
 
     if (error || !orders || orders.length === 0) {
-      return { filled: 0, failed: 0, expired: 0, pending: 0 };
+      return { filled: 0, failed: 0, expired: 0, pending: 0, cancelled: 0 };
     }
 
     const typedOrders = orders as unknown as SubmittedOrder[];
     let filled = 0;
+    let failed = 0;
     let expired = 0;
+    let cancelled = 0;
     let pending = 0;
 
+    // token_id별로 그룹화
+    const ordersByToken = new Map<string, SubmittedOrder[]>();
     for (const order of typedOrders) {
-      // 체결 감지 — 오직 placement tx 로그에서 실제 FillEvent가 확인된 경우만 filled.
-      // ⚠️ "오더북에서 사라짐 = 체결" 휴리스틱은 사용하지 않는다 — 취소/만료/부분체결도
-      //    오더북에서 사라지므로, 이것만으로는 체결을 확정할 수 없다.
-      //    tx_signature가 있으면 placement tx의 FillEvent를, 없으면 체결 증거 없음.
-      if (order.tx_signature) {
-        const fillResult = await this.checkFillFromTxLogs(order.tx_signature, order.id);
+      if (!order.token_id) continue;
+      const tid = order.token_id as string;
+      if (!ordersByToken.has(tid)) ordersByToken.set(tid, []);
+      ordersByToken.get(tid)!.push(order);
+    }
 
-        if (fillResult.filled) {
-          const fillQty = Number.isFinite(fillResult.baseAtomsTokens) ? fillResult.baseAtomsTokens : order.quantity;
-          await this.updateOrderStatus(order.id, 'filled', fillQty);
-          filled++;
-          this.logger.log(
-            `[active] order ${order.id} FILLED (tx log) — qty=${fillQty} quote=${fillResult.quoteAtomsTokens ?? 'N/A'}`,
-          );
+    // 각 토큰별로 마켓 로드 + 주문 검증
+    for (const [tokenId, tokenOrders] of ordersByToken) {
+      // 마켓 캐시 로드
+      let marketCache: MarketCache | null = null;
+      try {
+        marketCache = await this.loadMarketCache(tokenId);
+      } catch (err) {
+        this.logger.warn(`[active] 마켓 로드 실패 token=${tokenId}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+
+      for (const order of tokenOrders) {
+        // tx_signature가 없는 주문 = 서명 미완료 → 5분 후 failed
+        if (!order.tx_signature) {
+          const ageMs = Date.now() - new Date(order.created_at).getTime();
+          if (ageMs > this.PENDING_ORPHAN_TIMEOUT_MS) {
+            await this.updateOrderStatus(order.id, 'failed');
+            failed++;
+            continue;
+          }
+          pending++;
           continue;
         }
-      } else {
-        // tx_signature가 없는 주문 = 클라이언트 서명 실패로 체인에 올라간 적 없음.
-        // Manifest 지정가 주문은 체인에서 만료되지 않으므로(사용자가 취소하기 전까지
-        // 영구 유지), 서버에서 임의로 만료시키지 않는다. 단 tx_signature가 없는 주문은
-        // 실제로 체인에 존재하지 않으므로 failed로 정리한다.
+
+        // manifest_sequence_number 추출 (없으면 placement tx에서 추출 후 DB 저장)
+        let seqNum = order.manifest_sequence_number;
+        if (seqNum == null) {
+          const { seq } = await this.extractOrderSequenceNumber(order.tx_signature, order.id);
+          if (seq != null) {
+            seqNum = seq;
+          } else {
+            // PlaceOrderLog를 찾을 수 없음 — tx에 주문 로그가 없음
+            // 이 주문은 사실상 체인에 등록되지 않은 것으로 간주
+            this.logger.warn(`[active] order ${order.id} — PlaceOrderLog 없음, cancelled 처리`);
+            await this.updateOrderStatus(order.id, 'cancelled');
+            cancelled++;
+            continue;
+          }
+        }
+
+        // 마켓 캐시 없으면 FillEvent만 확인
+        if (!marketCache) {
+          const fillResult = await this.checkFillFromTxLogs(order.tx_signature, order.id);
+          if (fillResult.filled) {
+            const fillQty = Number.isFinite(fillResult.baseAtomsTokens) ? fillResult.baseAtomsTokens : order.quantity;
+            await this.updateOrderStatus(order.id, 'filled', fillQty);
+            filled++;
+          } else {
+            pending++;
+          }
+          continue;
+        }
+
+        // 온체인 오더북에서 sequenceNumber로 매칭
+        const onChainOrder = marketCache.ordersBySeq.get(String(seqNum));
+
+        if (onChainOrder) {
+          // 온체인에 존재 → lastValidSlot 만료 확인
+          if (onChainOrder.lastValidSlot > 0) {
+            const currentSlot = await this.getCurrentSlot();
+            if (currentSlot > 0 && onChainOrder.lastValidSlot < currentSlot) {
+              await this.updateOrderStatus(order.id, 'expired');
+              expired++;
+              this.logger.log(`[active] order ${order.id} EXPIRED (lvs=${onChainOrder.lastValidSlot} < current=${currentSlot})`);
+              continue;
+            }
+          }
+          // 정상 active — 유지
+          pending++;
+        } else {
+          // 온체인에서 사라짐 → FillEvent 확인
+          const fillResult = await this.checkFillFromTxLogs(order.tx_signature, order.id);
+          if (fillResult.filled) {
+            const fillQty = Number.isFinite(fillResult.baseAtomsTokens) ? fillResult.baseAtomsTokens : order.quantity;
+            await this.updateOrderStatus(order.id, 'filled', fillQty);
+            filled++;
+            this.logger.log(
+              `[active] order ${order.id} FILLED (tx log, vanished from book) — qty=${fillQty}`,
+            );
+          } else {
+            // FillEvent 없음 → cancel 또는 Manifest evict
+            await this.updateOrderStatus(order.id, 'cancelled');
+            cancelled++;
+            this.logger.log(`[active] order ${order.id} CANCELLED (vanished from book, no FillEvent)`);
+          }
+        }
+      }
+    }
+
+    // token_id가 없는 주문 처리
+    const orphanOrders = typedOrders.filter(o => !o.token_id);
+    for (const order of orphanOrders) {
+      if (!order.tx_signature) {
         const ageMs = Date.now() - new Date(order.created_at).getTime();
         if (ageMs > this.PENDING_ORPHAN_TIMEOUT_MS) {
           await this.updateOrderStatus(order.id, 'failed');
-          continue;
+          failed++;
+        } else {
+          pending++;
         }
+      } else {
+        pending++;
       }
-
-      // FillEvent가 없고 tx_signature가 있으면 정상적인 오픈 주문 — 만료시키지 않고 유지
-      pending++;
     }
 
-    if (filled > 0) {
-      this.logger.log(`[active] fill check: ${filled} filled, ${pending} pending`);
+    const total = filled + cancelled + expired + failed;
+    if (total > 0) {
+      this.logger.log(`[active] check result: ${filled} filled, ${cancelled} cancelled, ${expired} expired, ${failed} failed, ${pending} pending`);
     }
 
-    return { filled, failed: 0, expired: 0, pending };
+    return { filled, failed, expired, pending, cancelled };
+  }
+
+  /**
+   * 토큰의 Manifest 마켓을 로드하여 온체인 오더북 스냅샷 반환
+   */
+  private async loadMarketCache(tokenId: string): Promise<MarketCache | null> {
+    // 토큰의 mint_address 조회
+    const { data: token } = await this.client
+      .from('tokens')
+      .select('mint_address')
+      .eq('id', tokenId)
+      .single();
+    if (!token?.mint_address) return null;
+
+    const { Market } = await import('@cks-systems/manifest-sdk');
+    const markets = await Market.findByMints(
+      this.connection,
+      new PublicKey(token.mint_address),
+      new PublicKey(USDT_MINT),
+    );
+    if (!markets || markets.length === 0) return null;
+
+    const m = markets[0];
+    const openOrders = m.openOrders();
+
+    const ordersBySeq = new Map<string, ChainOrderInfo>();
+    for (const o of openOrders) {
+      const trader = o.trader ? o.trader.toBase58() : '';
+      ordersBySeq.set(o.sequenceNumber.toString(), {
+        sequenceNumber: o.sequenceNumber.toString(),
+        lastValidSlot: Number(o.lastValidSlot),
+        trader,
+      });
+    }
+
+    return { ordersBySeq };
+  }
+
+  /**
+   * 현재 Solana 슬롯 반환 (캐시 없이 매번 호출 — 빠른 RPC 호출)
+   */
+  private async getCurrentSlot(): Promise<number> {
+    try {
+      const res = await fetch(this.rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getSlot' }),
+      });
+      const data = await res.json() as { result?: number };
+      return typeof data.result === 'number' ? data.result : 0;
+    } catch {
+      return 0;
+    }
   }
 
   /**
