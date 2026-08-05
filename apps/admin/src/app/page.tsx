@@ -56,8 +56,9 @@ export default function AdminDashboardPage() {
   };
 
   const statCards = [
-    { label: '총 입금 잔고 (USDT)', value: data ? formatUsdt5(data.totalDepositUsdt) : '$0.00', icon: '🏦', color: 'text-emerald-400' },
+    { label: '총 입금 잔고 (USDT)', value: data ? formatUsdt5(data.totalDepositUsdt) : '$0.00', icon: '🏦', color: 'text-emerald-400', subLabel: '순수 USDT+USDC', subValue: data ? formatUsdt5(data.pureUsdtBalance) : '$0.00', subColor: 'text-gray-400' },
     { label: '오늘 입금액 (USDT)', value: data ? formatUsdt5(data.todayDepositUsdt) : '$0.00', icon: '📥', color: 'text-teal-400', refresh: true },
+    { label: '오늘 출금액 (USDT)', value: data ? formatUsdt5(data.todayWithdrawalUsdt) : '$0.00', icon: '📤', color: 'text-red-400' },
     { label: '총 가입 유저', value: data?.totalUsers ?? 0, icon: '👥', color: 'text-blue-400' },
     { label: '오늘 신규 가입', value: data?.todaySignups ?? 0, icon: '📈', color: 'text-green-400' },
     { label: '수수료 수익 (USDT)', value: data ? `$${data.totalFeeRevenue.toFixed(2)}` : '$0.00', icon: '💰', color: 'text-yellow-400' },
@@ -112,13 +113,27 @@ export default function AdminDashboardPage() {
             </div>
             <div className="flex items-end gap-2">
               <span className="text-xs">{card.icon}</span>
-              <p className={`text-2xl font-bold ${card.color}`}>
-                {isLoading ? (
-                  <span className="inline-block w-16 h-8 bg-gray-700 rounded animate-pulse" />
-                ) : (
-                  card.value
+              <div>
+                <p className={`text-2xl font-bold ${card.color}`}>
+                  {isLoading ? (
+                    <span className="inline-block w-16 h-8 bg-gray-700 rounded animate-pulse" />
+                  ) : (
+                    card.value
+                  )}
+                </p>
+                {'subLabel' in card && (
+                  <p className="text-xs mt-0.5">
+                    <span className="text-gray-500">{(card as { subLabel: string }).subLabel}: </span>
+                    <span className={(card as { subColor?: string }).subColor || 'text-gray-400'}>
+                      {isLoading ? (
+                        <span className="inline-block w-12 h-3 bg-gray-700 rounded animate-pulse" />
+                      ) : (
+                        (card as { subValue: string }).subValue
+                      )}
+                    </span>
+                  </p>
                 )}
-              </p>
+              </div>
             </div>
           </div>
         ))}

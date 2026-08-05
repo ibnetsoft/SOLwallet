@@ -72,7 +72,7 @@ export class AdminService {
    */
   private depositStatsCache: {
     at: number;
-    data: { totalDepositUsdt: number; todayDepositUsdt: number; partial: boolean };
+    data: { totalDepositUsdt: number; pureUsdtBalance: number; todayDepositUsdt: number; todayWithdrawalUsdt: number; partial: boolean };
   } | null = null;
   private readonly DEPOSIT_CACHE_MS = 60_000;
 
@@ -186,7 +186,9 @@ export class AdminService {
     return {
       ...stats,
       totalDepositUsdt: deposit.totalDepositUsdt,
+      pureUsdtBalance: deposit.pureUsdtBalance,
       todayDepositUsdt: deposit.todayDepositUsdt,
+      todayWithdrawalUsdt: deposit.todayWithdrawalUsdt,
       depositStatsPartial: deposit.partial,
       todayUsers,
       todayOrders,
@@ -283,19 +285,19 @@ export class AdminService {
   private async getDepositStats(
     todayStart: Date,
     nocache = false,
-  ): Promise<{ totalDepositUsdt: number; todayDepositUsdt: number; partial: boolean }> {
+  ): Promise<{ totalDepositUsdt: number; pureUsdtBalance: number; todayDepositUsdt: number; todayWithdrawalUsdt: number; partial: boolean }> {
     const cached = this.depositStatsCache;
     if (!nocache && cached && Date.now() - cached.at < this.DEPOSIT_CACHE_MS) {
       return cached.data;
     }
 
-    const empty = { totalDepositUsdt: 0, todayDepositUsdt: 0, partial: true };
+    const empty = { totalDepositUsdt: 0, pureUsdtBalance: 0, todayDepositUsdt: 0, todayWithdrawalUsdt: 0, partial: true };
     if (!this.rpcUrl) return empty;
 
     const { data: wallets } = await this.client.from('wallets').select('public_key');
     const addresses = (wallets || []).map((w) => w.public_key as string).filter(Boolean);
     if (addresses.length === 0) {
-      const zero = { totalDepositUsdt: 0, todayDepositUsdt: 0, partial: false };
+      const zero = { totalDepositUsdt: 0, pureUsdtBalance: 0, todayDepositUsdt: 0, todayWithdrawalUsdt: 0, partial: false };
       this.depositStatsCache = { at: Date.now(), data: zero };
       return zero;
     }
@@ -305,6 +307,7 @@ export class AdminService {
 
     // ── 1. 전체 보유 잔고 ──
     let totalDepositUsdt = 0;
+    let pureUsdtBalance = 0; // USDT + USDC만 (1:1)
 
     // SOL: getMultipleAccounts (100개씩)
     for (let i = 0; i < addresses.length; i += 100) {
@@ -350,17 +353,21 @@ export class AdminService {
         const uiAmount = Number(info?.tokenAmount?.uiAmount ?? 0);
         if (!mint || !uiAmount) continue;
         totalDepositUsdt += await this.toUsdt(mint, uiAmount, solPrice);
+        // 순수 USDT+USDC 잔고 (스테이블코인만 1:1 누적)
+        if (STABLE_MINTS.has(mint)) pureUsdtBalance += uiAmount;
       }
     }
 
-    // ── 2. 오늘 입금액 ──
-    const todayDepositUsdt = await this.sumTodayDeposits(addresses, todayStart, solPrice, () => {
+    // ── 2. 오늘 입금액 + 오늘 출금액 ──
+    const { todayDepositUsdt, todayWithdrawalUsdt } = await this.sumTodayFlows(addresses, todayStart, solPrice, () => {
       partial = true;
     });
 
     const result = {
       totalDepositUsdt: Math.round(totalDepositUsdt * 1e6) / 1e6,
+      pureUsdtBalance: Math.round(pureUsdtBalance * 1e6) / 1e6,
       todayDepositUsdt: Math.round(todayDepositUsdt * 1e6) / 1e6,
+      todayWithdrawalUsdt: Math.round(todayWithdrawalUsdt * 1e6) / 1e6,
       partial,
     };
 
@@ -398,17 +405,19 @@ export class AdminService {
   }
 
   /**
-   * 오늘 각 지갑으로 들어온 입금액 합계 (USDT 환산)
+   * 오늘 각 지갑의 입금/출금액 합계 (USDT 환산)
    * 서명 목록에서 blockTime으로 먼저 오늘 것만 추려 상세 조회를 최소화한다.
+   * 같은 트랜잭션에서 diff > 0이면 입금, diff < 0이면 출금으로 각각 누적.
    */
-  private async sumTodayDeposits(
+  private async sumTodayFlows(
     addresses: string[],
     todayStart: Date,
     solPrice: number,
     markPartial: () => void,
-  ): Promise<number> {
+  ): Promise<{ todayDepositUsdt: number; todayWithdrawalUsdt: number }> {
     const todaySec = Math.floor(todayStart.getTime() / 1000);
-    let sum = 0;
+    let todayDepositUsdt = 0;
+    let todayWithdrawalUsdt = 0;
 
     for (const addr of addresses) {
       const sigs = await this.rpc<Array<{ signature: string; blockTime?: number | null; err?: unknown }>>(
@@ -438,17 +447,18 @@ export class AdminService {
 
         if (!tx?.meta || tx.meta.err) continue;
 
-        // SOL 증가분
+        // SOL 증감분
         const keys = (tx.transaction?.message?.accountKeys || []).map((k) =>
           typeof k === 'string' ? k : k?.pubkey || '',
         );
         const idx = keys.indexOf(addr);
         if (idx >= 0 && tx.meta.preBalances && tx.meta.postBalances) {
           const diff = (tx.meta.postBalances[idx] ?? 0) - (tx.meta.preBalances[idx] ?? 0);
-          if (diff > 0) sum += (diff / 1e9) * solPrice;
+          if (diff > 0) todayDepositUsdt += (diff / 1e9) * solPrice;
+          else if (diff < 0) todayWithdrawalUsdt += (Math.abs(diff) / 1e9) * solPrice;
         }
 
-        // SPL 토큰 증가분 (이 지갑이 owner인 계정만)
+        // SPL 토큰 증감분 (이 지갑이 owner인 계정만)
         const pre = tx.meta.preTokenBalances || [];
         const post = tx.meta.postTokenBalances || [];
         for (const p of post) {
@@ -456,12 +466,13 @@ export class AdminService {
           const before = pre.find((b) => b.owner === addr && b.mint === p.mint);
           const diff =
             Number(p.uiTokenAmount?.uiAmount ?? 0) - Number(before?.uiTokenAmount?.uiAmount ?? 0);
-          if (diff > 0) sum += await this.toUsdt(p.mint, diff, solPrice);
+          if (diff > 0) todayDepositUsdt += await this.toUsdt(p.mint, diff, solPrice);
+          else if (diff < 0) todayWithdrawalUsdt += await this.toUsdt(p.mint, Math.abs(diff), solPrice);
         }
       }
     }
 
-    return sum;
+    return { todayDepositUsdt, todayWithdrawalUsdt };
   }
 
   /**

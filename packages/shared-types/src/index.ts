@@ -187,8 +187,12 @@ export interface DashboardTodayTransfer {
 export interface AdminDashboard extends AdminStats {
   /** 전체 회원 지갑의 현재 보유 잔고 합계 (USDT 환산) */
   totalDepositUsdt: number;
+  /** 순수 USDT+USDC 스테이블코인 보유 잔고 합계 (1:1) */
+  pureUsdtBalance: number;
   /** 오늘 입금된 금액 (USDT 환산) */
   todayDepositUsdt: number;
+  /** 오늘 출금된 금액 (USDT 환산) */
+  todayWithdrawalUsdt: number;
   /** 입금 집계가 RPC 오류 등으로 부분적으로만 성공했는지 여부 */
   depositStatsPartial: boolean;
   todayUsers: DashboardTodayUser[];
