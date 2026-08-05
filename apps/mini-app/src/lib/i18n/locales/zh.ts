@@ -204,7 +204,7 @@ const zh: Record<string, string> = {
 
   // ─── Deposit ───
   'deposit.title': '💰 充值',
-  'deposit.desc': '将 Solana (SOL) 发送到以下地址',
+  'deposit.desc': '将 Solana (SOL) 系代币 (USDT) 发送到以下地址',
   'deposit.myAddress': '我的钱包地址',
   'deposit.copyAddress': '📋 复制地址',
   'deposit.copied': '📋 地址已复制。',

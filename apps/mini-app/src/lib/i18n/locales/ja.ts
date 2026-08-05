@@ -204,7 +204,7 @@ const ja: Record<string, string> = {
 
   // ─── Deposit ───
   'deposit.title': '💰 入金',
-  'deposit.desc': '以下のアドレスにSolana (SOL) を送金してください',
+  'deposit.desc': '以下のアドレスにSolana (SOL) 系トークン (USDT) を送金してください',
   'deposit.myAddress': 'ウォレットアドレス',
   'deposit.copyAddress': '📋 アドレスをコピー',
   'deposit.copied': '📋 アドレスをコピーしました。',

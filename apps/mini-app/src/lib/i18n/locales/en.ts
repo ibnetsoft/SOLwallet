@@ -206,7 +206,7 @@ const en: Record<TranslationKey, string> = {
 
   // ─── Deposit ───
   'deposit.title': '💰 Deposit',
-  'deposit.desc': 'Send Solana (SOL) to the address below',
+  'deposit.desc': 'Send Solana (SOL) based tokens (USDT) to the address below',
   'deposit.myAddress': 'My Wallet Address',
   'deposit.copyAddress': '📋 Copy Address',
   'deposit.copied': '📋 Address copied.',
