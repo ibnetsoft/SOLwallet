@@ -409,7 +409,6 @@ export class AdminService {
   ): Promise<number> {
     const todaySec = Math.floor(todayStart.getTime() / 1000);
     let sum = 0;
-    this.logger.log(`[sumTodayDeposits] wallets=${addresses.length}, todaySec=${todaySec}, solPrice=${solPrice}, KST now=${new Date().toISOString()}`);
 
     for (const addr of addresses) {
       const sigs = await this.rpc<Array<{ signature: string; blockTime?: number | null; err?: unknown }>>(
@@ -417,7 +416,6 @@ export class AdminService {
         [addr, { limit: 25 }],
       );
       if (!sigs) {
-        this.logger.warn(`[sumTodayDeposits] sigs=null for ${addr.slice(0,8)}...`);
         markPartial();
         continue;
       }
@@ -425,10 +423,6 @@ export class AdminService {
       const todaySigs = sigs
         .filter((s) => !s.err && typeof s.blockTime === 'number' && (s.blockTime as number) >= todaySec)
         .map((s) => s.signature);
-
-      if (todaySigs.length > 0) {
-        this.logger.log(`[sumTodayDeposits] ${addr.slice(0,8)}... — ${todaySigs.length} today sigs (of ${sigs.length} total), latest blockTime=${sigs[0]?.blockTime}`);
-      }
 
       for (const sig of todaySigs) {
         const tx = await this.rpc<{
@@ -467,7 +461,6 @@ export class AdminService {
       }
     }
 
-    this.logger.log(`[sumTodayDeposits] DONE — sum=\$${sum.toFixed(2)}`);
     return sum;
   }
 
