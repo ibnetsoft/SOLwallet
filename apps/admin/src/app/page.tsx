@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { getDashboard } from '@/lib/api/admin';
+import { getDashboard, getDashboardNocache } from '@/lib/api/admin';
 import type { AdminDashboard } from '@solwallet/shared-types';
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -18,10 +18,14 @@ const SOLSCAN_TX_BASE = 'https://solscan.io/tx';
 const formatTxHash = (hash: string) => `${hash.slice(0, 8)}...${hash.slice(-4)}`;
 const formatUsdt = (v: number) =>
   `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+/** 입금 잔고·입금액 — 소수점 5자리까지 표시 */
+const formatUsdt5 = (v: number) =>
+  `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 5 })}`;
 
 export default function AdminDashboardPage() {
   const [data, setData] = useState<AdminDashboard | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -37,9 +41,23 @@ export default function AdminDashboardPage() {
     fetchDashboard();
   }, []);
 
+  /** 오늘 입금액 수동 새로고침 — 캐시 무시 */
+  const refreshDeposit = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      const fresh = await getDashboardNocache();
+      setData(fresh);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '새로고침 실패');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const statCards = [
-    { label: '총 입금 잔고 (USDT)', value: data ? formatUsdt(data.totalDepositUsdt) : '$0.00', icon: '🏦', color: 'text-emerald-400' },
-    { label: '오늘 입금액 (USDT)', value: data ? formatUsdt(data.todayDepositUsdt) : '$0.00', icon: '📥', color: 'text-teal-400' },
+    { label: '총 입금 잔고 (USDT)', value: data ? formatUsdt5(data.totalDepositUsdt) : '$0.00', icon: '🏦', color: 'text-emerald-400' },
+    { label: '오늘 입금액 (USDT)', value: data ? formatUsdt5(data.todayDepositUsdt) : '$0.00', icon: '📥', color: 'text-teal-400', refresh: true },
     { label: '총 가입 유저', value: data?.totalUsers ?? 0, icon: '👥', color: 'text-blue-400' },
     { label: '오늘 신규 가입', value: data?.todaySignups ?? 0, icon: '📈', color: 'text-green-400' },
     { label: '수수료 수익 (USDT)', value: data ? `$${data.totalFeeRevenue.toFixed(2)}` : '$0.00', icon: '💰', color: 'text-yellow-400' },
@@ -69,7 +87,29 @@ export default function AdminDashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {statCards.map((card) => (
           <div key={card.label} className="bg-gray-800/50 rounded-xl p-5 border border-gray-700/50">
-            <p className="text-sm text-gray-400 mb-1">{card.label}</p>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-sm text-gray-400">{card.label}</p>
+              {'refresh' in card && (
+                <button
+                  type="button"
+                  onClick={refreshDeposit}
+                  disabled={isRefreshing}
+                  className="text-gray-500 hover:text-teal-400 transition-colors disabled:opacity-50"
+                  title="오늘 입금액 새로고침"
+                >
+                  <svg
+                    className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`}
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.992 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182" />
+                  </svg>
+                </button>
+              )}
+            </div>
             <div className="flex items-end gap-2">
               <span className="text-xs">{card.icon}</span>
               <p className={`text-2xl font-bold ${card.color}`}>

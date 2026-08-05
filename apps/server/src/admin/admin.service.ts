@@ -169,13 +169,13 @@ export class AdminService {
   /**
    * 대시보드 전체 데이터 — 기존 통계 + 입금 현황 + 오늘의 가입/트랜잭션 목록
    */
-  async getDashboard(): Promise<AdminDashboard> {
+  async getDashboard(nocache = false): Promise<AdminDashboard> {
     const todayStart = getKstTodayStart();
     const todayIso = todayStart.toISOString();
 
     const [stats, deposit, todayUsers, todayOrders, todayTransfers] = await Promise.all([
       this.getStats(),
-      this.getDepositStats(todayStart),
+      this.getDepositStats(todayStart, nocache),
       this.getTodayUsers(todayIso),
       this.getTodayOrders(todayIso),
       this.getTodayTransfers(todayIso),
@@ -280,9 +280,10 @@ export class AdminService {
    */
   private async getDepositStats(
     todayStart: Date,
+    nocache = false,
   ): Promise<{ totalDepositUsdt: number; todayDepositUsdt: number; partial: boolean }> {
     const cached = this.depositStatsCache;
-    if (cached && Date.now() - cached.at < this.DEPOSIT_CACHE_MS) {
+    if (!nocache && cached && Date.now() - cached.at < this.DEPOSIT_CACHE_MS) {
       return cached.data;
     }
 
@@ -367,6 +368,13 @@ export class AdminService {
     if (partial && cached && !cached.data.partial) {
       this.logger.warn('[getDepositStats] 이번 집계 partial — 직전 성공 캐시 유지');
       return cached.data;
+    }
+    // partial인데 이전 성공 캐시도 없으면 결과를 캐시하지 않음 —
+    // 다음 요청에서 다시 계산시켜 정상값을 얻을 기회를 준다.
+    // (서버 재시작 직후 첫 요청이 partial인 경우 $0.00이 60초간 고정되는 버그 방지)
+    if (partial) {
+      this.logger.warn('[getDepositStats] 이번 집계 partial — 캐시하지 않음 (재시도 대기)');
+      return result;
     }
 
     this.depositStatsCache = { at: Date.now(), data: result };

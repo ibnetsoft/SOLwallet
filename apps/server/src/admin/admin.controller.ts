@@ -44,10 +44,11 @@ export class AdminController {
 
   /**
    * GET /api/admin/dashboard — 통계 + 입금 현황 + 오늘의 가입/트랜잭션
+   * ?nocache=1 — 입금 집계 캐시를 무시하고 즉시 재계산 (수동 새로고침용)
    */
   @Get('dashboard')
-  async getDashboard() {
-    const data = await this.adminService.getDashboard();
+  async getDashboard(@Query('nocache') nocache?: string) {
+    const data = await this.adminService.getDashboard(nocache === '1');
     return { success: true, data };
   }
 

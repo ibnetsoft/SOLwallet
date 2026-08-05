@@ -12,6 +12,11 @@ export function getDashboard(): Promise<AdminDashboard> {
   return apiFetch('/admin/dashboard');
 }
 
+/** 대시보드 새로고침 — 입금 집계 캐시 무시 */
+export function getDashboardNocache(): Promise<AdminDashboard> {
+  return apiFetch('/admin/dashboard?nocache=1');
+}
+
 // ─── 유저 관리 ───
 
 export function getUsers(page = 1, pageSize = 20): Promise<{ users: AdminUserDetail[]; total: number }> {
