@@ -206,7 +206,7 @@ const ko: Record<string, string> = {
 
   // ─── Deposit ───
   'deposit.title': '💰 입금',
-  'deposit.desc': '아래 주소로 솔라나(SOL)를 입금하세요',
+  'deposit.desc': '아래 주소로 솔라나(SOL) 계열 코인(USDT)을 입금하세요',
   'deposit.myAddress': '내 지갑 주소',
   'deposit.copyAddress': '📋 주소 복사',
   'deposit.copied': '📋 주소가 복사되었습니다.',
