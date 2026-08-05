@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
 import { TransfersService } from '../transfers/transfers.service';
+import { PriceService } from '../price/price.service';
 import type {
   AdminStats,
   AdminDashboard,
@@ -54,6 +55,7 @@ export class AdminService {
     private readonly supabaseService: SupabaseService,
     private readonly configService: ConfigService,
     private readonly transfersService: TransfersService,
+    private readonly priceService: PriceService,
   ) {}
 
   private get client() {
@@ -342,13 +344,13 @@ export class AdminService {
         partial = true;
         continue;
       }
-      (res.value || []).forEach((acc) => {
+      for (const acc of (res.value || [])) {
         const info = acc.account?.data?.parsed?.info;
         const mint = info?.mint;
         const uiAmount = Number(info?.tokenAmount?.uiAmount ?? 0);
-        if (!mint || !uiAmount) return;
-        totalDepositUsdt += this.toUsdt(mint, uiAmount, solPrice);
-      });
+        if (!mint || !uiAmount) continue;
+        totalDepositUsdt += await this.toUsdt(mint, uiAmount, solPrice);
+      }
     }
 
     // ── 2. 오늘 입금액 ──
@@ -381,10 +383,17 @@ export class AdminService {
     return result;
   }
 
-  /** 민트별 USDT 환산 — 스테이블 1:1, SOL/wSOL은 시세 적용, 그 외는 시세가 없어 0 */
-  private toUsdt(mint: string, uiAmount: number, solPrice: number): number {
+  /** 민트별 USDT 환산 — 스테이블 1:1, SOL/wSOL은 시세 적용, 그 외는 최근 체결가 기준 */
+  private async toUsdt(mint: string, uiAmount: number, solPrice: number): Promise<number> {
     if (STABLE_MINTS.has(mint)) return uiAmount;
     if (mint === SOL_MINT_ADDR) return uiAmount * solPrice;
+    // 그 외 토큰 — PriceService에서 최근 체결가(USDT) 조회
+    try {
+      const price = await this.priceService.getTokenPrice(mint);
+      if (price > 0) return uiAmount * price;
+    } catch {
+      // 가격 조회 실패 시 0 (부분 집계는 아님 — 이 토큰 종류만 누락)
+    }
     return 0;
   }
 
@@ -453,7 +462,7 @@ export class AdminService {
           const before = pre.find((b) => b.owner === addr && b.mint === p.mint);
           const diff =
             Number(p.uiTokenAmount?.uiAmount ?? 0) - Number(before?.uiTokenAmount?.uiAmount ?? 0);
-          if (diff > 0) sum += this.toUsdt(p.mint, diff, solPrice);
+          if (diff > 0) sum += await this.toUsdt(p.mint, diff, solPrice);
         }
       }
     }
