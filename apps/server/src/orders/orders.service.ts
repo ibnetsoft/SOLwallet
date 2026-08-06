@@ -68,6 +68,115 @@ export class OrdersService {
   }
 
   /**
+   * Manifest DELETE API로 취소 트랜잭션 획득 — setupIxs 최적화
+   *
+   * 전략:
+   *  1. 먼저 setupIxs 없이 요청 → seat 이미 있으면 rent 없이 가벼운 cancel tx 반환
+   *  2. 실패 시 setupIxs: true로 재시도 → seat 생성 필요한 경우 대응
+   *
+   * 기존에는 항상 setupIxs: true를 보내서, 이미 seat이 있는 사용자도
+   * 불필요한 wrapper setup IX (~0.0015 SOL rent)가 포함된 무거운 tx를 받았고,
+   * SOL 잔고 0.0009 SOL 정도의 사용자는 rent 부족으로 취소조차 불가능했음.
+   */
+  private async fetchManifestCancelTx(params: {
+    maker: string;
+    baseMint: string;
+    quoteMint: string;
+    sequenceNumber: number | null;
+    clientOrderId: number | null;
+    logContext: string;
+  }): Promise<{ unsignedTx: string } | { notFound: true } | { failed: true; detail: string }> {
+    const { maker, baseMint, quoteMint, sequenceNumber, clientOrderId, logContext } = params;
+    const orderRef = sequenceNumber != null
+      ? { sequenceNumber }
+      : { clientOrderId: clientOrderId ?? 0 };
+
+    let lastDetail = '';
+
+    // 1단계: setupIxs 없이 시도 (대부분의 사용자는 이미 seat이 있음)
+    try {
+      const cancelRes = await fetch(`${this.manifestBaseUrl}/orders`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          maker,
+          baseMint,
+          quoteMint,
+          orders: [orderRef],
+          computeUnitPrice: MANIFEST.computeUnitPrice,
+        }),
+      });
+
+      const cancelData = (await cancelRes.json()) as ManifestCancelResponse;
+
+      if (cancelRes.ok && cancelData.transaction) {
+        this.logger.log(`[${logContext}] cancel tx obtained (no setupIxs)`);
+        return { unsignedTx: cancelData.transaction };
+      }
+
+      const errMsg = cancelData.error || '';
+      const cause = cancelData.cause || '';
+      lastDetail = errMsg || cause;
+
+      // 주문이 온체인에 없음 → notFound 반환
+      if (/not found|no such order|order not found|already/i.test(errMsg + ' ' + cause)) {
+        this.logger.log(`[${logContext}] order not on-chain: ${errMsg}`);
+        return { notFound: true };
+      }
+
+      this.logger.warn(
+        `[${logContext}] cancel without setupIxs failed: ${cancelRes.status} — ${errMsg}: ${cause}`,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `[${logContext}] cancel without setupIxs error: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    // 2단계: setupIxs: true로 재시도 (seat이 없는 사용자 대응)
+    try {
+      this.logger.log(`[${logContext}] retrying cancel with setupIxs: true`);
+      const cancelRes = await fetch(`${this.manifestBaseUrl}/orders`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          maker,
+          baseMint,
+          quoteMint,
+          orders: [orderRef],
+          computeUnitPrice: MANIFEST.computeUnitPrice,
+          setupIxs: true,
+        }),
+      });
+
+      const cancelData = (await cancelRes.json()) as ManifestCancelResponse;
+
+      if (cancelRes.ok && cancelData.transaction) {
+        this.logger.log(`[${logContext}] cancel tx obtained (with setupIxs)`);
+        return { unsignedTx: cancelData.transaction };
+      }
+
+      const errMsg = cancelData.error || '';
+      const cause = cancelData.cause || '';
+      lastDetail = errMsg || cause;
+      this.logger.warn(
+        `[${logContext}] cancel with setupIxs also failed: ${cancelRes.status} — ${errMsg}: ${cause}`,
+      );
+
+      // 주문이 온체인에 없음
+      if (/not found|no such order|order not found|already/i.test(errMsg + ' ' + cause)) {
+        return { notFound: true };
+      }
+    } catch (err) {
+      this.logger.error(
+        `[${logContext}] cancel with setupIxs error: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    return { failed: true, detail: lastDetail };
+  }
+
+  /**
    * Manifest 마켓의 좌석(seat) 확보에 필요한 instruction 반환
    *
    * Manifest 주문 생성 API(`/v1/orders`)는 트레이더가 해당 마켓에 좌석이 없으면
@@ -1356,49 +1465,26 @@ export class OrdersService {
 
     const clientOrderId = order.manifest_client_order_id as number | null;
     const sequenceNumber = order.manifest_sequence_number as number | null;
-    const quoteMint = USDT_MINT;
 
-    // Manifest DELETE 재호출 — 동일 파라미터로 fresh cancel tx 획득
-    // setupIxs: true — wrapper setup ix를 cancel tx에 포함 (미체결 주문 취소 시 필수)
-    const cancelRes = await fetch(`${this.manifestBaseUrl}/orders`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        maker: wallet.public_key,
-        baseMint: token.mint_address,
-        quoteMint,
-        orders: [
-          sequenceNumber != null
-            ? { sequenceNumber }
-            : { clientOrderId: clientOrderId ?? 0 },
-        ],
-        computeUnitPrice: MANIFEST.computeUnitPrice,
-        setupIxs: true,
-      }),
+    // Manifest DELETE로 fresh cancel tx 획득
+    const result = await this.fetchManifestCancelTx({
+      maker: wallet.public_key,
+      baseMint: token.mint_address,
+      quoteMint: USDT_MINT,
+      sequenceNumber,
+      clientOrderId,
+      logContext: 'getFreshCancelTx',
     });
 
-    const cancelData = (await cancelRes.json()) as ManifestCancelResponse;
+    // 주문이 온체인에 없음 → DB에서 삭제
+    if ('notFound' in result) {
+      this.logger.log(`[getFreshCancelTx] order not on-chain, removing from DB: ${orderId}`);
+      await this.client.from('orders').delete().eq('id', orderId);
+      return { cancelled: true };
+    }
 
-    if (!cancelRes.ok || !cancelData.transaction) {
-      const errMsg = cancelData.error || '';
-      const cause = cancelData.cause || '';
-      this.logger.warn(
-        `[cancelOrder] Manifest cancel-tx failed: ${cancelRes.status} — ${errMsg}: ${cause}`,
-      );
-
-      // 주문이 온체인에 없음 (이미 만료/드롭) → DB에서 삭제
-      if (/not found|no such order|order not found|already/i.test(errMsg + ' ' + cause)) {
-        this.logger.log(`[cancelOrder] order not on-chain, removing from DB: ${orderId}`);
-        await this.client
-          .from('orders')
-          .delete()
-          .eq('id', orderId);
-        return { cancelled: true };
-      }
-
-      // 그 외 에러 (setup ixs, network 등) → 사용자에게 재시도 안내
-      // Manifest가 알려준 구체적인 사유를 함께 노출 — 매번 같은 문구만 뜨면 원인 파악이 불가능해짐
-      const detail = errMsg || cause;
+    if ('failed' in result) {
+      const detail = result.detail;
       throw new BadRequestException(
         detail
           ? `취소 트랜잭션 생성에 실패했습니다: ${detail}`
@@ -1406,7 +1492,7 @@ export class OrdersService {
       );
     }
 
-    return { unsignedTx: cancelData.transaction };
+    return { unsignedTx: result.unsignedTx };
   }
 
   /**
@@ -1521,58 +1607,36 @@ export class OrdersService {
       throw new BadRequestException('지갑 정보를 찾을 수 없습니다.');
     }
 
-    // Manifest에 cancel tx 요청 — clientOrderId로 식별
+    // Manifest DELETE로 cancel tx 획득
     const clientOrderId = order.manifest_client_order_id as number | null;
     const sequenceNumber = order.manifest_sequence_number as number | null;
 
-    let unsignedTx = '';
-    try {
-      const cancelRes = await fetch(`${this.manifestBaseUrl}/orders`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          maker: wallet.public_key,
-          baseMint: token.mint_address,
-          quoteMint: USDT_MINT, // 모든 페어 USDT 기준 (USDC 잔재 제거)
-          orders: [
-            sequenceNumber != null
-              ? { sequenceNumber }
-              : { clientOrderId: clientOrderId ?? 0 },
-          ],
-          computeUnitPrice: MANIFEST.computeUnitPrice,
-          setupIxs: true,
-        }),
-      });
+    const result = await this.fetchManifestCancelTx({
+      maker: wallet.public_key,
+      baseMint: token.mint_address,
+      quoteMint: USDT_MINT,
+      sequenceNumber,
+      clientOrderId,
+      logContext: 'cancelOrder',
+    });
 
-      const cancelData = (await cancelRes.json()) as ManifestCancelResponse;
-
-      if (cancelRes.ok && cancelData.transaction) {
-        unsignedTx = cancelData.transaction;
-      } else {
-        const errMsg = cancelData.error || '';
-        const cause = cancelData.cause || '';
-        this.logger.warn(
-          `Manifest cancel failed: ${cancelRes.status} — ${errMsg}: ${cause}`,
-        );
-        // 주문이 온체인에 없음 → expired 처리
-        if (/not found|no such order|order not found|already/i.test(errMsg + ' ' + cause)) {
-          await this.client
-            .from('orders')
-            .update({ status: 'expired', updated_at: new Date().toISOString() })
-            .eq('id', order.id);
-          throw new BadRequestException('이미 만료된 주문입니다.');
-        }
-      }
-    } catch (err) {
-      if (err instanceof HttpException) throw err; // 위에서 던진 에러 재throw
-      this.logger.error(`Manifest cancel error: ${err instanceof Error ? err.message : String(err)}`);
+    // 주문이 온체인에 없음 → expired 처리
+    if ('notFound' in result) {
+      await this.client
+        .from('orders')
+        .update({ status: 'expired', updated_at: new Date().toISOString() })
+        .eq('id', order.id);
+      throw new BadRequestException('이미 만료된 주문입니다.');
     }
 
-    if (!unsignedTx) {
-      throw new CodedException('취소 트랜잭션 생성에 실패했습니다. 잠시 후 다시 시도해주세요.', 'SETUP_FAILED');
+    if ('failed' in result) {
+      throw new CodedException(
+        '취소 트랜잭션 생성에 실패했습니다. 잠시 후 다시 시도해주세요.',
+        'SETUP_FAILED',
+      );
     }
 
-    return { order: order as Record<string, unknown>, unsignedTx };
+    return { order: order as Record<string, unknown>, unsignedTx: result.unsignedTx };
   }
 
   /**
