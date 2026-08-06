@@ -1,4 +1,5 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { CodedException } from '../common/filters/global-exception.filter';
 import { SupabaseService } from '../supabase/supabase.service';
 import { MAX_WALLETS } from '@solwallet/config';
 
@@ -91,7 +92,7 @@ export class WalletService {
 
     if (error) {
       this.logger.error(`Failed to register wallet: ${error.message}`);
-      throw error;
+      throw new CodedException('지갑 등록에 실패했습니다. 잠시 후 다시 시도해주세요.', 'WALLET_FAILED');
     }
 
     return data;
@@ -109,7 +110,7 @@ export class WalletService {
 
     if (deactivateError) {
       this.logger.error(`Failed to deactivate wallets: ${deactivateError.message}`);
-      throw deactivateError;
+      throw new CodedException('지갑 전환에 실패했습니다. 잠시 후 다시 시도해주세요.', 'WALLET_FAILED');
     }
 
     // 대상 지갑만 활성으로
@@ -123,7 +124,7 @@ export class WalletService {
 
     if (error) {
       this.logger.error(`Failed to activate wallet: ${error.message}`);
-      throw error;
+      throw new CodedException('지갑 전환에 실패했습니다. 잠시 후 다시 시도해주세요.', 'WALLET_FAILED');
     }
 
     if (!data) {
@@ -145,7 +146,7 @@ export class WalletService {
 
     if (error) {
       this.logger.error(`Failed to delete wallet: ${error.message}`);
-      throw error;
+      throw new CodedException('지갑 삭제에 실패했습니다. 잠시 후 다시 시도해주세요.', 'WALLET_FAILED');
     }
 
     return { success: true };

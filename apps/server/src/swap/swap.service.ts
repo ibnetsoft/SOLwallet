@@ -1,4 +1,5 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, HttpException } from '@nestjs/common';
+import { CodedException, parseRpcError } from '../common/filters/global-exception.filter';
 import { SupabaseService } from '../supabase/supabase.service';
 import { ConfigService } from '@nestjs/config';
 import { Connection } from '@solana/web3.js';
@@ -205,12 +206,11 @@ export class SwapService {
         throw new Error(rpcData.error?.message || 'RPC 전송 실패');
       }
     } catch (err) {
-      this.logger.error(
-        `RPC submit error: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      throw new BadRequestException(
-        '트랜잭션 전송에 실패했습니다. 잠시 후 다시 시도해주세요.',
-      );
+      const errMsg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`RPC submit error: ${errMsg}`);
+      const parsed = parseRpcError(errMsg);
+      if (parsed) throw parsed;
+      throw new CodedException('스왑 트랜잭션 전송에 실패했습니다. 잠시 후 다시 시도해주세요.', 'SWAP_FAILED');
     }
 
     this.logger.log(`Swap submitted by user ${userId}: ${txSignature}`);
@@ -227,12 +227,12 @@ export class SwapService {
       );
       if (!confirmed.value || confirmed.value.err) {
         this.logger.warn(`Swap NOT CONFIRMED — tx=${txSignature} err=${JSON.stringify(confirmed.value?.err)}`);
-        throw new BadRequestException('스왑이 체인에 반영되지 않았습니다. 다시 시도해주세요.');
+        throw new CodedException('스왑이 체인에 반영되지 않았습니다. 다시 시도해주세요.', 'CONFIRM_TIMEOUT');
       }
     } catch (err) {
-      if (err instanceof BadRequestException) throw err;
+      if (err instanceof HttpException) throw err;
       this.logger.warn(`Swap confirm timeout: ${txSignature} — ${err instanceof Error ? err.message : String(err)}`);
-      throw new BadRequestException('스왑 컨펌이 지연되었습니다. 잠시 후 잔액을 확인해주세요.');
+      throw new CodedException('스왑 컨펌이 지연되었습니다. 잠시 후 잔액을 확인해주세요.', 'CONFIRM_TIMEOUT');
     }
 
     this.logger.log(`Swap CONFIRMED — tx=${txSignature.slice(0, 12)}...`);

@@ -1,5 +1,5 @@
 import { Injectable, Logger, BadRequestException, NotFoundException, HttpException } from '@nestjs/common';
-import { CodedException } from '../common/filters/global-exception.filter';
+import { CodedException, parseRpcError } from '../common/filters/global-exception.filter';
 import { SupabaseService } from '../supabase/supabase.service';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -731,8 +731,11 @@ export class OrdersService {
         throw new Error(rpcData.error?.message || 'RPC 전송 실패');
       }
     } catch (err) {
-      this.logger.error(`Setup tx submit error: ${err instanceof Error ? err.message : String(err)}`);
-      throw new BadRequestException('트랜잭션 제출에 실패했습니다.');
+      const errMsg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Setup tx submit error: ${errMsg}`);
+      const parsed = parseRpcError(errMsg);
+      if (parsed) throw parsed;
+      throw new CodedException('거래 준비 트랜잭션 제출에 실패했습니다. 잠시 후 다시 시도해주세요.', 'SETUP_FAILED');
     }
 
     // 온체인 컨펌 대기 — setup(ATA/Global 생성)이 확정돼야 이어지는 주문 생성이 성공한다.
@@ -796,8 +799,11 @@ export class OrdersService {
       }
       this.logger.log(`[submitWrapTx] tx sent to RPC: ${txSignature.slice(0, 12)}...`);
     } catch (err) {
-      this.logger.error(`[submitWrapTx] RPC error: ${err instanceof Error ? err.message : String(err)}`);
-      throw new BadRequestException('wSOL 래핑 트랜잭션 제출에 실패했습니다.');
+      const errMsg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`[submitWrapTx] RPC error: ${errMsg}`);
+      const parsed = parseRpcError(errMsg);
+      if (parsed) throw parsed;
+      throw new CodedException('wSOL 래핑 트랜잭션 제출에 실패했습니다. 잠시 후 다시 시도해주세요.', 'SETUP_FAILED');
     }
 
     // wSOL 래핑이 온체인에 반영되었는지 확인
@@ -1112,8 +1118,11 @@ export class OrdersService {
       }
       this.logger.log(`[submitWithdrawTx] tx sent to RPC: ${txSignature.slice(0, 12)}...`);
     } catch (err) {
-      this.logger.error(`[submitWithdrawTx] RPC error: ${err instanceof Error ? err.message : String(err)}`);
-      throw new BadRequestException('인출 트랜잭션 제출에 실패했습니다.');
+      const errMsg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`[submitWithdrawTx] RPC error: ${errMsg}`);
+      const parsed = parseRpcError(errMsg);
+      if (parsed) throw parsed;
+      throw new CodedException('인출 트랜잭션 제출에 실패했습니다. 잠시 후 다시 시도해주세요.', 'SETUP_FAILED');
     }
 
     // 인출이 온체인에 반영되었는지 확인
@@ -1261,11 +1270,9 @@ export class OrdersService {
 
     if (!txSignature) {
       this.logger.error(`RPC submit error: ${lastError}`);
-      // blockhash 만료 에러는 사용자에게 명확한 안내
-      if (/blockhash|BlockhashNotFound/i.test(lastError)) {
-        throw new CodedException('트랜잭션이 만료되었습니다. 다시 시도해주세요.', 'TX_EXPIRED');
-      }
-      throw new BadRequestException('트랜잭션 제출에 실패했습니다.');
+      const parsed = parseRpcError(lastError);
+      if (parsed) throw parsed;
+      throw new CodedException('트랜잭션 제출에 실패했습니다. 잠시 후 다시 시도해주세요.', 'TX_SUBMIT_FAILED');
     }
 
     // tx 전송 후 on-chain confirm 대기
@@ -1692,25 +1699,8 @@ export class OrdersService {
       const errMsg = err instanceof Error ? err.message : String(err);
       this.logger.error(`[submitCancelOrder] RPC error: ${errMsg}`);
 
-      // RPC 에러 원인별 친절한 메시지 — 사용자가 무엇을 해야 할지 알 수 있게
-      if (errMsg.includes('InsufficientFundsForRent') || errMsg.includes('insufficient lamports')) {
-        throw new CodedException(
-          'Insufficient SOL balance to pay cancellation transaction fee.',
-          'INSUFFICIENT_SOL',
-        );
-      }
-      if (errMsg.includes('Transaction simulation failed')) {
-        throw new CodedException(
-          `취소 트랜잭션 시뮬레이션 실패: ${errMsg.replace('Transaction simulation failed: ', '')}`,
-          'SIMULATION_FAILED',
-        );
-      }
-      if (errMsg.includes('blockhash') || errMsg.includes('Blockhash not found')) {
-        throw new CodedException(
-          '트랜잭션 블록해시가 만료되었습니다. 다시 시도해주세요.',
-          'TX_EXPIRED',
-        );
-      }
+      const parsed = parseRpcError(errMsg);
+      if (parsed) throw parsed;
       throw new CodedException(
         `취소 트랜잭션 제출 실패: ${errMsg}`,
         'CANCEL_FAILED',

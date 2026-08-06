@@ -1,5 +1,6 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, HttpException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { CodedException, parseRpcError } from '../common/filters/global-exception.filter';
 import { SupabaseService } from '../supabase/supabase.service';
 
 @Injectable()
@@ -172,15 +173,10 @@ export class WithdrawService {
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       this.logger.error(`[withdraw] RPC error: ${errMsg} (amount=${amount}, balance check skipped)`);
-      if (/blockhash|BlockhashNotFound/i.test(errMsg)) {
-        throw new BadRequestException('트랜잭션이 만료되었습니다. 다시 시도해주세요.');
-      }
-      if (/insufficient funds|rent/i.test(errMsg)) {
-        throw new BadRequestException('잔액이 부족합니다. 출금 수수료를 위해 약간의 SOL을 남겨두세요.');
-      }
-      throw new BadRequestException('출금 트랜잭션 전송에 실패했습니다.');
+      const parsed = parseRpcError(errMsg);
+      if (parsed) throw parsed;
+      throw new CodedException('출금 트랜잭션 전송에 실패했습니다. 잠시 후 다시 시도해주세요.', 'WITHDRAW_FAILED');
     }
-
     // 컨펌 확인 — RPC accepted 후 실제 블록 포함 여부
     try {
       const { Connection } = await import('@solana/web3.js');
@@ -193,13 +189,13 @@ export class WithdrawService {
       );
       if (!confirmed.value || confirmed.value.err) {
         this.logger.error(`Withdraw NOT CONFIRMED — tx=${txSignature} err=${JSON.stringify(confirmed.value?.err)}`);
-        throw new BadRequestException('출금이 체인에 반영되지 않았습니다. 다시 시도해주세요.');
+        throw new CodedException('출금이 체인에 반영되지 않았습니다. 다시 시도해주세요.', 'CONFIRM_TIMEOUT');
       }
       this.logger.log(`Withdraw CONFIRMED: ${txSignature.slice(0, 12)}...`);
     } catch (err) {
-      if (err instanceof BadRequestException) throw err;
+      if (err instanceof HttpException) throw err;
       this.logger.error(`Withdraw confirm timeout: ${txSignature} — ${err instanceof Error ? err.message : String(err)}`);
-      throw new BadRequestException('출금 컨펌이 지연되었습니다. 잠시 후 잔액을 확인해주세요.');
+      throw new CodedException('출금 컨펌이 지연되었습니다. 잠시 후 잔액을 확인해주세요.', 'CONFIRM_TIMEOUT');
     }
 
     this.logger.log(`Withdraw successful: ${txSignature.slice(0, 12)}... (${amount} ${isSol ? 'SOL' : 'token'})`);
