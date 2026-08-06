@@ -263,7 +263,7 @@ export function deleteSubAdmin(id: string): Promise<{ success: boolean }> {
 
 export interface AdminTransferItem {
   id: string;
-  type: 'deposit' | 'withdraw';
+  type: 'deposit' | 'withdraw' | 'fee';
   amount: number;
   tokenSymbol: string;
   status: string;

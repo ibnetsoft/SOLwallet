@@ -294,14 +294,16 @@ export default function AdminDashboardPage() {
                       <span className={`text-xs px-1.5 py-0.5 rounded ${
                         tr.type === 'deposit'
                           ? 'bg-green-600/20 text-green-400'
-                          : 'bg-red-600/20 text-red-400'
+                          : tr.type === 'fee'
+                            ? 'bg-gray-600/20 text-gray-400'
+                            : 'bg-red-600/20 text-red-400'
                       }`}>
-                        {tr.type === 'deposit' ? 'Receive' : 'Send'}
+                        {tr.type === 'deposit' ? 'Receive' : tr.type === 'fee' ? 'Fee' : 'Send'}
                       </span>
                     </td>
                     <td className="py-2 px-2 font-medium">{tr.tokenSymbol}</td>
                     <td className="py-2 px-2 text-right font-mono text-xs">
-                      <span className={tr.type === 'deposit' ? 'text-green-400' : 'text-red-400'}>
+                      <span className={tr.type === 'deposit' ? 'text-green-400' : tr.type === 'fee' ? 'text-gray-400' : 'text-red-400'}>
                         {tr.type === 'deposit' ? '+' : '-'}{tr.amount.toFixed(tr.tokenSymbol === 'SOL' ? 6 : 2)}
                       </span>
                     </td>

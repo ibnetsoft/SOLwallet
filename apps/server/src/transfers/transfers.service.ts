@@ -6,7 +6,7 @@ import { WSOL_MINT } from '@solwallet/config';
 
 export interface TransferItem {
   id: string; // transaction signature
-  type: 'deposit' | 'withdraw';
+  type: 'deposit' | 'withdraw' | 'fee'; // fee = 가스비만 차감된 tx (실제 출금 아님)
   amount: number;
   tokenSymbol: string;
   status: string;
@@ -266,9 +266,12 @@ export class TransfersService {
           const { sender, receiver } = this.findSolCounterparties(
             tx, walletAddress, accountIndex, 'withdraw',
           );
+          // counterparty가 자기 자신이면 실제 SOL transfer 명령이 없는 것 —
+          // 스왑/주문/취소 등으로 가스비만 차감된 tx. withdraw가 아닌 fee로 분류.
+          const isFeeOnly = receiver === walletAddress;
           transfers.push({
             id: sigs[i],
-            type: 'withdraw',
+            type: isFeeOnly ? 'fee' : 'withdraw',
             amount: Math.abs(solDiff) / 1e9,
             tokenSymbol: 'SOL',
             status: tx.meta.err ? 'failed' : 'completed',

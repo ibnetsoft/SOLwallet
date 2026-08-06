@@ -166,6 +166,7 @@ const zh: Record<string, string> = {
   'tx.loading': '加载中...',
   'tx.noHistory': '没有交易历史。',
   'tx.startFirst': '开始第一笔交易 →',
+  'tx.fee': '手续费',
 
   // ─── Settings ───
   'settings.title': '设置',

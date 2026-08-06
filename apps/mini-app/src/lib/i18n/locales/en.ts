@@ -168,6 +168,7 @@ const en: Record<TranslationKey, string> = {
   'tx.loading': 'Loading...',
   'tx.noHistory': 'No transaction history.',
   'tx.startFirst': 'Start your first trade →',
+  'tx.fee': 'Fee',
 
   // ─── Settings ───
   'settings.title': 'Settings',

@@ -2,7 +2,7 @@ import { apiFetch } from './client';
 
 export interface TransferItem {
   id: string; // transaction signature
-  type: 'deposit' | 'withdraw';
+  type: 'deposit' | 'withdraw' | 'fee'; // fee = 가스비만 차감된 tx
   amount: number;
   tokenSymbol: string;
   status: string;

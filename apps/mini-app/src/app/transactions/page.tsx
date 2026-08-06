@@ -11,7 +11,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { isLoggedIn } from '@/lib/api/auth';
 import { useT } from '@/lib/i18n';
 
-type TransactionType = 'buy' | 'sell' | 'deposit' | 'withdraw';
+type TransactionType = 'buy' | 'sell' | 'deposit' | 'withdraw' | 'fee';
 
 interface UnifiedTx {
   id: string;
@@ -173,6 +173,7 @@ export default function TransactionsPage() {
             const isSell = o.type === 'sell';
             const isDeposit = o.type === 'deposit';
             const isWithdraw = o.type === 'withdraw';
+            const isFee = o.type === 'fee';
             
             const isPositive = isBuy || isDeposit;
             
@@ -188,27 +189,27 @@ export default function TransactionsPage() {
                 <div className="flex items-center gap-3">
                   <div
                     className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                      isPositive ? 'bg-green-500/15' : 'bg-red-500/15'
+                      isPositive ? 'bg-green-500/15' : isFee ? 'bg-gray-500/15' : 'bg-red-500/15'
                     }`}
                   >
                     {isPositive ? (
                       <ArrowDownToLine className="w-4 h-4 text-green-400" strokeWidth={2} />
                     ) : (
-                      <ArrowUpFromLine className="w-4 h-4 text-red-400" strokeWidth={2} />
+                      <ArrowUpFromLine className={`w-4 h-4 ${isFee ? 'text-gray-400' : 'text-red-400'}`} strokeWidth={2} />
                     )}
                   </div>
                   <div>
                     <p className="text-sm font-medium capitalize">
-                      {o.type === 'buy' ? t('tx.buy') : o.type === 'sell' ? t('tx.sell') : o.type === 'deposit' ? t('home.deposit') : o.type === 'withdraw' ? t('home.withdraw') : o.type} · {o.tokenSymbol}
+                      {o.type === 'buy' ? t('tx.buy') : o.type === 'sell' ? t('tx.sell') : o.type === 'deposit' ? t('home.deposit') : o.type === 'withdraw' ? t('home.withdraw') : o.type === 'fee' ? t('tx.fee') : o.type} · {o.tokenSymbol}
                     </p>
                     <p className="text-[10px] text-gray-500 mt-0.5">
                       {o.createdAt
                         ? new Date(o.createdAt).toLocaleString(dateLocale, {
-                            month: '2-digit',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })
+                          month: '2-digit',
+                          day: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
                         : '-'}
                     </p>
                     {o.txSignature && (
@@ -226,9 +227,9 @@ export default function TransactionsPage() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className={`text-sm font-medium tabular-nums ${isPositive ? 'text-green-400' : ''}`}>
+                  <p className={`text-sm font-medium tabular-nums ${isPositive ? 'text-green-400' : isFee ? 'text-gray-400' : ''}`}>
                     {isPositive ? '+' : '-'}
-                    {isDeposit || isWithdraw ? o.amount?.toFixed(5) : o.quantity?.toFixed(5)}
+                    {isDeposit || isWithdraw || isFee ? o.amount?.toFixed(5) : o.quantity?.toFixed(5)}
                   </p>
                   {(isBuy || isSell) && (
                     <p className="text-[10px] text-gray-500 tabular-nums mt-0.5">

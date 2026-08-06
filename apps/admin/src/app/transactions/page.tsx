@@ -419,7 +419,7 @@ function TransferHistorySection() {
   const [transferError, setTransferError] = useState('');
 
   // 입금/출금 따로 볼 수 있는 필터
-  const [typeFilter, setTypeFilter] = useState<'all' | 'deposit' | 'withdraw'>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'deposit' | 'withdraw' | 'fee'>('all');
   // 유저명/지갑주소로 간단히 좁혀보기 (전체 조회 후 클라이언트에서 필터)
   const [search, setSearch] = useState('');
 
@@ -474,6 +474,7 @@ function TransferHistorySection() {
 
   const depositCount = transfers.filter((t) => t.type === 'deposit').length;
   const withdrawCount = transfers.filter((t) => t.type === 'withdraw').length;
+  const feeCount = transfers.filter((t) => t.type === 'fee').length;
 
   const SOLSCAN_TX_BASE = 'https://solscan.io/tx';
   const formatAddr = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
@@ -485,18 +486,19 @@ function TransferHistorySection() {
         <div>
           <h2 className="text-lg font-bold">💳 입출금 내역 (On-chain)</h2>
           <p className="text-xs text-gray-500 mt-1">
-            활성 지갑 전체 기준 · 입금 {depositCount}건 · 출금 {withdrawCount}건
+            활성 지갑 전체 기준 · 입금 {depositCount}건 · 출금 {withdrawCount}건 · 수수료 {feeCount}건
           </p>
         </div>
         <div className="flex gap-2 items-center flex-wrap">
           <select
             value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value as 'all' | 'deposit' | 'withdraw')}
+            onChange={(e) => setTypeFilter(e.target.value as 'all' | 'deposit' | 'withdraw' | 'fee')}
             className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary-500 transition"
           >
             <option value="all">전체</option>
             <option value="deposit">입금만</option>
             <option value="withdraw">출금만</option>
+            <option value="fee">수수료만</option>
           </select>
           <input
             type="text"
@@ -583,9 +585,11 @@ function TransferHistorySection() {
                     <span className={`text-xs px-1.5 py-0.5 rounded ${
                       tr.type === 'deposit'
                         ? 'bg-green-600/20 text-green-400'
-                        : 'bg-red-600/20 text-red-400'
+                        : tr.type === 'fee'
+                          ? 'bg-gray-600/20 text-gray-400'
+                          : 'bg-red-600/20 text-red-400'
                     }`}>
-                      {tr.type === 'deposit' ? 'Receive' : 'Send'}
+                      {tr.type === 'deposit' ? 'Receive' : tr.type === 'fee' ? 'Fee' : 'Send'}
                     </span>
                   </td>
                   <td className="py-2 px-2 font-mono text-xs text-gray-300" title={tr.sender}>
@@ -596,7 +600,7 @@ function TransferHistorySection() {
                   </td>
                   <td className="py-2 px-2 font-medium">{tr.tokenSymbol}</td>
                   <td className="py-2 px-2 text-right font-mono text-xs">
-                    <span className={tr.type === 'deposit' ? 'text-green-400' : 'text-red-400'}>
+                    <span className={tr.type === 'deposit' ? 'text-green-400' : tr.type === 'fee' ? 'text-gray-400' : 'text-red-400'}>
                       {tr.type === 'deposit' ? '+' : '-'}{tr.amount.toFixed(tr.tokenSymbol === 'SOL' ? 6 : 2)}
                     </span>
                   </td>

@@ -168,6 +168,7 @@ const ko: Record<string, string> = {
   'tx.loading': '불러오는 중...',
   'tx.noHistory': '거래 내역이 없습니다.',
   'tx.startFirst': '첫 거래 시작하기 →',
+  'tx.fee': '가스비',
 
   // ─── Settings ───
   'settings.title': '설정',

@@ -166,6 +166,7 @@ const ja: Record<string, string> = {
   'tx.loading': '読み込み中...',
   'tx.noHistory': '取引履歴がありません。',
   'tx.startFirst': '最初の取引を開始 →',
+  'tx.fee': '手数料',
 
   // ─── Settings ───
   'settings.title': '設定',
