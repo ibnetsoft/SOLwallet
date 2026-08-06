@@ -166,7 +166,7 @@ export interface DashboardTodayOrder {
 /** 대시보드 — 오늘의 입출금 내역 (온체인 실시간 조회) */
 export interface DashboardTodayTransfer {
   id: string;
-  type: 'deposit' | 'withdraw';
+  type: 'deposit' | 'withdraw' | 'fee';
   amount: number;
   tokenSymbol: string;
   status: string;
