@@ -28,6 +28,7 @@ interface SubmittedOrder {
   wallet_id?: string;
   token_id?: string;
   manifest_sequence_number?: number | string | null;
+  manifest_market_address?: string | null;
   user_id?: string;
 }
 
@@ -38,10 +39,17 @@ interface ChainOrderInfo {
   trader: string;
 }
 
+/** crank fill tx에서 수집한 체결 정보 */
+interface CrankFillInfo {
+  baseAtomsTokens: number;
+}
+
 /** 토큰별로 그룹화된 온체인 마켓 데이터 */
 interface MarketCache {
   /** sequenceNumber → ChainOrderInfo */
   ordersBySeq: Map<string, ChainOrderInfo>;
+  /** manifest market address (crank fill 검색용) */
+  marketAddress: string;
 }
 
 interface RpcTransactionResponse {
@@ -376,7 +384,7 @@ export class OrderStatusService {
   private async checkActiveOrders(): Promise<{ filled: number; failed: number; expired: number; pending: number; cancelled: number }> {
     const { data: orders, error } = await this.client
       .from('orders')
-      .select('id, tx_signature, quantity, created_at, token_id, user_id, manifest_sequence_number')
+      .select('id, tx_signature, quantity, created_at, token_id, user_id, manifest_sequence_number, manifest_market_address')
       .eq('status', 'active')
       .order('created_at', { ascending: true })
       .limit(this.BATCH_SIZE);
@@ -410,6 +418,10 @@ export class OrderStatusService {
       } catch (err) {
         this.logger.warn(`[active] 마켓 로드 실패 token=${tokenId}: ${err instanceof Error ? err.message : String(err)}`);
       }
+
+      // crank fill 캐시 — 이 토큰 그룹에서 한 번만 수집
+      let crankFills: CrankFillInfo[] = [];
+      let crankFillCollected = false;
 
       for (const order of tokenOrders) {
         // tx_signature가 없는 주문 = 서명 미완료 → 5분 후 failed
@@ -468,13 +480,29 @@ export class OrderStatusService {
             await this.updateOrderStatus(order.id, 'filled', fillQty);
             filled++;
             this.logger.log(
-              `[active] order ${order.id} FILLED (tx log, vanished from book) — qty=${fillQty}`,
+              `[active] order ${order.id} FILLED (placement tx, vanished from book) — qty=${fillQty}`,
             );
           } else {
-            // FillEvent 없음 → cancel 또는 Manifest evict
-            await this.updateOrderStatus(order.id, 'cancelled');
-            cancelled++;
-            this.logger.log(`[active] order ${order.id} CANCELLED (vanished from book, no FillEvent)`);
+            // placement tx에 FillEvent 없음 → crank fill 확인
+            // 첫 번째 필요시에만 수집 (market별 한 번)
+            if (!crankFillCollected && marketCache) {
+              crankFillCollected = true;
+              crankFills = await this.collectCrankFills(marketCache.marketAddress);
+            }
+            const crankFillResult = await this.checkCrankFill(order, crankFills);
+            if (crankFillResult) {
+              const fillQty = Number.isFinite(crankFillResult) ? crankFillResult : order.quantity;
+              await this.updateOrderStatus(order.id, 'filled', fillQty);
+              filled++;
+              this.logger.log(
+                `[active] order ${order.id} FILLED (crank tx, vanished from book) — qty=${fillQty}`,
+              );
+            } else {
+              // FillEvent 없음 → cancel 또는 Manifest evict
+              await this.updateOrderStatus(order.id, 'cancelled');
+              cancelled++;
+              this.logger.log(`[active] order ${order.id} CANCELLED (vanished from book, no FillEvent)`);
+            }
           }
         }
       }
@@ -537,7 +565,7 @@ export class OrderStatusService {
       });
     }
 
-    return { ordersBySeq };
+    return { ordersBySeq, marketAddress: m.address.toString() };
   }
 
   /**
@@ -647,6 +675,111 @@ export class OrderStatusService {
       this.logger.error(`[fillCheck] Failed for ${orderId}: ${err instanceof Error ? err.message : String(err)}`);
       return { filled: false, checked: false };
     }
+  }
+
+  /**
+   * Manifest crank이 처리한 fill tx에서 체결 여부 확인.
+   *
+   * Manifest crank은 별도 tx에서 주문을 매칭하므로, placement tx에는
+   * FillEvent가 없고 crank tx에 FillLog가 기록됨.
+   *
+   * crankFillCache에는 이미 이 폴링 사이클에서 수집된 fill 정보가 담겨 있음
+   * (market별로 한 번만 시그니처 수집 → fill 스캔).
+   *
+   * @returns 체결 수량(tokens) 또는 null (체결되지 않음)
+   */
+  private async checkCrankFill(
+    order: SubmittedOrder,
+    crankFillCache: CrankFillInfo[],
+  ): Promise<number | null> {
+    const orderQty = Number(order.quantity);
+    if (orderQty <= 0) return null;
+
+    for (const fill of crankFillCache) {
+      // 체결량이 주문량의 50% 이상이면 이 주문의 체결로 간주
+      if (fill.baseAtomsTokens >= orderQty * 0.5) {
+        this.logger.log(
+          `[crankFill] order ${order.id}: matched fill qty=${fill.baseAtomsTokens} (order qty=${orderQty})`,
+        );
+        return fill.baseAtomsTokens;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Manifest market address의 최근 tx에서 crank fill 이벤트 수집.
+   * market별로 폴링 사이클당 한 번만 호출.
+   */
+  private async collectCrankFills(
+    marketAddress: string,
+    placementSlot?: number,
+  ): Promise<CrankFillInfo[]> {
+    const fills: CrankFillInfo[] = [];
+
+    try {
+      const { PublicKey } = await import('@solana/web3.js');
+      const marketPk = new PublicKey(marketAddress);
+
+      const sigs = await this.connection.getSignaturesForAddress(marketPk, {
+        limit: 20,
+      });
+
+      for (const sigInfo of sigs) {
+        // placement 이전 슬롯이면 스킵
+        if (placementSlot !== undefined && sigInfo.slot <= placementSlot) continue;
+
+        try {
+          const tx = await this.connection.getTransaction(sigInfo.signature, {
+            maxSupportedTransactionVersion: 0,
+            commitment: 'confirmed',
+          });
+          if (!tx || !tx.meta) continue;
+
+          const logs = tx.meta.logMessages || [];
+          for (const log of logs) {
+            if (!log.startsWith('Program data: ')) continue;
+
+            const base64Data = log.split(' ')[2];
+            if (!base64Data) continue;
+
+            try {
+              const buffer = Buffer.from(base64Data, 'base64');
+              if (!buffer.subarray(0, 8).equals(FILL_DISCRIMINANT)) continue;
+
+              const { FillLog } = await import('@cks-systems/manifest-sdk/dist/cjs/manifest/accounts/FillLog');
+              const fillLog = FillLog.deserialize(buffer.subarray(8))[0];
+
+              const toNumber = (v: unknown): number => {
+                if (typeof v === 'number') return v;
+                if (typeof v === 'bigint') return Number(v);
+                const raw =
+                  v && typeof v === 'object' && 'inner' in v
+                    ? (v as { inner: unknown }).inner
+                    : v;
+                if (typeof raw === 'number') return raw;
+                if (typeof raw === 'bigint') return Number(raw);
+                return Number((raw as { toString?: () => string })?.toString?.() ?? 0);
+              };
+
+              const baseAtomsTokens = toNumber(fillLog.baseAtoms) / 1e9;
+              if (baseAtomsTokens > 0) {
+                fills.push({ baseAtomsTokens });
+              }
+            } catch {
+              continue;
+            }
+          }
+        } catch {
+          continue;
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`[crankFill] collect failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    return fills;
   }
 
   /**
