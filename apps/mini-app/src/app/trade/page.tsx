@@ -844,11 +844,14 @@ function TradeContent() {
             <div className="grid grid-cols-2 gap-4">
               {/* Bids */}
               <div>
-                <p className="text-xs text-green-400 mb-2 font-medium">{t('trade.bids')}</p>
+                <p className="text-[10.8px] text-green-400 mb-2 font-medium">{t('trade.bids')}</p>
                 <div className="space-y-1">
                   {orderbook.bids.slice(0, 5).map((bid, i) => (
-                    <div key={i} className="flex justify-between text-xs">
-                      <span className="text-green-400">{bid.price.toFixed(4)}</span>
+                    <div key={i} className="flex justify-between text-[10.8px]">
+                      <span className="text-green-400">
+                        <span className="max-xs:hidden">{truncateDecimals(bid.price, 8)}</span>
+                        <span className="hidden max-xs:inline">{bid.price.toFixed(4)}…</span>
+                      </span>
                       <span className="text-gray-400">{bid.quantity.toFixed(4)}</span>
                     </div>
                   ))}
@@ -856,11 +859,14 @@ function TradeContent() {
               </div>
               {/* Asks */}
               <div>
-                <p className="text-xs text-red-400 mb-2 font-medium">{t('trade.asks')}</p>
+                <p className="text-[10.8px] text-red-400 mb-2 font-medium">{t('trade.asks')}</p>
                 <div className="space-y-1">
                   {orderbook.asks.slice(0, 5).map((ask, i) => (
-                    <div key={i} className="flex justify-between text-xs">
-                      <span className="text-red-400">{ask.price.toFixed(4)}</span>
+                    <div key={i} className="flex justify-between text-[10.8px]">
+                      <span className="text-red-400">
+                        <span className="max-xs:hidden">{truncateDecimals(ask.price, 8)}</span>
+                        <span className="hidden max-xs:inline">{ask.price.toFixed(4)}…</span>
+                      </span>
                       <span className="text-gray-400">{ask.quantity.toFixed(4)}</span>
                     </div>
                   ))}
