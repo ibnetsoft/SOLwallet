@@ -45,10 +45,13 @@ export function signTransaction(
       return Buffer.from(vt.serialize()).toString('base64');
     }
 
-    // Legacy 경로 — SOL 전송 등
+    // Legacy 경로 — SOL 전송, setup tx 등
+    // 서버에서 wrapper 키페어 partialSign이 포함된 setup tx를 받을 수 있으므로
+    // Transaction.from()으로 기존 서명을 보존한 뒤 partialSign()으로 추가 서명.
+    // sign()을 쓰면 "Signature verification failed"가 발생함.
     const transaction = Transaction.from(txBytes);
-    transaction.sign(keypair);
-    return transaction.serialize().toString('base64');
+    transaction.partialSign(keypair);
+    return transaction.serialize({ verifySignatures: false }).toString('base64');
   } catch (err) {
     // ⚠️ 실제 원인을 콘솔에 기록 — 디버깅 가능하도록 제네릭 메시지만 던지지 않음
     const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
