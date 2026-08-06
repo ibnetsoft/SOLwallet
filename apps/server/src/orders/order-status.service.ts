@@ -270,16 +270,8 @@ export class OrderStatusService {
           // 온체인 매칭
           const onChainOrder = marketCache.ordersBySeq.get(String(seqNum));
           if (onChainOrder) {
-            // 만료 확인
-            if (onChainOrder.lastValidSlot > 0) {
-              const currentSlot = await this.getCurrentSlot();
-              if (currentSlot > 0 && onChainOrder.lastValidSlot < currentSlot) {
-                await this.updateOrderStatus(order.id, 'expired');
-                results.corrected++;
-                this.logger.log(`[reconcile] order ${order.id}: active → expired (lvs=${onChainOrder.lastValidSlot})`);
-              }
-            }
             // 정상 active → 변경 없음
+            // (lastValidSlot 만료 체크 제거 — 사용자가 취소하지 않은 주문은 자동 만료시키지 않음)
           } else {
             // 온체인에서 사라짐 → FillEvent 확인
             const fillResult = await this.checkFillFromTxLogs(order.tx_signature, order.id);
@@ -465,17 +457,8 @@ export class OrderStatusService {
         const onChainOrder = marketCache.ordersBySeq.get(String(seqNum));
 
         if (onChainOrder) {
-          // 온체인에 존재 → lastValidSlot 만료 확인
-          if (onChainOrder.lastValidSlot > 0) {
-            const currentSlot = await this.getCurrentSlot();
-            if (currentSlot > 0 && onChainOrder.lastValidSlot < currentSlot) {
-              await this.updateOrderStatus(order.id, 'expired');
-              expired++;
-              this.logger.log(`[active] order ${order.id} EXPIRED (lvs=${onChainOrder.lastValidSlot} < current=${currentSlot})`);
-              continue;
-            }
-          }
-          // 정상 active — 유지
+          // 온체인에 존재 → 정상 active 유지
+          // (lastValidSlot 만료 체크 제거 — 사용자가 취소하지 않은 주문은 자동 만료시키지 않음)
           pending++;
         } else {
           // 온체인에서 사라짐 → FillEvent 확인
