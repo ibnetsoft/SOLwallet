@@ -138,6 +138,7 @@ const ko: Record<string, string> = {
   'trade.statusExpired': '만료',
   'trade.orderCancelled': '🗑️ 주문이 취소되었습니다.',
   'trade.cancelFailed': '취소 실패',
+  'error.cancelInsufficientSol': '💸 SOL 잔고가 부족하여 수수료를 낼 수 없습니다.\nSOL을 입금한 후 다시 시도해주세요.',
   'trade.orderbook': '📊 오더북',
   'trade.bids': '매수 (Bids)',
   'trade.asks': '매도 (Asks)',

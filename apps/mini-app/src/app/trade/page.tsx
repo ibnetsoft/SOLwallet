@@ -17,6 +17,7 @@ import { getTokenLogoUrl } from '@/lib/tokenLogo';
 import { useT } from '@/lib/i18n';
 import { truncateDecimals } from '@/lib/format';
 import { getErrorVariant } from '@/lib/api/errorSeverity';
+import { ApiError } from '@/lib/api/client';
 
 // ===== Token Logo (로고 이미지 + fallback) =====
 function TokenLogo({ symbol }: { symbol: string }) {
@@ -293,7 +294,10 @@ function TradeContent() {
         setTimeout(() => showToast(t('trade.cancelRefunded')), 500);
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : t('trade.cancelFailed');
+      // 서버 에러 code 기반 i18n 메시지 — 원인을 사용자가 알 수 있게
+      const msg = err instanceof ApiError && err.code === 'INSUFFICIENT_SOL'
+        ? t('error.cancelInsufficientSol')
+        : err instanceof Error ? err.message : t('trade.cancelFailed');
       if (showCancelPinModal) setCancelPinError({ msg, variant: getErrorVariant(err) });
       else showToast(msg, getErrorVariant(err));
     }

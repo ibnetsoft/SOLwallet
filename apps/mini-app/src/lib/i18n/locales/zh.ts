@@ -136,6 +136,7 @@ const zh: Record<string, string> = {
   'trade.statusExpired': '已过期',
   'trade.orderCancelled': '🗑️ 订单已取消。',
   'trade.cancelFailed': '取消失败',
+  'error.cancelInsufficientSol': '💸 SOL余额不足，无法支付取消手续费。\n请充值SOL后重试。',
   'trade.orderbook': '📊 订单簿',
   'trade.bids': '买盘',
   'trade.asks': '卖盘',

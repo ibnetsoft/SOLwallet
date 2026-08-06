@@ -136,6 +136,7 @@ const ja: Record<string, string> = {
   'trade.statusExpired': '期限切れ',
   'trade.orderCancelled': '🗑️ 注文をキャンセルしました。',
   'trade.cancelFailed': 'キャンセル失敗',
+  'error.cancelInsufficientSol': '💸 SOL残高が不足し、キャンセル手数料を支払えません。\nSOLを入金してから再試行してください。',
   'trade.orderbook': '📊 注文帳',
   'trade.bids': '買気配 (Bids)',
   'trade.asks': '売気配 (Asks)',

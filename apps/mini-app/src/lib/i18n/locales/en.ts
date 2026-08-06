@@ -138,6 +138,7 @@ const en: Record<TranslationKey, string> = {
   'trade.statusExpired': 'Expired',
   'trade.orderCancelled': '🗑️ Order cancelled.',
   'trade.cancelFailed': 'Cancel failed',
+  'error.cancelInsufficientSol': '💸 Insufficient SOL balance to pay the cancellation fee.\nPlease deposit SOL and try again.',
   'trade.orderbook': '📊 Orderbook',
   'trade.bids': 'Bids',
   'trade.asks': 'Asks',

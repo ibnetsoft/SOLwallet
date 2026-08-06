@@ -1625,8 +1625,32 @@ export class OrdersService {
       }
       this.logger.log(`[submitCancelOrder] RPC accepted: ${txSignature.slice(0, 12)}...`);
     } catch (err) {
-      this.logger.error(`[submitCancelOrder] RPC error: ${err instanceof Error ? err.message : String(err)}`);
-      throw new BadRequestException('취소 트랜잭션 제출에 실패했습니다.');
+      const errMsg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`[submitCancelOrder] RPC error: ${errMsg}`);
+
+      // RPC 에러 원인별 친절한 메시지 — 사용자가 무엇을 해야 할지 알 수 있게
+      if (errMsg.includes('InsufficientFundsForRent') || errMsg.includes('insufficient lamports')) {
+        throw new CodedException(
+          'Insufficient SOL balance to pay cancellation transaction fee.',
+          'INSUFFICIENT_SOL',
+        );
+      }
+      if (errMsg.includes('Transaction simulation failed')) {
+        throw new CodedException(
+          `취소 트랜잭션 시뮬레이션 실패: ${errMsg.replace('Transaction simulation failed: ', '')}`,
+          'SIMULATION_FAILED',
+        );
+      }
+      if (errMsg.includes('blockhash') || errMsg.includes('Blockhash not found')) {
+        throw new CodedException(
+          '트랜잭션 블록해시가 만료되었습니다. 다시 시도해주세요.',
+          'TX_EXPIRED',
+        );
+      }
+      throw new CodedException(
+        `취소 트랜잭션 제출 실패: ${errMsg}`,
+        'CANCEL_FAILED',
+      );
     }
 
     // cancel tx on-chain confirm 대기
