@@ -709,7 +709,10 @@ function TradeContent() {
               <p className="text-sm text-gray-400">{t('trade.noOpenOrders')}</p>
             ) : (
               <div className="space-y-2">
-                {activeOrders.map((order) => (
+                {activeOrders.map((order) => {
+                  const solBalance = walletData?.sol ?? 0;
+                  const canCancel = solBalance >= 0.0005;
+                  return (
                   <div key={order.id} className="bg-gray-800/50 rounded-xl p-3 flex items-center justify-between">
                     <div>
                       <div className="flex items-center gap-2">
@@ -724,22 +727,29 @@ function TradeContent() {
                         {order.price} × {order.quantity}
                       </p>
                     </div>
-                    <button
-                      onClick={() => {
-                        if (isWalletUnlocked()) {
-                          executeCancelOrder(order.id);
-                        } else {
-                          setPendingCancelOrderId(order.id);
-                          setCancelPinError(null);
-                          setShowCancelPinModal(true);
-                        }
-                      }}
-                      className="text-xs px-3 py-1 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition"
-                    >
-                      {t('trade.cancel')}
-                    </button>
+                    {canCancel ? (
+                      <button
+                        onClick={() => {
+                          if (isWalletUnlocked()) {
+                            executeCancelOrder(order.id);
+                          } else {
+                            setPendingCancelOrderId(order.id);
+                            setCancelPinError(null);
+                            setShowCancelPinModal(true);
+                          }
+                        }}
+                        className="text-xs px-3 py-1 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition"
+                      >
+                        {t('trade.cancel')}
+                      </button>
+                    ) : (
+                      <span className="text-xs px-3 py-1 rounded-lg bg-gray-700/50 text-gray-500 cursor-not-allowed" title={t('error.cancelInsufficientSol')}>
+                        {t('trade.cancel')}
+                      </span>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </>
