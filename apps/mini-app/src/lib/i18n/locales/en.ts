@@ -133,6 +133,7 @@ const en: Record<TranslationKey, string> = {
   'trade.history': 'History',
   'trade.noHistory': 'No trade history',
   'trade.statusFilled': 'Filled',
+  'trade.statusPartiallyFilled': 'Partial Fill',
   'trade.statusCancelled': 'Cancelled',
   'trade.statusFailed': 'Failed',
   'trade.statusExpired': 'Expired',

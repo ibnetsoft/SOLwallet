@@ -17,6 +17,7 @@ interface OrderInfo {
   side: string;
   price: string;
   quantity: string;
+  filledQty: string;
   fee: string;
   status: string;
   created_at: string;
@@ -521,6 +522,7 @@ function normalizeOrder(o: Record<string, unknown>): OrderInfo {
     side: o.side as string,
     price: o.price as string,
     quantity: o.quantity as string,
+    filledQty: o.filled_qty != null ? String(o.filled_qty) : '0',
     fee: o.fee as string,
     status: o.status as string,
     created_at: o.created_at as string,

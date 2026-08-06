@@ -384,7 +384,7 @@ export class OrderStatusService {
    *    - 온체인에 있음 + 정상 → active 유지
    *    - seq 추출 불가(tx_signature 없음) → 5분 후 failed
    */
-  private async checkActiveOrders(): Promise<{ filled: number; failed: number; expired: number; pending: number; cancelled: number }> {
+  private async checkActiveOrders(): Promise<{ filled: number; failed: number; expired: number; pending: number; cancelled: number; partially_filled: number }> {
     const { data: orders, error } = await this.client
       .from('orders')
       .select('id, tx_signature, quantity, created_at, token_id, user_id, manifest_sequence_number, manifest_market_address')
@@ -393,7 +393,7 @@ export class OrderStatusService {
       .limit(this.BATCH_SIZE);
 
     if (error || !orders || orders.length === 0) {
-      return { filled: 0, failed: 0, expired: 0, pending: 0, cancelled: 0 };
+      return { filled: 0, failed: 0, expired: 0, pending: 0, cancelled: 0, partially_filled: 0 };
     }
 
     const typedOrders = orders as unknown as SubmittedOrder[];
@@ -402,6 +402,7 @@ export class OrderStatusService {
     let expired = 0;
     let cancelled = 0;
     let pending = 0;
+    let partially_filled = 0;
 
     // token_id별로 그룹화
     const ordersByToken = new Map<string, SubmittedOrder[]>();
@@ -472,9 +473,33 @@ export class OrderStatusService {
         const onChainOrder = marketCache.ordersBySeq.get(String(seqNum));
 
         if (onChainOrder) {
-          // 온체인에 존재 → 정상 active 유지
-          // (lastValidSlot 만료 체크 제거 — 사용자가 취소하지 않은 주문은 자동 만료시키지 않음)
-          pending++;
+          // 온체인에 존재 → crank fill 검사 (부분 체결 감지)
+          // 온체인 오더북에 남아있어도 crank가 이미 부분 체결했을 수 있음
+          if (!crankFillCollected && marketCache) {
+            crankFillCollected = true;
+            crankFills = await this.collectCrankFills(marketCache.marketAddress);
+          }
+          const crankFillResult = await this.checkCrankFill(order, crankFills);
+          if (crankFillResult != null && crankFillResult > 0) {
+            const orderQty = Number(order.quantity);
+            // 체결 수량이 주문 수량 이상 → 전량 체결
+            if (crankFillResult >= orderQty * 0.999) {
+              await this.updateOrderStatus(order.id, 'filled', crankFillResult);
+              filled++;
+              this.logger.log(
+                `[active] order ${order.id} FILLED (crank, on book) — qty=${crankFillResult}/${orderQty}`,
+              );
+            } else {
+              // 부분 체결 — 체결된 수량만큼 filled_qty 업데이트, 상태는 partially_filled
+              await this.updateOrderFilledQty(order.id, crankFillResult, 'partially_filled');
+              partially_filled++;
+              this.logger.log(
+                `[active] order ${order.id} PARTIALLY FILLED (crank, on book) — qty=${crankFillResult}/${orderQty}`,
+              );
+            }
+          } else {
+            pending++;
+          }
         } else {
           // 온체인에서 사라짐 → FillEvent 확인
           const fillResult = await this.checkFillFromTxLogs(order.tx_signature, order.id);
@@ -527,12 +552,12 @@ export class OrderStatusService {
       }
     }
 
-    const total = filled + cancelled + expired + failed;
+    const total = filled + cancelled + expired + failed + partially_filled;
     if (total > 0) {
-      this.logger.log(`[active] check result: ${filled} filled, ${cancelled} cancelled, ${expired} expired, ${failed} failed, ${pending} pending`);
+      this.logger.log(`[active] check result: ${filled} filled, ${partially_filled} partially_filled, ${cancelled} cancelled, ${expired} expired, ${failed} failed, ${pending} pending`);
     }
 
-    return { filled, failed, expired, pending, cancelled };
+    return { filled, failed, expired, pending, cancelled, partially_filled };
   }
 
   /**
@@ -856,6 +881,58 @@ export class OrderStatusService {
 
     if (error) {
       this.logger.error(`Failed to update order ${orderId} to ${status}: ${error.message}`);
+    }
+  }
+
+  /**
+   * 부분 체결 수량 업데이트 — filled_qty만 갱신하거나 상태도 함께 변경
+   *
+   * 기존 filled_qty가 이미 더 크면(이중 카운트 방지) 갱신하지 않음.
+   */
+  private async updateOrderFilledQty(
+    orderId: string,
+    filledQty: number,
+    status?: string,
+  ) {
+    if (!Number.isFinite(filledQty) || filledQty <= 0) return;
+
+    // 기존 filled_qty 확인 — 이미 더 크면 덮어쓰지 않음
+    const { data: existing } = await this.client
+      .from('orders')
+      .select('filled_qty')
+      .eq('id', orderId)
+      .single();
+
+    const currentFilledQty = Number(existing?.filled_qty ?? 0);
+    if (filledQty <= currentFilledQty) {
+      // 이미 더 큰 수량이 기록됨 — 업데이트 불필요
+      this.logger.log(
+        `[fillQty] order ${orderId}: skip fillQty=${filledQty} (existing=${currentFilledQty})`,
+      );
+      return;
+    }
+
+    const update: Record<string, unknown> = {
+      filled_qty: filledQty,
+      updated_at: new Date().toISOString(),
+    };
+
+    // 상태도 함께 변경해야 하면 (partially_filled, filled)
+    if (status) {
+      update.status = status;
+    }
+
+    const { error } = await this.client
+      .from('orders')
+      .update(update)
+      .eq('id', orderId);
+
+    if (error) {
+      this.logger.error(`Failed to update fillQty for ${orderId}: ${error.message}`);
+    } else {
+      this.logger.log(
+        `[fillQty] order ${orderId}: filled_qty ${currentFilledQty} → ${filledQty}${status ? `, status → ${status}` : ''}`,
+      );
     }
   }
 }

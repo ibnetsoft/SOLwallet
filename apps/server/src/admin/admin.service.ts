@@ -1160,6 +1160,9 @@ export class AdminService {
           ? `부분 체결 — ${filled}/${qty} 체결됨 (${typeLabel})`
           : `체결 완료 — 전량 ${qty} 체결 (${typeLabel})`;
 
+      case 'partially_filled':
+        return `부분 체결 중 — ${filled}/${qty} 체결됨 (${typeLabel})`;
+
       case 'active':
         if (!hasTx) {
           return '주문 생성됨 — 아직 체인에 제출되지 않음 (서명 대기/중단)';

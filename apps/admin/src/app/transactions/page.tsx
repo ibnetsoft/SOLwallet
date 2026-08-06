@@ -10,13 +10,14 @@ import {
 import type { AdminOrderDetail, AdminTokenDetail } from '@solwallet/shared-types';
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  active:    { label: '미체결', color: 'bg-blue-500/20 text-blue-400' },
-  submitted: { label: '미체결', color: 'bg-blue-500/20 text-blue-400' },
-  filled:    { label: '체결',   color: 'bg-success/20 text-success' },
-  cancelled: { label: '취소',   color: 'bg-orange-500/20 text-orange-400' },
-  expired:   { label: '만료',   color: 'bg-gray-600/20 text-gray-400' },
+  active:            { label: '미체결', color: 'bg-blue-500/20 text-blue-400' },
+  submitted:         { label: '미체결', color: 'bg-blue-500/20 text-blue-400' },
+  partially_filled:  { label: '부분체결', color: 'bg-amber-500/20 text-amber-400' },
+  filled:            { label: '체결',   color: 'bg-success/20 text-success' },
+  cancelled:         { label: '취소',   color: 'bg-orange-500/20 text-orange-400' },
+  expired:           { label: '만료',   color: 'bg-gray-600/20 text-gray-400' },
   // failed 매핑이 없어 실패한 주문이 "미체결"로 잘못 표시되던 문제 수정
-  failed:    { label: '실패',   color: 'bg-danger/20 text-danger' },
+  failed:            { label: '실패',   color: 'bg-danger/20 text-danger' },
 };
 
 /** 상태별 메시지 색상 — 실패/취소는 눈에 띄게, 나머지는 차분하게 */
@@ -24,6 +25,7 @@ const MESSAGE_COLOR: Record<string, string> = {
   failed: 'text-danger',
   cancelled: 'text-gray-400',
   expired: 'text-gray-500',
+  partially_filled: 'text-amber-400',
   filled: 'text-success',
 };
 
@@ -171,8 +173,9 @@ export default function TransactionsPage() {
             className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-primary-500 transition"
           >
             <option value="">전체 상태</option>
-            <option value="active">미체결</option>
-            <option value="filled">체결</option>
+                <option value="active">미체결</option>
+                <option value="partially_filled">부분체결</option>
+                <option value="filled">체결</option>
             <option value="cancelled">취소</option>
             <option value="expired">만료</option>
           </select>
@@ -284,6 +287,9 @@ export default function TransactionsPage() {
                 >
                   수량{sortIcon('quantity')}
                 </th>
+                <th className="text-right py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap">
+                  체결수량
+                </th>
                 <th
                   onClick={() => toggleSort('fee')}
                   className="text-right py-3 px-1 w-0 text-gray-400 font-medium whitespace-nowrap cursor-pointer select-none hover:text-white transition"
@@ -304,11 +310,11 @@ export default function TransactionsPage() {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={12} className="text-center py-8 text-gray-400">로딩 중...</td>
+                  <td colSpan={13} className="text-center py-8 text-gray-400">로딩 중...</td>
                 </tr>
               ) : orders.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="text-center py-8 text-gray-400">데이터가 없습니다</td>
+                  <td colSpan={13} className="text-center py-8 text-gray-400">데이터가 없습니다</td>
                 </tr>
               ) : (
                 orders.map((order) => {
@@ -319,7 +325,7 @@ export default function TransactionsPage() {
                         {new Date(order.createdAt).toLocaleString('ko-KR')}
                       </td>
                       <td className="py-2 px-1 text-gray-400 text-xs whitespace-nowrap">
-                        {(order.status === 'filled' || order.status === 'cancelled' || order.status === 'expired') && order.updatedAt
+                        {(order.status === 'filled' || order.status === 'partially_filled' || order.status === 'cancelled' || order.status === 'expired') && order.updatedAt
                           ? new Date(order.updatedAt).toLocaleString('ko-KR')
                           : '—'}
                       </td>
@@ -336,6 +342,15 @@ export default function TransactionsPage() {
                       <td className="py-2 px-1 font-medium whitespace-nowrap">{order.tokenSymbol}</td>
                       <td className="py-2 px-1 text-right font-mono text-xs whitespace-nowrap">{order.price}</td>
                       <td className="py-2 px-1 text-right font-mono text-xs whitespace-nowrap">{order.quantity}</td>
+                      <td className="py-2 px-1 text-right font-mono text-xs whitespace-nowrap">
+                        {Number(order.filledQty) > 0 ? (
+                          <span className={order.status === 'partially_filled' ? 'text-amber-400' : 'text-gray-300'}>
+                            {String(order.filledQty)}
+                          </span>
+                        ) : (
+                          <span className="text-gray-500">0</span>
+                        )}
+                      </td>
                       <td className="py-2 px-1 text-right text-gray-400 text-xs whitespace-nowrap">{order.fee}</td>
                       <td className="py-2 px-1 font-mono text-xs text-gray-400 whitespace-nowrap">
                         {order.txSignature ? (

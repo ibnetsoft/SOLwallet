@@ -131,6 +131,7 @@ const ja: Record<string, string> = {
   'trade.history': '取引履歴',
   'trade.noHistory': '取引履歴がありません',
   'trade.statusFilled': '約定',
+  'trade.statusPartiallyFilled': '部分約定',
   'trade.statusCancelled': 'キャンセル',
   'trade.statusFailed': '失敗',
   'trade.statusExpired': '期限切れ',

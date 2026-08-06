@@ -1535,7 +1535,7 @@ export class OrdersService {
       .from('orders')
       .select('*, tokens(symbol)')  // token symbol join
       .eq('user_id', userId)
-      .in('status', ['active', 'submitted'])
+      .in('status', ['active', 'submitted', 'partially_filled'])
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -1559,7 +1559,7 @@ export class OrdersService {
       .from('orders')
       .select('*, tokens(symbol)', { count: 'exact' })  // token symbol join
       .eq('user_id', userId)
-      .in('status', ['filled', 'cancelled', 'expired', 'failed']);
+      .in('status', ['filled', 'partially_filled', 'cancelled', 'expired', 'failed']);
 
     if (before) {
       query = query.lt('created_at', before);

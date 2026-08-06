@@ -131,6 +131,7 @@ const zh: Record<string, string> = {
   'trade.history': '交易记录',
   'trade.noHistory': '暂无交易记录',
   'trade.statusFilled': '已成交',
+  'trade.statusPartiallyFilled': '部分成交',
   'trade.statusCancelled': '已取消',
   'trade.statusFailed': '失败',
   'trade.statusExpired': '已过期',

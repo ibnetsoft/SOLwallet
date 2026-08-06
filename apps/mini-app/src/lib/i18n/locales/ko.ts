@@ -133,6 +133,7 @@ const ko: Record<string, string> = {
   'trade.history': '거래 내역',
   'trade.noHistory': '거래 내역이 없습니다',
   'trade.statusFilled': '체결',
+  'trade.statusPartiallyFilled': '부분 체결',
   'trade.statusCancelled': '취소',
   'trade.statusFailed': '실패',
   'trade.statusExpired': '만료',
