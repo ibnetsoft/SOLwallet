@@ -6,6 +6,7 @@ import type { ToastVariant } from '@/components/Toast';
  * warning (주황): 사용자가 조치하거나 재시도하면 해결되는 에러
  *   - INSUFFICIENT_SOL  : SOL 가스/렌트 부족 → SOL 입금 필요
  *   - MARKET_NOT_READY  : 신규 상장 토큰 → 대기 후 재시도
+ *   - SEAT_CHECK_FAILED : 마켓 좌석 확인 RPC 실패 → 재시도
  *   - TX_EXPIRED        : 블록해시 만료 → 재시도
  *   - SETUP_FAILED      : 거래 준비 실패 → 재시도
  *   - CONFIRM_TIMEOUT   : 체인 컨펌 지연 → 재시도
@@ -17,6 +18,7 @@ import type { ToastVariant } from '@/components/Toast';
 const WARNING_CODES = new Set<string>([
   'INSUFFICIENT_SOL',
   'MARKET_NOT_READY',
+  'SEAT_CHECK_FAILED',
   'TX_EXPIRED',
   'SETUP_FAILED',
   'CONFIRM_TIMEOUT',

@@ -190,6 +190,7 @@ export class OrdersService {
   private async getMarketSeatSetup(
     baseMintAddress: string,
     traderPubkey: PublicKey,
+    retries = 2,
   ): Promise<{
     setupNeeded: boolean;
     instructions: import('@solana/web3.js').TransactionInstruction[];
@@ -210,25 +211,47 @@ export class OrdersService {
         return none;
       }
 
-      const setupData = await ManifestClient.getSetupIxs(
-        this.connection,
-        markets[0].address,
-        traderPubkey,
-      );
-      this.logger.log(
-        `[getMarketSeatSetup] base=${baseMintAddress.slice(0, 8)}... setupNeeded=${setupData.setupNeeded} ixs=${setupData.instructions.length}`,
-      );
-      return {
-        setupNeeded: setupData.setupNeeded,
-        instructions: setupData.instructions,
-        wrapperKeypair: setupData.wrapperKeypair ?? undefined,
-      };
+      // RPC 타임아웃 등 일시 오류 시 재시도 — 좌석 확인 실패를 "좌석 있다"로
+      // 잘못 가정하면 Manifest API가 500으로 거부해 주문이 무조건 실패한다.
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+          const setupData = await ManifestClient.getSetupIxs(
+            this.connection,
+            markets[0].address,
+            traderPubkey,
+          );
+          this.logger.log(
+            `[getMarketSeatSetup] base=${baseMintAddress.slice(0, 8)}... setupNeeded=${setupData.setupNeeded} ixs=${setupData.instructions.length}`,
+          );
+          return {
+            setupNeeded: setupData.setupNeeded,
+            instructions: setupData.instructions,
+            wrapperKeypair: setupData.wrapperKeypair ?? undefined,
+          };
+        } catch (ixErr) {
+          const errMsg = (ixErr as Error).message;
+          this.logger.warn(
+            `[getMarketSeatSetup] getSetupIxs 시도 ${attempt + 1}/${retries + 1} 실패: ${errMsg}`,
+          );
+          if (attempt === retries) {
+            // 모든 재시도 소진 — 명확한 에러로 전달
+            throw new CodedException(
+              '거래 마켓 좌석 확인에 실패했습니다. 네트워크가 불안정하니 잠시 후 다시 시도해주세요.',
+              'SEAT_CHECK_FAILED',
+            );
+          }
+          // 재시도 전 대기 (1초, 2초)
+          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        }
+      }
     } catch (e) {
+      if (e instanceof CodedException) throw e;
       this.logger.warn(
-        `[getMarketSeatSetup] 좌석 확인 실패(무시하고 진행): ${(e as Error).message}`,
+        `[getMarketSeatSetup] 마켓 조회 실패: ${(e as Error).message}`,
       );
       return none;
     }
+    return none;
   }
 
   /**
