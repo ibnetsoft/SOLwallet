@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, NotFoundException, HttpException } from '@nestjs/common';
+import { Injectable, Logger, HttpException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CodedException, parseRpcError } from '../common/filters/global-exception.filter';
 import { SupabaseService } from '../supabase/supabase.service';
@@ -79,7 +79,7 @@ export class WithdrawService {
       .single();
 
     if (walletErr || !wallet) {
-      throw new BadRequestException('유효하지 않거나 소유하지 않은 지갑입니다.');
+      throw new CodedException('유효하지 않거나 소유하지 않은 지갑입니다.', 'NOT_FOUND');
     }
 
     // 잔액 확인 (간이 검증 — 실제 잔액 체크는 온체인에서)
@@ -100,7 +100,7 @@ export class WithdrawService {
         const data = await res.json() as { result?: { value?: number } };
         const balance = (data.result?.value || 0) / 1e9;
         if (balance < amount) {
-          throw new BadRequestException(`잔액 부족 — 보유: ${balance.toFixed(6)} SOL`);
+          throw new CodedException(`잔액 부족 — 보유: ${balance.toFixed(6)} SOL`, 'INSUFFICIENT_BALANCE');
         }
       } else {
         // SPL 토큰 잔액
@@ -131,16 +131,16 @@ export class WithdrawService {
         };
         const accounts = data.result?.value || [];
         if (accounts.length === 0) {
-          throw new BadRequestException('해당 토큰을 보유하고 있지 않습니다.');
+          throw new CodedException('해당 토큰을 보유하고 있지 않습니다.', 'INSUFFICIENT_BALANCE');
         }
         const rawAmount = BigInt(accounts[0].account?.data?.parsed?.info?.tokenAmount?.amount || '0');
         const requiredRaw = BigInt(Math.floor(amount * Math.pow(10, decimals)));
         if (rawAmount < requiredRaw) {
-          throw new BadRequestException('토큰 잔액이 부족합니다.');
+          throw new CodedException('토큰 잔액이 부족합니다.', 'INSUFFICIENT_BALANCE');
         }
       }
     } catch (err) {
-      if (err instanceof BadRequestException) throw err;
+      if (err instanceof HttpException) throw err;
       this.logger.warn(`Balance check failed: ${err instanceof Error ? err.message : String(err)}`);
       // 잔액 검증 실패해도 일단 시도 (서명 트랜잭션을 클라이언트가 만들었으므로)
     }

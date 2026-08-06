@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, NotFoundException, HttpException } from '@nestjs/common';
+import { Injectable, Logger, HttpException } from '@nestjs/common';
 import { CodedException, parseRpcError } from '../common/filters/global-exception.filter';
 import { SupabaseService } from '../supabase/supabase.service';
 import { ConfigService } from '@nestjs/config';
@@ -282,7 +282,7 @@ export class OrdersService {
       .single();
 
     if (error || !wallet) {
-      throw new BadRequestException('유효하지 않거나 소유하지 않은 지갑입니다.');
+      throw new CodedException('유효하지 않거나 소유하지 않은 지갑입니다.', 'NOT_FOUND');
     }
     return wallet.public_key;
   }
@@ -346,7 +346,7 @@ export class OrdersService {
       .single();
 
     if (!token) {
-      throw new BadRequestException('유효하지 않은 토큰입니다.');
+      throw new CodedException('유효하지 않은 토큰입니다.', 'NOT_FOUND');
     }
 
     // ── 필요한 ATA 존재 여부 확인 ──
@@ -676,10 +676,11 @@ export class OrdersService {
           'MARKET_NOT_READY',
         );
       }
-      throw new BadRequestException(
+      throw new CodedException(
         manifestErrorDetail.trim().replace(/^:\s*|\s*:$/g, '')
           ? `주문 생성에 실패했습니다: ${manifestErrorDetail.replace(/^:\s*|\s*:$/g, '')}`
           : '트랜잭션 생성에 실패했습니다. 잠시 후 다시 시도해주세요.',
+        'TX_BUILD_FAILED',
       );
     }
 
@@ -816,12 +817,12 @@ export class OrdersService {
       );
       if (!confirmed.value || confirmed.value.err) {
         this.logger.warn(`[submitWrapTx] NOT CONFIRMED — tx=${txSignature} err=${JSON.stringify(confirmed.value?.err)}`);
-        throw new BadRequestException('wSOL 래핑이 체인에 반영되지 않았습니다. 다시 시도해주세요.');
+        throw new CodedException('wSOL 래핑이 체인에 반영되지 않았습니다. 다시 시도해주세요.', 'CONFIRM_TIMEOUT');
       }
     } catch (err) {
       if (err instanceof HttpException) throw err;
       this.logger.warn(`[submitWrapTx] confirm timeout: ${txSignature} — ${err instanceof Error ? err.message : String(err)}`);
-      throw new BadRequestException('wSOL 래핑 컨펌이 지연되었습니다. 다시 시도해주세요.');
+      throw new CodedException('wSOL 래핑 컨펌이 지연되었습니다. 다시 시도해주세요.', 'CONFIRM_TIMEOUT');
     }
 
     this.logger.log(`[submitWrapTx] CONFIRMED — tx=${txSignature.slice(0, 12)}...`);
@@ -845,7 +846,7 @@ export class OrdersService {
       .single();
 
     if (fetchError || !order) {
-      throw new NotFoundException('주문을 찾을 수 없습니다.');
+      throw new CodedException('주문을 찾을 수 없습니다.', 'ORDER_NOT_FOUND');
     }
 
     // SOL 매도인지 확인
@@ -853,7 +854,7 @@ export class OrdersService {
     const isNativeSol = new PublicKey(token.mint_address).equals(NATIVE_MINT);
 
     if (!isNativeSol || order.side !== 'sell') {
-      throw new BadRequestException('이 주문은 wSOL 래핑이 필요하지 않습니다.');
+      throw new CodedException('이 주문은 wSOL 래핑이 필요하지 않습니다.', 'INVALID_INPUT');
     }
 
     // 지갑 public key 획득
@@ -865,7 +866,7 @@ export class OrdersService {
       .single();
 
     if (!wallet?.public_key) {
-      throw new BadRequestException('지갑 정보를 찾을 수 없습니다.');
+      throw new CodedException('지갑 정보를 찾을 수 없습니다.', 'NOT_FOUND');
     }
 
     const traderPubkey = new PublicKey(wallet.public_key);
@@ -875,7 +876,7 @@ export class OrdersService {
     // ATA 존재 확인 (없으면 생성 필요 — setupTx로 먼저 처리되어야 함)
     const acctInfo = await this.connection.getAccountInfo(wsolAta);
     if (!acctInfo) {
-      throw new BadRequestException('wSOL 토큰 계정이 없습니다. 다시 시도하면 자동 생성됩니다.');
+      throw new CodedException('wSOL 토큰 계정이 없습니다. 다시 시도하면 자동 생성됩니다.', 'SETUP_FAILED');
     }
 
     // 이미 충분한 wSOL 잔액이 있으면 추가 래핑 불필요
@@ -1047,7 +1048,7 @@ export class OrdersService {
       }
 
       if (withdrawIxs.length === 0) {
-        throw new BadRequestException('인출할 잔액이 없습니다.');
+        throw new CodedException('인출할 잔액이 없습니다.', 'INSUFFICIENT_BALANCE');
       }
 
       this.logger.log(
@@ -1080,7 +1081,7 @@ export class OrdersService {
     } catch (err) {
       if (err instanceof HttpException) throw err;
       this.logger.error(`[getWithdrawTx] error: ${err instanceof Error ? err.message : String(err)}`);
-      throw new BadRequestException('인출 트랜잭션 생성에 실패했습니다. 잠시 후 다시 시도해주세요.');
+      throw new CodedException('인출 트랜잭션 생성에 실패했습니다. 잠시 후 다시 시도해주세요.', 'TX_BUILD_FAILED');
     }
   }
 
@@ -1135,12 +1136,12 @@ export class OrdersService {
       );
       if (!confirmed.value || confirmed.value.err) {
         this.logger.warn(`[submitWithdrawTx] NOT CONFIRMED — tx=${txSignature} err=${JSON.stringify(confirmed.value?.err)}`);
-        throw new BadRequestException('인출이 체인에 반영되지 않았습니다. 다시 시도해주세요.');
+        throw new CodedException('인출이 체인에 반영되지 않았습니다. 다시 시도해주세요.', 'CONFIRM_TIMEOUT');
       }
     } catch (err) {
       if (err instanceof HttpException) throw err;
       this.logger.warn(`[submitWithdrawTx] confirm timeout: ${txSignature} — ${err instanceof Error ? err.message : String(err)}`);
-      throw new BadRequestException('인출 컨펌이 지연되었습니다. 다시 시도해주세요.');
+      throw new CodedException('인출 컨펌이 지연되었습니다. 다시 시도해주세요.', 'CONFIRM_TIMEOUT');
     }
 
     this.logger.log(`[submitWithdrawTx] CONFIRMED — tx=${txSignature.slice(0, 12)}...`);
@@ -1167,12 +1168,12 @@ export class OrdersService {
 
     if (fetchError || !order) {
       this.logger.error(`[submitOrder] order not found: ${orderId}`);
-      throw new NotFoundException('주문을 찾을 수 없습니다.');
+      throw new CodedException('주문을 찾을 수 없습니다.', 'ORDER_NOT_FOUND');
     }
 
     if (order.status !== 'active') {
       this.logger.warn(`[submitOrder] invalid status: ${order.status} (order=${orderId})`);
-      throw new BadRequestException('이미 처리되었거나 유효하지 않은 주문입니다.');
+      throw new CodedException('이미 처리되었거나 유효하지 않은 주문입니다.', 'ORDER_INVALID');
     }
 
     this.logger.log(`[submitOrder] order status=active, sending to RPC...`);
@@ -1341,11 +1342,11 @@ export class OrdersService {
       .single();
 
     if (fetchError || !order) {
-      throw new NotFoundException('주문을 찾을 수 없습니다.');
+      throw new CodedException('주문을 찾을 수 없습니다.', 'ORDER_NOT_FOUND');
     }
 
     if (order.status !== 'active') {
-      throw new BadRequestException('유효하지 않은 주문입니다.');
+      throw new CodedException('유효하지 않은 주문입니다.', 'ORDER_INVALID');
     }
 
     const { data: token } = await this.client
@@ -1355,7 +1356,7 @@ export class OrdersService {
       .single();
 
     if (!token) {
-      throw new BadRequestException('토큰 정보를 찾을 수 없습니다.');
+      throw new CodedException('토큰 정보를 찾을 수 없습니다.', 'NOT_FOUND');
     }
 
     const { data: wallet } = await this.client
@@ -1365,7 +1366,7 @@ export class OrdersService {
       .single();
 
     if (!wallet) {
-      throw new BadRequestException('지갑 정보를 찾을 수 없습니다.');
+      throw new CodedException('지갑 정보를 찾을 수 없습니다.', 'NOT_FOUND');
     }
 
     const clientOrderId = order.manifest_client_order_id as number;
@@ -1409,7 +1410,7 @@ export class OrdersService {
       this.logger.warn(
         `Manifest fresh-tx failed: ${manifestRes.status} — ${manifestData.error || ''}: ${manifestData.cause || ''}`,
       );
-      throw new BadRequestException('fresh 트랜잭션 생성에 실패했습니다. 다시 시도해주세요.');
+      throw new CodedException('fresh 트랜잭션 생성에 실패했습니다. 다시 시도해주세요.', 'TX_BUILD_FAILED');
     }
 
     // requestId가 새로 오면 업데이트 (선택적)
@@ -1439,15 +1440,15 @@ export class OrdersService {
       .single();
 
     if (fetchError || !order) {
-      throw new NotFoundException('주문을 찾을 수 없습니다.');
+      throw new CodedException('주문을 찾을 수 없습니다.', 'ORDER_NOT_FOUND');
     }
 
     // 이미 체결(filled)되었거나 완료된 주문 → 명확한 안내
     if (order.status === 'filled') {
-      throw new BadRequestException('이미 체결된 주문입니다.');
+      throw new CodedException('이미 체결된 주문입니다.', 'ORDER_INVALID');
     }
     if (['cancelled', 'expired', 'failed'].includes(order.status)) {
-      throw new BadRequestException('이미 완료된 주문입니다.');
+      throw new CodedException('이미 완료된 주문입니다.', 'ORDER_INVALID');
     }
 
     const { data: token } = await this.client
@@ -1457,7 +1458,7 @@ export class OrdersService {
       .single();
 
     if (!token) {
-      throw new BadRequestException('토큰 정보를 찾을 수 없습니다.');
+      throw new CodedException('토큰 정보를 찾을 수 없습니다.', 'NOT_FOUND');
     }
 
     const { data: wallet } = await this.client
@@ -1467,7 +1468,7 @@ export class OrdersService {
       .single();
 
     if (!wallet) {
-      throw new BadRequestException('지갑 정보를 찾을 수 없습니다.');
+      throw new CodedException('지갑 정보를 찾을 수 없습니다.', 'NOT_FOUND');
     }
 
     const clientOrderId = order.manifest_client_order_id as number | null;
@@ -1492,10 +1493,11 @@ export class OrdersService {
 
     if ('failed' in result) {
       const detail = result.detail;
-      throw new BadRequestException(
+      throw new CodedException(
         detail
           ? `취소 트랜잭션 생성에 실패했습니다: ${detail}`
           : '취소 트랜잭션 생성에 실패했습니다. 잠시 후 다시 시도해주세요.',
+        'TX_BUILD_FAILED',
       );
     }
 
@@ -1585,11 +1587,11 @@ export class OrdersService {
       .single();
 
     if (fetchError || !order) {
-      throw new NotFoundException('주문을 찾을 수 없습니다.');
+      throw new CodedException('주문을 찾을 수 없습니다.', 'ORDER_NOT_FOUND');
     }
 
     if (!['active', 'submitted'].includes(order.status)) {
-      throw new BadRequestException('취소할 수 없는 주문입니다.');
+      throw new CodedException('취소할 수 없는 주문입니다.', 'ORDER_INVALID');
     }
 
     // 토큰 정보 (base mint)
@@ -1600,7 +1602,7 @@ export class OrdersService {
       .single();
 
     if (!token) {
-      throw new BadRequestException('토큰 정보를 찾을 수 없습니다.');
+      throw new CodedException('토큰 정보를 찾을 수 없습니다.', 'NOT_FOUND');
     }
 
     // 지갑 public key (maker)
@@ -1611,7 +1613,7 @@ export class OrdersService {
       .single();
 
     if (!wallet) {
-      throw new BadRequestException('지갑 정보를 찾을 수 없습니다.');
+      throw new CodedException('지갑 정보를 찾을 수 없습니다.', 'NOT_FOUND');
     }
 
     // Manifest DELETE로 cancel tx 획득
@@ -1633,7 +1635,7 @@ export class OrdersService {
         .from('orders')
         .update({ status: 'expired', updated_at: new Date().toISOString() })
         .eq('id', order.id);
-      throw new BadRequestException('이미 만료된 주문입니다.');
+      throw new CodedException('이미 만료된 주문입니다.', 'ORDER_INVALID');
     }
 
     if ('failed' in result) {
@@ -1662,11 +1664,11 @@ export class OrdersService {
       .single();
 
     if (fetchError || !order) {
-      throw new NotFoundException('주문을 찾을 수 없습니다.');
+      throw new CodedException('주문을 찾을 수 없습니다.', 'ORDER_NOT_FOUND');
     }
 
     if (!['active', 'submitted'].includes(order.status)) {
-      throw new BadRequestException('취소할 수 없는 주문입니다.');
+      throw new CodedException('취소할 수 없는 주문입니다.', 'ORDER_INVALID');
     }
 
     // Solana RPC로 cancel 트랜잭션 전송

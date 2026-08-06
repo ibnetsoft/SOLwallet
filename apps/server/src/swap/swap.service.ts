@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, HttpException } from '@nestjs/common';
+import { Injectable, Logger, HttpException } from '@nestjs/common';
 import { CodedException, parseRpcError } from '../common/filters/global-exception.filter';
 import { SupabaseService } from '../supabase/supabase.service';
 import { ConfigService } from '@nestjs/config';
@@ -69,7 +69,7 @@ export class SwapService {
       .single();
 
     if (error || !wallet) {
-      throw new BadRequestException('유효하지 않거나 소유하지 않은 지갑입니다.');
+      throw new CodedException('유효하지 않거나 소유하지 않은 지갑입니다.', 'NOT_FOUND');
     }
     return wallet.public_key;
   }
@@ -98,10 +98,10 @@ export class SwapService {
     const userPublicKey = await this.verifyWalletOwnership(walletId, userId);
 
     if (inputMint === outputMint) {
-      throw new BadRequestException('입출력 토큰이 동일합니다.');
+      throw new CodedException('입출력 토큰이 동일합니다.', 'INVALID_INPUT');
     }
     if (!amount || amount === '0') {
-      throw new BadRequestException('수량을 입력해주세요.');
+      throw new CodedException('수량을 입력해주세요.', 'INVALID_INPUT');
     }
 
     // 1. Jupiter Quote API
@@ -119,8 +119,9 @@ export class SwapService {
     if (!quoteRes.ok) {
       const errText = await quoteRes.text().catch(() => '');
       this.logger.error(`Jupiter quote failed: ${quoteRes.status} — ${errText}`);
-      throw new BadRequestException(
+      throw new CodedException(
         `견적 조회에 실패했습니다. (HTTP ${quoteRes.status})`,
+        'TX_BUILD_FAILED',
       );
     }
 
@@ -141,15 +142,16 @@ export class SwapService {
     if (!swapRes.ok) {
       const errText = await swapRes.text().catch(() => '');
       this.logger.error(`Jupiter swap failed: ${swapRes.status} — ${errText}`);
-      throw new BadRequestException(
+      throw new CodedException(
         `스왑 트랜잭션 생성에 실패했습니다. (HTTP ${swapRes.status})`,
+        'TX_BUILD_FAILED',
       );
     }
 
     const swapData = (await swapRes.json()) as JupiterSwapResponse;
 
     if (!swapData.swapTransaction) {
-      throw new BadRequestException('스왑 트랜잭션을 생성하지 못했습니다.');
+      throw new CodedException('스왑 트랜잭션을 생성하지 못했습니다.', 'TX_BUILD_FAILED');
     }
 
     return {
@@ -175,7 +177,7 @@ export class SwapService {
     signedTx: string,
   ): Promise<{ txSignature: string }> {
     if (!signedTx) {
-      throw new BadRequestException('서명된 트랜잭션이 필요합니다.');
+      throw new CodedException('서명된 트랜잭션이 필요합니다.', 'INVALID_INPUT');
     }
 
     let txSignature = '';

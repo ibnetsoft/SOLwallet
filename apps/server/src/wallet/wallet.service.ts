@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { CodedException } from '../common/filters/global-exception.filter';
 import { SupabaseService } from '../supabase/supabase.service';
 import { MAX_WALLETS } from '@solwallet/config';
@@ -59,8 +59,9 @@ export class WalletService {
     // 최대 지갑 수 확인
     const currentCount = await this.countByUser(params.userId);
     if (currentCount >= MAX_WALLETS) {
-      throw new BadRequestException(
+      throw new CodedException(
         `최대 ${MAX_WALLETS}개의 지갑만 생성할 수 있습니다.`,
+        'INVALID_INPUT',
       );
     }
 
@@ -128,7 +129,7 @@ export class WalletService {
     }
 
     if (!data) {
-      throw new BadRequestException('지갑을 찾을 수 없습니다.');
+      throw new CodedException('지갑을 찾을 수 없습니다.', 'NOT_FOUND');
     }
 
     return data;
