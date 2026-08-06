@@ -39,8 +39,11 @@ interface ChainOrderInfo {
   trader: string;
 }
 
-/** crank fill tx에서 수집한 체결 정보 */
+/** crank fill tx에서 수집한 체결 정보 (sequence number로 정확 매칭) */
 interface CrankFillInfo {
+  /** 체결된 maker order sequence number (FillLog에서 추출) */
+  seqNumbers: number[];
+  /** 체결된 base token 수량 (tokens) — 가장 큰 값 */
   baseAtomsTokens: number;
 }
 
@@ -678,13 +681,10 @@ export class OrderStatusService {
   }
 
   /**
-   * Manifest crank이 처리한 fill tx에서 체결 여부 확인.
+   * 수집된 crank fill 캐시에서 이 주문의 sequence number가 매칭되는지 확인.
    *
-   * Manifest crank은 별도 tx에서 주문을 매칭하므로, placement tx에는
-   * FillEvent가 없고 crank tx에 FillLog가 기록됨.
-   *
-   * crankFillCache에는 이미 이 폴링 사이클에서 수집된 fill 정보가 담겨 있음
-   * (market별로 한 번만 시그니처 수집 → fill 스캔).
+   * FillLog에는 maker/taker sequence number가 명시적으로 포함되므로,
+   * 수량 기반 추정(50%) 대신 sequence number로 정확 매칭한다.
    *
    * @returns 체결 수량(tokens) 또는 null (체결되지 않음)
    */
@@ -692,17 +692,22 @@ export class OrderStatusService {
     order: SubmittedOrder,
     crankFillCache: CrankFillInfo[],
   ): Promise<number | null> {
-    const orderQty = Number(order.quantity);
-    if (orderQty <= 0) return null;
+    const seqNum = Number(order.manifest_sequence_number);
+    if (!Number.isFinite(seqNum) || seqNum <= 0) return null;
 
+    let matchedQty = 0;
     for (const fill of crankFillCache) {
-      // 체결량이 주문량의 50% 이상이면 이 주문의 체결로 간주
-      if (fill.baseAtomsTokens >= orderQty * 0.5) {
-        this.logger.log(
-          `[crankFill] order ${order.id}: matched fill qty=${fill.baseAtomsTokens} (order qty=${orderQty})`,
-        );
-        return fill.baseAtomsTokens;
+      if (fill.seqNumbers.includes(seqNum)) {
+        // 같은 seq가 여러 fill에 걸쳐 부분 체결될 수 있으므로 모두 합산
+        matchedQty += fill.baseAtomsTokens;
       }
+    }
+
+    if (matchedQty > 0) {
+      this.logger.log(
+        `[crankFill] order ${order.id} seq=${seqNum}: matched fill qty=${matchedQty}`,
+      );
+      return matchedQty;
     }
 
     return null;
@@ -711,6 +716,12 @@ export class OrderStatusService {
   /**
    * Manifest market address의 최근 tx에서 crank fill 이벤트 수집.
    * market별로 폴링 사이클당 한 번만 호출.
+   *
+   * FillLog는 232바이트 고정 구조 (8바이트 discriminant + 224바이트 페이로드):
+   *   offset 176 (u64): baseAtoms (raw atoms, /1e9 = token 수량)
+   *   offset 192 (u64): maker sequence number
+   *   offset 200 (u64): taker sequence number
+   * SDK의 FillLog.deserialize가 beet offset 오류를 일으키므로 수동 파싱.
    */
   private async collectCrankFills(
     marketAddress: string,
@@ -723,12 +734,14 @@ export class OrderStatusService {
       const marketPk = new PublicKey(marketAddress);
 
       const sigs = await this.connection.getSignaturesForAddress(marketPk, {
-        limit: 20,
+        limit: 25,
       });
 
       for (const sigInfo of sigs) {
-        // placement 이전 슬롯이면 스킵
-        if (placementSlot !== undefined && sigInfo.slot <= placementSlot) continue;
+        // placement보다 확실히 이전 슬롯만 스킵.
+        // 같은 슬롯도 포함하는 이유: Manifest crank은 placement tx와 같은 슬롯에서
+        // 즉시 매칭을 수행할 수 있음 (slot 437672587에서 확인됨).
+        if (placementSlot !== undefined && sigInfo.slot < placementSlot) continue;
 
         try {
           const tx = await this.connection.getTransaction(sigInfo.signature, {
@@ -747,31 +760,27 @@ export class OrderStatusService {
             try {
               const buffer = Buffer.from(base64Data, 'base64');
               if (!buffer.subarray(0, 8).equals(FILL_DISCRIMINANT)) continue;
+              // FillLog는 232바이트 고정 길이
+              if (buffer.length !== 232) continue;
 
-              const { FillLog } = await import('@cks-systems/manifest-sdk/dist/cjs/manifest/accounts/FillLog');
-              const fillLog = FillLog.deserialize(buffer.subarray(8))[0];
+              const payload = buffer.subarray(8);
+              const baseAtoms = Number(payload.readBigUInt64LE(176));
+              const makerSeq = Number(payload.readBigUInt64LE(192));
+              const takerSeq = Number(payload.readBigUInt64LE(200));
+              const baseAtomsTokens = baseAtoms / 1e9;
 
-              const toNumber = (v: unknown): number => {
-                if (typeof v === 'number') return v;
-                if (typeof v === 'bigint') return Number(v);
-                const raw =
-                  v && typeof v === 'object' && 'inner' in v
-                    ? (v as { inner: unknown }).inner
-                    : v;
-                if (typeof raw === 'number') return raw;
-                if (typeof raw === 'bigint') return Number(raw);
-                return Number((raw as { toString?: () => string })?.toString?.() ?? 0);
-              };
-
-              const baseAtomsTokens = toNumber(fillLog.baseAtoms) / 1e9;
-              if (baseAtomsTokens > 0) {
-                fills.push({ baseAtomsTokens });
+              if (baseAtomsTokens > 0 && (makerSeq > 0 || takerSeq > 0)) {
+                fills.push({
+                  seqNumbers: [makerSeq, takerSeq].filter((s) => s > 0),
+                  baseAtomsTokens,
+                });
               }
             } catch {
               continue;
             }
           }
         } catch {
+          // tx 조회 실패 — 다음 시그니처로 계속
           continue;
         }
       }
