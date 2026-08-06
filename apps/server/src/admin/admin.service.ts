@@ -1167,6 +1167,10 @@ export class AdminService {
         if (!hasTx) {
           return '주문 생성됨 — 아직 체인에 제출되지 않음 (서명 대기/중단)';
         }
+        // 부분 체결 감지 — filled_qty > 0이면 크랭크 체결이 있었음
+        if (filled > 0 && filled < qty) {
+          return `부분 체결 중 — ${filled}/${qty} 체결됨 (${typeLabel})`;
+        }
         return hasSeq
           ? `오더북 등록 완료 — 체결 대기 중 (${typeLabel})`
           : '체인 제출됨 — 오더북 등록 확인 중';

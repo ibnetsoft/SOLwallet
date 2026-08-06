@@ -174,7 +174,6 @@ export default function TransactionsPage() {
           >
             <option value="">전체 상태</option>
                 <option value="active">미체결</option>
-                <option value="partially_filled">부분체결</option>
                 <option value="filled">체결</option>
             <option value="cancelled">취소</option>
             <option value="expired">만료</option>
@@ -318,14 +317,19 @@ export default function TransactionsPage() {
                 </tr>
               ) : (
                 orders.map((order) => {
-                  const statusInfo = STATUS_MAP[order.status] || STATUS_MAP.active;
+                  // DB에 'partially_filled' 상태를 쓰지 않으므로
+                  // active/submitted + filledQty > 0이면 부분 체결로 표시
+                  const isPartialFill = (order.status === 'active' || order.status === 'submitted') && Number(order.filledQty) > 0;
+                  const statusInfo = isPartialFill
+                    ? STATUS_MAP.partially_filled
+                    : STATUS_MAP[order.status] || STATUS_MAP.active;
                   return (
                     <tr key={order.id} className="border-b border-gray-700/50 hover:bg-gray-700/30 transition">
                       <td className="py-2 px-1 text-gray-400 text-xs whitespace-nowrap">
                         {new Date(order.createdAt).toLocaleString('ko-KR')}
                       </td>
                       <td className="py-2 px-1 text-gray-400 text-xs whitespace-nowrap">
-                        {(order.status === 'filled' || order.status === 'partially_filled' || order.status === 'cancelled' || order.status === 'expired') && order.updatedAt
+                        {(order.status === 'filled' || order.status === 'cancelled' || order.status === 'expired') && order.updatedAt
                           ? new Date(order.updatedAt).toLocaleString('ko-KR')
                           : '—'}
                       </td>
@@ -344,7 +348,7 @@ export default function TransactionsPage() {
                       <td className="py-2 px-1 text-right font-mono text-xs whitespace-nowrap">{order.quantity}</td>
                       <td className="py-2 px-1 text-right font-mono text-xs whitespace-nowrap">
                         {Number(order.filledQty) > 0 ? (
-                          <span className={order.status === 'partially_filled' ? 'text-amber-400' : 'text-gray-300'}>
+                          <span className={isPartialFill ? 'text-amber-400' : 'text-gray-300'}>
                             {String(order.filledQty)}
                           </span>
                         ) : (

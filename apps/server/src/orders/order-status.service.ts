@@ -490,8 +490,10 @@ export class OrderStatusService {
                 `[active] order ${order.id} FILLED (crank, on book) — qty=${crankFillResult}/${orderQty}`,
               );
             } else {
-              // 부분 체결 — 체결된 수량만큼 filled_qty 업데이트, 상태는 partially_filled
-              await this.updateOrderFilledQty(order.id, crankFillResult, 'partially_filled');
+              // 부분 체결 — filled_qty만 업데이트, 상태는 active 유지
+              // (DB CHECK constraint에 'partially_filled'가 없으므로 status 변경 없이
+              //  프론트엔드에서 filled_qty > 0 && status=active → 부분체결로 표시)
+              await this.updateOrderFilledQty(order.id, crankFillResult);
               partially_filled++;
               this.logger.log(
                 `[active] order ${order.id} PARTIALLY FILLED (crank, on book) — qty=${crankFillResult}/${orderQty}`,

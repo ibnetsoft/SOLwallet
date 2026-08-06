@@ -712,9 +712,11 @@ function TradeContent() {
                 {activeOrders.map((order) => {
                   const solBalance = walletData?.sol ?? 0;
                   const canCancel = solBalance >= 0.0005;
-                  const isPartiallyFilled = order.status === 'partially_filled';
+                  // 부분 체결 판별 — DB에 'partially_filled' 상태를 쓰지 않으므로
+                  // active/submitted 상태에서 filled_qty > 0이면 부분 체결로 간주
                   const filledQtyNum = Number(order.filledQty) || 0;
                   const totalQtyNum = Number(order.quantity) || 0;
+                  const isPartiallyFilled = (order.status === 'active' || order.status === 'submitted') && filledQtyNum > 0 && filledQtyNum < totalQtyNum;
                   return (
                   <div key={order.id} className="bg-gray-800/50 rounded-xl p-3 flex items-center justify-between">
                     <div>
@@ -774,9 +776,13 @@ function TradeContent() {
             ) : (
               <div className="space-y-2">
                 {orderHistory.map((order) => {
-                  const isPartiallyFilled = order.status === 'partially_filled';
-                  const statusLabel = order.status === 'filled' ? t('trade.statusFilled')
-                    : order.status === 'partially_filled' ? t('trade.statusPartiallyFilled')
+                  const filledQtyNum = Number(order.filledQty) || 0;
+                  const totalQtyNum = Number(order.quantity) || 0;
+                  // DB에 'partially_filled' 상태를 쓰지 않으므로
+                  // filled 상태에서 filled_qty < qty면 부분 체결로 간주
+                  const isPartiallyFilled = order.status === 'filled' && filledQtyNum > 0 && filledQtyNum < totalQtyNum;
+                  const statusLabel = isPartiallyFilled ? t('trade.statusPartiallyFilled')
+                    : order.status === 'filled' ? t('trade.statusFilled')
                     : order.status === 'cancelled' ? t('trade.statusCancelled')
                     : order.status === 'failed' ? t('trade.statusFailed')
                     : order.status === 'expired' ? t('trade.statusExpired')
@@ -784,14 +790,12 @@ function TradeContent() {
                   // 실패/만료는 tx가 없으면 전송 실패(주황), tx가 있으면 체인 오류(빨강)
                   const isFailed = order.status === 'failed' || order.status === 'expired';
                   const isSoftFail = isFailed && !order.txSignature;
-                  const statusColor = order.status === 'filled' ? 'text-blue-400 bg-blue-600/20'
-                    : order.status === 'partially_filled' ? 'text-amber-400 bg-amber-600/20'
+                  const statusColor = isPartiallyFilled ? 'text-amber-400 bg-amber-600/20'
+                    : order.status === 'filled' ? 'text-blue-400 bg-blue-600/20'
                     : order.status === 'cancelled' ? 'text-gray-400 bg-gray-600/20'
                     : isSoftFail ? 'text-amber-400 bg-amber-600/20'
                     : isFailed ? 'text-red-400 bg-red-600/20'
                     : 'text-gray-400 bg-gray-600/20';
-                  const filledQtyNum = Number(order.filledQty) || 0;
-                  const totalQtyNum = Number(order.quantity) || 0;
                   return (
                     <div key={order.id} className="bg-gray-800/50 rounded-xl p-3">
                       <div className="flex items-center gap-2">
