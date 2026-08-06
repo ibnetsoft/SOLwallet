@@ -319,7 +319,7 @@ export default function TransactionsPage() {
                         {new Date(order.createdAt).toLocaleString('ko-KR')}
                       </td>
                       <td className="py-2 px-1 text-gray-400 text-xs whitespace-nowrap">
-                        {order.status === 'filled' && order.updatedAt
+                        {(order.status === 'filled' || order.status === 'cancelled' || order.status === 'expired') && order.updatedAt
                           ? new Date(order.updatedAt).toLocaleString('ko-KR')
                           : '—'}
                       </td>
