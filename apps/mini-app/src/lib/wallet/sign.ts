@@ -68,6 +68,9 @@ export function signTransaction(
     if (/already been processed|blockhash|BlockhashNotFound/i.test(detail)) {
       throw new Error('트랜잭션이 만료되었습니다. 다시 시도해주세요.');
     }
+    if (/Signature verification failed/i.test(detail)) {
+      throw new Error('서명 검증에 실패했습니다. 앱을 새로고침한 후 다시 시도해주세요.');
+    }
 
     // 브라우저 콘솔에만 남고 서버 로그엔 안 보이던 서명 실패 — 원격 진단 가능하도록 보고
     reportClientError(`[signTransaction] ${detail}`, {
