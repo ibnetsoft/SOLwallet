@@ -1084,6 +1084,7 @@ export class AdminService {
       let q = this.client
         .from('orders')
         .select('*, users!inner(username)', { count: 'exact' })
+        .is('parent_order_id', null)            // 자식 체결 주문 제외
         .order(orderColumn, { ascending: asc })
         // 정렬 키가 같은 행끼리는 최신순으로 — 페이지 경계에서 순서가 흔들리지 않도록 보조 정렬
         .order('created_at', { ascending: false })
