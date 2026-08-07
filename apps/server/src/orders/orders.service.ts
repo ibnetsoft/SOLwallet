@@ -1261,6 +1261,37 @@ export class OrdersService {
   }
 
   /**
+   * 주문을 failed 상태로 마킹 — submitOrder의 모든 실패 경로에서 호출
+   * 고아 주문(active로 방치) 방지
+   */
+  private async markOrderFailed(
+    orderId: string,
+    reason: string,
+    txSignature?: string,
+  ): Promise<void> {
+    try {
+      const updatePayload: Record<string, unknown> = {
+        status: 'failed',
+        updated_at: new Date().toISOString(),
+      };
+      if (txSignature) {
+        updatePayload.tx_signature = txSignature;
+      }
+      const { error } = await this.client
+        .from('orders')
+        .update(updatePayload)
+        .eq('id', orderId);
+      if (error) {
+        this.logger.error(`[markOrderFailed] DB update failed: ${error.message}`);
+      } else {
+        this.logger.log(`[markOrderFailed] order=${orderId} → failed (reason=${reason})`);
+      }
+    } catch (err) {
+      this.logger.error(`[markOrderFailed] unexpected error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /**
    * 서명된 트랜잭션 제출 — Solana RPC로 전송
    */
   async submitOrder(
@@ -1291,6 +1322,7 @@ export class OrdersService {
     this.logger.log(`[submitOrder] order status=active, sending to RPC...`);
 
     // 전송 전 시뮬레이션 — tx가 왜 드롭되는지 원인 파악
+    // insufficient funds는 복구 불가 → 즉시 주문 실패 처리
     try {
       const simRes = await fetch(this.rpcUrl, {
         method: 'POST',
@@ -1321,9 +1353,10 @@ export class OrdersService {
         this.logger.error(`[submitOrder] SIMULATION FAILED — err=${JSON.stringify(sim.err)}`);
         if (sim.logs?.length) {
           this.logger.error(`[submitOrder] SIM LOGS:\n${sim.logs.join('\n')}`);
-          // 토큰 잔액 부족(insufficient funds) 감지 → 명확한 에러 메시지
+          // 토큰 잔액 부족(insufficient funds) 감지 → 주문 실패 처리 후 에러 반환
           const logsText = sim.logs.join('\n');
           if (/Error:\s*insufficient funds/i.test(logsText)) {
+            await this.markOrderFailed(orderId, 'insufficient_funds');
             throw new CodedException(
               '토큰 잔액이 부족하여 주문을 체결할 수 없습니다.\n지갑 잔액을 확인 후 다시 시도해주세요.',
               'INSUFFICIENT_TOKEN_BALANCE',
@@ -1334,6 +1367,9 @@ export class OrdersService {
         this.logger.log(`[submitOrder] simulation OK — units=${sim?.unitsConsumed}`);
       }
     } catch (simErr) {
+      // insufficient funds 등 치명적 에러는 위에서 markOrderFailed 후 throw 되므로 여기서 다시 처리하지 않음
+      const isFatal = simErr instanceof CodedException;
+      if (isFatal) throw simErr;
       this.logger.warn(`[submitOrder] simulate error (non-fatal): ${simErr instanceof Error ? simErr.message : String(simErr)}`);
     }
 
@@ -1391,6 +1427,7 @@ export class OrdersService {
 
     if (!txSignature) {
       this.logger.error(`RPC submit error: ${lastError}`);
+      await this.markOrderFailed(orderId, 'rpc_submit_failed');
       const parsed = parseRpcError(lastError);
       if (parsed) throw parsed;
       throw new CodedException('트랜잭션 제출에 실패했습니다. 잠시 후 다시 시도해주세요.', 'TX_SUBMIT_FAILED');
@@ -1409,10 +1446,11 @@ export class OrdersService {
       );
 
       if (!confirmed.value || confirmed.value.err) {
-        // 트랜잭션이 드롭되거나 실패 — DB에 기록하지 않고 에러 반환
+        // 트랜잭션이 드롭되거나 실패 → 주문 실패 처리
         this.logger.warn(
           `[submitOrder] NOT CONFIRMED — tx=${txSignature} err=${JSON.stringify(confirmed.value?.err)}`,
         );
+        await this.markOrderFailed(orderId, 'confirm_failed', txSignature);
         throw new CodedException('트랜잭션이 체인에 반영되지 않았습니다. 다시 시도해주세요.', 'CONFIRM_TIMEOUT');
       }
       this.logger.log(`[submitOrder] CONFIRMED — tx=${txSignature.slice(0, 12)}...`);
@@ -1420,6 +1458,7 @@ export class OrdersService {
       // TimeoutError(confirm 실패)도 포함
       if (err instanceof HttpException) throw err;
       this.logger.warn(`[submitOrder] confirm timeout: ${txSignature} — ${err instanceof Error ? err.message : String(err)}`);
+      await this.markOrderFailed(orderId, 'confirm_timeout', txSignature);
       throw new CodedException('트랜잭션 컨펌 대기 시간 초과. 체인 상태를 확인 후 다시 시도해주세요.', 'CONFIRM_TIMEOUT');
     }
 
