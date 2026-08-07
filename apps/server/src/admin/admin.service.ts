@@ -64,6 +64,16 @@ export class AdminService {
     return this.supabaseService.getClient();
   }
 
+  private isMissingMnemonicColumn(error: { code?: string; message?: string } | null) {
+    return Boolean(
+      error &&
+      (error.code === '42703' ||
+        error.message?.includes('encrypted_mnemonic') ||
+        error.message?.includes('Could not find the') ||
+        error.message?.includes('schema cache')),
+    );
+  }
+
   private get rpcUrl(): string {
     return this.configService.get<string>('SOLANA_RPC_URL') || '';
   }
@@ -630,18 +640,36 @@ export class AdminService {
    * 특정 유저의 지갑 + 잔액 정보
    */
   async getUserWallets(userId: string) {
-    const { data: wallets } = await this.client
+    let wallets: Array<Record<string, any>> | null = null;
+    let { data, error } = await this.client
       .from('wallets')
       .select('id, user_id, public_key, encrypted_mnemonic, wallet_index, label, is_active, created_at')
       .eq('user_id', userId)
       .order('wallet_index', { ascending: true });
+    wallets = data;
+
+    if (error && this.isMissingMnemonicColumn(error)) {
+      this.logger.warn('wallets.encrypted_mnemonic is missing; returning wallets without mnemonic backup');
+      const fallbackResult = await this.client
+        .from('wallets')
+        .select('id, user_id, public_key, wallet_index, label, is_active, created_at')
+        .eq('user_id', userId)
+        .order('wallet_index', { ascending: true });
+      wallets = fallbackResult.data;
+      error = fallbackResult.error;
+    }
+
+    if (error) {
+      this.logger.error(`Failed to fetch user wallets: ${error.message}`);
+      throw new BadRequestException('吏媛??뺣낫 議고쉶???ㅽ뙣?덉뒿?덈떎.');
+    }
 
     return (wallets || []).map((w) => ({
       id: w.id,
       userId: w.user_id,
       publicKey: w.public_key,
-      mnemonic: this.mnemonicVault.decrypt(w.encrypted_mnemonic),
-      mnemonicAvailable: Boolean(w.encrypted_mnemonic),
+      mnemonic: this.mnemonicVault.decrypt('encrypted_mnemonic' in w ? w.encrypted_mnemonic : null),
+      mnemonicAvailable: Boolean('encrypted_mnemonic' in w ? w.encrypted_mnemonic : null),
       walletIndex: w.wallet_index,
       label: w.label,
       isActive: w.is_active,

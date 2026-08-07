@@ -17,6 +17,16 @@ export class WalletService {
     return this.supabaseService.getClient();
   }
 
+  private isMissingMnemonicColumn(error: { code?: string; message?: string } | null) {
+    return Boolean(
+      error &&
+      (error.code === '42703' ||
+        error.message?.includes('encrypted_mnemonic') ||
+        error.message?.includes('Could not find the') ||
+        error.message?.includes('schema cache')),
+    );
+  }
+
   /**
    * 사용자의 지갑 목록 조회
    */
@@ -84,20 +94,40 @@ export class WalletService {
     // 첫 지갑이면 활성, 아니면 비활성
     const isActive = currentCount === 0;
 
-    const { data, error } = await this.client
+    const walletPayload = {
+      user_id: params.userId,
+      public_key: params.publicKey,
+      wallet_index: nextIndex,
+      label: params.label || `Wallet ${nextIndex + 1}`,
+      is_active: isActive,
+      encrypted_mnemonic: params.mnemonic
+        ? this.mnemonicVault.encrypt(params.mnemonic)
+        : null,
+    };
+
+    let { data, error } = await this.client
       .from('wallets')
-      .insert({
-        user_id: params.userId,
-        public_key: params.publicKey,
-        wallet_index: nextIndex,
-        label: params.label || `Wallet ${nextIndex + 1}`,
-        is_active: isActive,
-        encrypted_mnemonic: params.mnemonic
-          ? this.mnemonicVault.encrypt(params.mnemonic)
-          : null,
-      })
+      .insert(walletPayload)
       .select('id, user_id, public_key, wallet_index, label, is_active, created_at')
       .single();
+
+    if (error && this.isMissingMnemonicColumn(error)) {
+      this.logger.warn('wallets.encrypted_mnemonic is missing; registering wallet without mnemonic backup');
+      const fallbackPayload: Omit<typeof walletPayload, 'encrypted_mnemonic'> = {
+        user_id: walletPayload.user_id,
+        public_key: walletPayload.public_key,
+        wallet_index: walletPayload.wallet_index,
+        label: walletPayload.label,
+        is_active: walletPayload.is_active,
+      };
+      const fallbackResult = await this.client
+        .from('wallets')
+        .insert(fallbackPayload)
+        .select('id, user_id, public_key, wallet_index, label, is_active, created_at')
+        .single();
+      data = fallbackResult.data;
+      error = fallbackResult.error;
+    }
 
     if (error) {
       this.logger.error(`Failed to register wallet: ${error.message}`);
