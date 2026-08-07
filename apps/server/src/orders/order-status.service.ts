@@ -404,7 +404,7 @@ export class OrderStatusService {
   private async checkActiveOrders(): Promise<{ filled: number; failed: number; expired: number; pending: number; cancelled: number }> {
     const { data: orders, error } = await this.client
       .from('orders')
-      .select('id, tx_signature, quantity, price, fee_rate, order_type, fee, created_at, token_id, user_id, wallet_id, manifest_sequence_number, manifest_market_address')
+      .select('id, tx_signature, quantity, price, side, fee_rate, order_type, fee, created_at, token_id, user_id, wallet_id, manifest_sequence_number, manifest_market_address')
       .eq('status', 'active')
       .is('parent_order_id', null)
       .order('created_at', { ascending: true })
@@ -480,10 +480,18 @@ export class OrderStatusService {
           this.logger.log(
             `[active] order ${order.id} ${fills.length} fill(s) from ${source}: total=${totalFilled} qty=${order.quantity}`,
           );
-          // 자식 체결 주문들 생성 (멱등)
-          await this.createChildFillOrders(order, fills);
-          // 원본 주문 quantity 차감
-          const newStatus = await this.reduceParentOrderQuantity(order.id, totalFilled);
+          // 자식 체결 주문들 생성 (멱등) — 실제로 삽입된 수량만큼만 차감
+          const insertedQty = await this.createChildFillOrders(order, fills);
+          if (insertedQty <= 0) {
+            // 자식 주문이 하나도 생성되지 않았다면(오류 또는 전부 중복) 원본 차감 X
+            this.logger.warn(
+              `[active] order ${order.id}: 자식 주문 생성 없음 — 원본 quantity 유지`,
+            );
+            pending++;
+            return;
+          }
+          // 원본 주문 quantity 차감 (삽입된 수량만큼)
+          const newStatus = await this.reduceParentOrderQuantity(order.id, insertedQty);
           if (newStatus === 'filled') {
             filled++;
           } else {
@@ -911,12 +919,13 @@ export class OrderStatusService {
   private async createChildFillOrders(
     parentOrder: SubmittedOrder,
     fills: PerPriceFill[],
-  ): Promise<void> {
+  ): Promise<number> {
+    let insertedQty = 0;
     for (const fill of fills) {
       // 멱등성 확인: 이미 같은 자식 주문이 있으면 스킵
       const { data: existing, error: checkErr } = await this.client
         .from('orders')
-        .select('id')
+        .select('id, quantity')
         .eq('parent_order_id', parentOrder.id)
         .eq('price', fill.price)
         .eq('quantity', fill.baseAtomsTokens)
@@ -925,6 +934,8 @@ export class OrderStatusService {
 
       if (checkErr || !existing) continue;
       if (existing.length > 0) {
+        // 중복이어도 이미 삽입된 수량으로 계산 — 다음 폴링에서 재처리 방지
+        insertedQty += Number(existing[0].quantity ?? 0);
         this.logger.log(
           `[childFill] skip duplicate: parent=${parentOrder.id} price=${fill.price} qty=${fill.baseAtomsTokens} tx=${fill.txSignature.slice(0, 8)}`,
         );
@@ -960,11 +971,13 @@ export class OrderStatusService {
           `[childFill] failed to create: parent=${parentOrder.id} price=${fill.price} qty=${fill.baseAtomsTokens}: ${insertErr.message}`,
         );
       } else {
+        insertedQty += fill.baseAtomsTokens;
         this.logger.log(
           `[childFill] created: parent=${parentOrder.id} price=${fill.price} qty=${fill.baseAtomsTokens} usdt=${fill.quoteAtomsTokens} tx=${fill.txSignature.slice(0, 8)}`,
         );
       }
     }
+    return insertedQty;
   }
 
   /**
