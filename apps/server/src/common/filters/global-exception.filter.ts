@@ -55,11 +55,39 @@ export function parseRpcError(errMsg: string): CodedException | null {
     );
   }
 
-  // 시뮬레이션 실패 — 가능하면 세부 원인 포함
+  // 시뮬레이션 실패 — 원인별 친절한 메시지 (기술적 RPC 디테일 노출 금지)
   if (errMsg.includes('Transaction simulation failed')) {
-    const detail = errMsg.replace('Transaction simulation failed: ', '').trim();
+    // 토큰 잔액 부족 (TokenkegQfeQ..., System program)
+    if (/insufficient funds/i.test(errMsg)) {
+      return new CodedException(
+        '토큰 잔액이 부족하여 주문을 실행할 수 없습니다.\n지갑 잔액을 확인 후 다시 시도해주세요.',
+        'INSUFFICIENT_TOKEN_BALANCE',
+      );
+    }
+    // 프로그램 에러 — 0x1 (미국법 위반 불충분펀드 등) / 0x0 (일반 실패)
+    if (/custom program error:\s*0x[0-9a-fA-F]+/i.test(errMsg)) {
+      return new CodedException(
+        '거래를 처리하는 중 오류가 발생했습니다.\n잔액이나 거래 조건을 확인 후 다시 시도해주세요.',
+        'SIMULATION_FAILED',
+      );
+    }
+    // InstructionError (계산 오버플로우, 잘못된 계정 등)
+    if (/InstructionError/i.test(errMsg)) {
+      return new CodedException(
+        '거래 명령 처리에 실패했습니다.\n잠시 후 다시 시도해주세요.',
+        'SIMULATION_FAILED',
+      );
+    }
+    // 계정 불일치 또는 권한 문제
+    if (/invalid account|AccountNotInitialized|seeds must match|ConstraintSeeds/i.test(errMsg)) {
+      return new CodedException(
+        '거래 계정 설정에 문제가 있습니다.\n잠시 후 다시 시도해주세요.',
+        'SETUP_FAILED',
+      );
+    }
+    // 기타 시뮬레이션 실패 — 상세 로그는 서버에만 기록
     return new CodedException(
-      `트랜잭션 시뮬레이션 실패: ${detail || '잔액이나 계정 상태를 확인해주세요.'}`,
+      '거래 시뮬레이션에 실패했습니다.\n잔액이나 거래 조건을 확인 후 다시 시도해주세요.',
       'SIMULATION_FAILED',
     );
   }
@@ -75,7 +103,7 @@ export function parseRpcError(errMsg: string): CodedException | null {
   // 프리플라이트 실패
   if (errMsg.includes('preflight') || errMsg.includes('PreflightFailure')) {
     return new CodedException(
-      `트랜잭션 사전 검증 실패: ${errMsg.includes(':') ? errMsg.split(':').pop()?.trim() : errMsg}`,
+      '거래 사전 검증에 실패했습니다.\n잔액이나 거래 조건을 확인 후 다시 시도해주세요.',
       'SIMULATION_FAILED',
     );
   }

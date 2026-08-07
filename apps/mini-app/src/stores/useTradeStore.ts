@@ -281,6 +281,8 @@ export const useTradeStore = create<TradeState>((set, get) => ({
           console.log('[trade] setup: setupTx confirmed');
         } catch (setupErr) {
           console.error('[trade] setup FAILED:', setupErr);
+          // ApiError(code 포함)면 그대로 전달 — getErrorVariant가 심각도를 판별할 수 있음
+          if (setupErr instanceof Error && 'code' in setupErr) throw setupErr;
           const msg = setupErr instanceof Error && setupErr.message
             ? setupErr.message
             : '거래 준비(토큰 계정 생성)에 실패했습니다. 잠시 후 다시 시도해주세요.';
@@ -333,8 +335,8 @@ export const useTradeStore = create<TradeState>((set, get) => ({
           }
         } catch (wrapErr) {
           console.error('[trade] step 3 FAILED: wrapTx:', wrapErr);
-          // 서버가 구체적인 실패 사유(컨펌 지연/체인 미반영/RPC 오류 등)를 알려주면
-          // 그대로 노출 — 매번 같은 문구만 뜨면 원인 파악이 불가능해짐
+          // ApiError(code 포함)면 그대로 전달 — getErrorVariant가 심각도를 판별할 수 있음
+          if (wrapErr instanceof Error && 'code' in wrapErr) throw wrapErr;
           const msg = wrapErr instanceof Error && wrapErr.message
             ? wrapErr.message
             : 'SOL을 wSOL으로 래핑하는 데 실패했습니다. 잠시 후 다시 시도해주세요.';
