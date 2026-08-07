@@ -361,7 +361,20 @@ export class OrdersService {
    */
   private static readonly DEPOSIT_BUFFER_ATOMS = 10n;
 
-  private patchDepositBuffer(base64Tx: string): string {
+  /**
+   * wMNFST Deposit ix의 금액에 미세 버퍼를 더해 rounding shortfall을 방지.
+   *
+   * BUY 주문(quote=USDT deposit)만 대상 — Manifest가 floor()로 계산해서
+   * 1 atom 부족해 "Removing bid for insufficient funds"가 되는 걸 막는다.
+   * SELL 주문(base deposit)은 버퍼 없이 그대로 사용 — 유저가 정확히 N 토큰만
+   * 보유한 경우 버퍼 분량만큼 insufficient funds가 될 수 있기 때문.
+   */
+  private patchDepositBuffer(base64Tx: string, side?: string): string {
+    // SELL 주문에서는 deposit 버퍼를 적용하지 않음 — base token 잔액 부족 방지
+    if (side === 'sell') {
+      return base64Tx;
+    }
+
     try {
       const bytes = Buffer.from(base64Tx, 'base64');
       const tx = VersionedTransaction.deserialize(bytes);
@@ -744,7 +757,7 @@ export class OrdersService {
       const manifestData = (await manifestRes.json()) as ManifestCreateResponse;
 
       if (manifestRes.ok && manifestData.transaction) {
-        unsignedTx = this.patchDepositBuffer(manifestData.transaction);
+        unsignedTx = this.patchDepositBuffer(manifestData.transaction, dto.side);
         requestId = manifestData.requestId || '';
         this.logger.log(`[createOrder] Manifest OK — requestId=${requestId} txLen=${unsignedTx.length}`);
       } else {
@@ -1521,7 +1534,7 @@ export class OrdersService {
     }
 
     this.logger.log(`[getFreshOrderTx] DONE — order=${orderId} txLen=${manifestData.transaction.length}`);
-    return { unsignedTx: this.patchDepositBuffer(manifestData.transaction) };
+    return { unsignedTx: this.patchDepositBuffer(manifestData.transaction, order.side) };
   }
 
   /**
