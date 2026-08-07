@@ -496,10 +496,19 @@ function TradeContent() {
           const disabled = maxBalance <= 0;
           const currentRatio = Math.min((Number(quantity) || 0) / effectiveMax, 1);
           const percentage = Math.round(currentRatio * 100);
+          const sliderStops = [0, ...QUICK_AMOUNT_RATIOS];
+          const activeStop = sliderStops.find((ratio) => Math.abs(currentRatio - ratio) <= 0.015);
+          const applyRatio = (ratio: number) => {
+            const decimals = selectedToken?.decimals || 6;
+            const actualMax = maxBalance > 0 ? maxBalance : 0;
+            const snappedRatio = ratio >= 0.985 ? 1 : ratio;
+            const val = Number((actualMax * snappedRatio).toFixed(decimals));
+            setQuantity(String(val));
+          };
 
           return (
           <div className={`mb-6 px-1 ${disabled ? 'opacity-50' : ''}`}>
-            <div className="relative" style={{ height: '22px' }}>
+            <div className="relative" style={{ height: '34px' }}>
               {/* Background Track */}
               <div className="absolute top-1/2 left-0 right-0 h-1 bg-gray-700 -translate-y-1/2 rounded-full" />
               {/* Fill Track — 드래그 정도에 따라 색상 그라데이션 (시안 → 보라) */}
@@ -514,7 +523,7 @@ function TradeContent() {
 
               {/* Tooltip for percentage */}
               <div
-                className="absolute -top-7 -translate-x-1/2 text-[10px] font-bold text-white bg-primary-500 px-1.5 py-0.5 rounded shadow-lg pointer-events-none transition-all z-40"
+                className="absolute -top-8 -translate-x-1/2 text-[13px] font-bold text-white bg-primary-500 px-2 py-0.5 rounded shadow-lg pointer-events-none transition-all z-40"
                 style={{ left: `${currentRatio * 100}%`, opacity: percentage > 0 ? 1 : 0 }}
               >
                 {percentage}%
@@ -522,39 +531,41 @@ function TradeContent() {
 
               {/* Custom Thumb for current value */}
               <div
-                className="absolute top-1/2 w-5 h-5 bg-white rounded-full shadow-[0_0_10px_rgba(255,255,255,0.8),0_0_15px_rgba(99,102,241,0.8)] -translate-x-1/2 -translate-y-1/2 z-35 pointer-events-none"
+                className="absolute top-1/2 w-5 h-5 bg-white rounded-full shadow-[0_0_10px_rgba(255,255,255,0.8),0_0_15px_rgba(99,102,241,0.8)] -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none"
                 style={{
                   left: `${currentRatio * 100}%`,
                 }}
               />
 
-              {/* Slider Markers — 0% 포함 모든 마커 (pointer-events-none으로 감싸고 버튼만 auto) */}
-              <div className="absolute inset-x-0 inset-y-0 flex items-center z-40 pointer-events-none">
-                {[0, ...QUICK_AMOUNT_RATIOS].map((ratio) => {
+              {/* Slider Markers — keep fixed stops below the draggable thumb. */}
+              <div className="absolute inset-x-0 top-1/2 flex items-center z-30 pointer-events-none">
+                {sliderStops.map((ratio) => {
                   const isActive = (Number(quantity) || 0) >= effectiveMax * ratio - effectiveMax * 0.01;
                   return (
                     <button
                       key={ratio}
                       type="button"
-                      onClick={() => {
-                        const decimals = selectedToken?.decimals || 6;
-                        const actualMax = maxBalance > 0 ? maxBalance : 0;
-                        const val = Number((actualMax * ratio).toFixed(decimals));
-                        setQuantity(String(val));
-                      }}
-                      className={`absolute -translate-x-1/2 block w-4 h-4 rounded-full border-2 border-gray-900 shadow-md transition-all duration-200 cursor-pointer pointer-events-auto ${
-                        isActive
-                          ? 'bg-white scale-110'
-                          : 'bg-gray-400'
-                      }`}
+                      onClick={() => applyRatio(ratio)}
+                      className="absolute flex w-10 h-10 items-center justify-center rounded-full cursor-pointer pointer-events-auto touch-manipulation"
                       style={{
                         left: `${ratio * 100}%`,
-                        boxShadow: isActive
-                          ? '0 0 8px rgba(255, 255, 255, 0.9), 0 0 14px rgba(99, 102, 241, 0.6)'
-                          : 'none',
+                        transform: 'translate(-50%, 6px)',
                       }}
                       aria-label={`${Math.round(ratio * 100)}%`}
-                    />
+                    >
+                      <span
+                        className={`block w-3.5 h-3.5 rounded-full border-2 border-gray-900 shadow-md transition-all duration-200 ${
+                          isActive
+                            ? 'bg-white'
+                            : 'bg-gray-400'
+                        }`}
+                        style={{
+                          boxShadow: isActive
+                            ? '0 0 8px rgba(255, 255, 255, 0.9), 0 0 14px rgba(99, 102, 241, 0.6)'
+                            : 'none',
+                        }}
+                      />
+                    </button>
                   );
                 })}
               </div>
@@ -569,19 +580,29 @@ function TradeContent() {
                 disabled={disabled}
                 onChange={(e) => {
                   const val = Number(e.target.value);
-                  const decimals = selectedToken?.decimals || 6;
                   const ratio = val / effectiveMax;
-                  const actualMax = maxBalance > 0 ? maxBalance : 0;
-                  const rounded = Number((actualMax * ratio).toFixed(decimals));
-                  setQuantity(String(rounded));
+                  applyRatio(ratio);
                 }}
                 className="slider-markers absolute inset-0 w-full cursor-pointer z-50 opacity-0"
               />
             </div>
             {/* Min/Max Labels */}
             <div className="flex justify-between mt-2">
-              <span className="text-[11px] text-gray-500 font-medium">0%</span>
-              <span className="text-[11px] text-gray-500 font-medium">100%</span>
+              {sliderStops.map((ratio) => {
+                const isActiveLabel = activeStop === ratio;
+                return (
+                  <span
+                    key={ratio}
+                    className={`text-[13px] font-medium transition-all duration-200 ${
+                      isActiveLabel
+                        ? 'scale-125 text-primary-300'
+                        : 'scale-100 text-gray-500'
+                    }`}
+                  >
+                    {Math.round(ratio * 100)}%
+                  </span>
+                );
+              })}
             </div>
           </div>
           );
