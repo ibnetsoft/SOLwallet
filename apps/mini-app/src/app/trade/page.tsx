@@ -41,15 +41,24 @@ function TokenLogo({ symbol }: { symbol: string }) {
 }
 
 const PRICE_DECIMALS = 6;
+const QUOTE_DECIMALS = 6;
 
-function normalizePriceInput(value: string) {
+function normalizeDecimalInput(value: string, maxDecimals: number) {
   const cleaned = value.replace(/[^\d.]/g, '');
   const firstDot = cleaned.indexOf('.');
   if (firstDot === -1) return cleaned;
 
   const integerPart = cleaned.slice(0, firstDot);
-  const decimalPart = cleaned.slice(firstDot + 1).replace(/\./g, '').slice(0, PRICE_DECIMALS);
+  const decimalPart = cleaned.slice(firstDot + 1).replace(/\./g, '').slice(0, maxDecimals);
   return `${integerPart}.${decimalPart}`;
+}
+
+function normalizePriceInput(value: string) {
+  return normalizeDecimalInput(value, PRICE_DECIMALS);
+}
+
+function trimDecimalZeros(value: string) {
+  return value.includes('.') ? value.replace(/\.?0+$/, '') : value;
 }
 
 function TradeContent() {
@@ -95,6 +104,8 @@ function TradeContent() {
   const [showWithdrawPinModal, setShowWithdrawPinModal] = useState(false);
   const [withdrawPinError, setWithdrawPinError] = useState<{ msg: string; variant: ToastVariant } | null>(null);
   const [activeTab, setActiveTab] = useState<'open' | 'history'>('open');
+  const [isEditingQuoteAmount, setIsEditingQuoteAmount] = useState(false);
+  const [quoteAmountDraft, setQuoteAmountDraft] = useState('');
 
   // 무한 스크롤 — History 탭에서 sentinel이 보이면 다음 페이지 로드
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -383,6 +394,23 @@ function TradeContent() {
   const totalAmount = priceNum * qtyNum;
   const feeAmount = totalAmount * feeRate;
   const totalWithFee = totalAmount + feeAmount;
+  const formattedTotalAmount = totalAmount > 0
+    ? trimDecimalZeros(truncateDecimals(totalAmount, QUOTE_DECIMALS))
+    : '';
+
+  const handleQuoteAmountChange = (value: string) => {
+    const normalized = normalizeDecimalInput(value, QUOTE_DECIMALS);
+    setQuoteAmountDraft(normalized);
+    const quoteAmount = Number(normalized);
+    if (!normalized || !Number.isFinite(quoteAmount) || quoteAmount <= 0 || priceNum <= 0) {
+      setQuantity('');
+      return;
+    }
+
+    const tokenDecimals = selectedToken?.decimals || 6;
+    const nextQuantity = truncateDecimals(quoteAmount / priceNum, tokenDecimals);
+    setQuantity(trimDecimalZeros(nextQuantity));
+  };
 
   return (
     <main className="min-h-screen p-4 pb-24">
@@ -624,8 +652,21 @@ function TradeContent() {
       {/* Total Section */}
       <section className="mb-4">
         <label className="text-sm text-gray-400 mb-1 block">{t('trade.totalLabel')}</label>
-        <div className="bg-gray-800/50 rounded-xl p-4 flex justify-between items-center">
-          <span className="text-white">{totalAmount > 0 ? totalAmount.toFixed(4) : '0'}</span>
+        <div className="bg-gray-800/50 rounded-xl p-4 flex items-center gap-2">
+          <input
+            type="text"
+            inputMode="decimal"
+            value={isEditingQuoteAmount ? quoteAmountDraft : formattedTotalAmount}
+            onFocus={() => {
+              setIsEditingQuoteAmount(true);
+              setQuoteAmountDraft(formattedTotalAmount);
+            }}
+            onChange={(e) => handleQuoteAmountChange(e.target.value)}
+            onBlur={() => setIsEditingQuoteAmount(false)}
+            placeholder="0"
+            pattern="[0-9]*[.]?[0-9]{0,6}"
+            className="bg-transparent flex-1 outline-none text-white placeholder-gray-500"
+          />
           <span className="text-gray-400 text-sm">{quoteSymbol}</span>
         </div>
       </section>
