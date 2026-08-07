@@ -577,7 +577,7 @@ function TradeContent() {
                 }}
               />
 
-              {/* Slider Markers — keep fixed stops below the draggable thumb. */}
+              {/* Slider Markers — keep fixed stops centered on the track. */}
               <div className="absolute inset-x-0 top-1/2 flex items-center z-30 pointer-events-none">
                 {sliderStops.map((ratio) => {
                   const isActive = (Number(quantity) || 0) >= effectiveMax * ratio - effectiveMax * 0.01;
@@ -589,7 +589,7 @@ function TradeContent() {
                       className="absolute flex w-10 h-10 items-center justify-center rounded-full cursor-pointer pointer-events-auto touch-manipulation"
                       style={{
                         left: `${ratio * 100}%`,
-                        transform: 'translate(-50%, 6px)',
+                        transform: 'translate(-50%, -50%)',
                       }}
                       aria-label={`${Math.round(ratio * 100)}%`}
                     >
