@@ -473,30 +473,33 @@ export class OrderStatusService {
           }
         }
 
-        // 체결 분할 처리 헬퍼: PerPriceFill[] → 자식 주문 생성 + 원본 차감
+        // 체결 분할 처리 헬퍼: PerPriceFill[] → 자식 주문 생성 + 부모 상태 업데이트
         const handleFills = async (fills: PerPriceFill[], source: string) => {
           if (fills.length === 0) return;
           const totalFilled = fills.reduce((s, f) => s + f.baseAtomsTokens, 0);
           this.logger.log(
             `[active] order ${order.id} ${fills.length} fill(s) from ${source}: total=${totalFilled} qty=${order.quantity}`,
           );
-          // 자식 체결 주문들 생성 (멱등) — 실제로 삽입된 수량만큼만 차감
+          // 자식 체결 주문들 생성 (멱등)
           const insertedQty = await this.createChildFillOrders(order, fills);
           if (insertedQty <= 0) {
-            // 자식 주문이 하나도 생성되지 않았다면(오류 또는 전부 중복) 원본 차감 X
+            // 자식 주문이 하나도 생성되지 않았다면(오류 또는 전부 중복) 상태 변경 X
             this.logger.warn(
-              `[active] order ${order.id}: 자식 주문 생성 없음 — 원본 quantity 유지`,
+              `[active] order ${order.id}: 자식 주문 생성 없음 — 상태 유지`,
             );
             pending++;
             return;
           }
-          // 원본 주문 quantity 차감 (삽입된 수량만큼)
-          const newStatus = await this.reduceParentOrderQuantity(order.id, insertedQty);
-          if (newStatus === 'filled') {
+          // 부모 주문 상태 업데이트 — quantity는 원래값 유지(화면에 주문 크기 표시),
+          // 체결 수량이 원래 주문 수량에 근접하면 filled, 아니면 active 유지(부분 체결)
+          const orderQty = Number(order.quantity ?? 0);
+          const remaining = Math.max(0, orderQty - insertedQty);
+          const isFullyFilled = remaining <= 0.0001 || orderQty === 0;
+          await this.updateOrderStatus(order.id, isFullyFilled ? 'filled' : 'active');
+          if (isFullyFilled) {
             filled++;
           } else {
-            // 남은 잔량이 active로 유지 — pending에 포함하지 않음 (active 유지 상태)
-            this.logger.log(`[active] order ${order.id}: remaining active after ${fills.length} child fills`);
+            this.logger.log(`[active] order ${order.id}: remaining active (${remaining}) after ${fills.length} child fills`);
           }
         };
 
@@ -978,53 +981,5 @@ export class OrderStatusService {
       }
     }
     return insertedQty;
-  }
-
-  /**
-   * 원본 주문의 quantity를 체결된 수량만큼 차감.
-   *
-   * - quantity -= totalFilledQty
-   * - filled_qty는 0으로 유지 (부분체결 개념 제거)
-   * - 차감 후 quantity <= 0.0001 → status = 'filled'
-   * - 아니면 status = 'active' 유지
-   *
-   * @returns 'filled' | 'active'
-   */
-  private async reduceParentOrderQuantity(
-    orderId: string,
-    totalFilledQty: number,
-  ): Promise<'filled' | 'active'> {
-    // 현재 quantity 확인
-    const { data: existing } = await this.client
-      .from('orders')
-      .select('quantity')
-      .eq('id', orderId)
-      .single();
-
-    const currentQty = Number(existing?.quantity ?? 0);
-    const newQty = Math.max(0, currentQty - totalFilledQty);
-
-    // 잔량이 극소량(수치오차 범위)이면 전량 체결 처리
-    const isFullyFilled = newQty <= 0.0001;
-
-    const { error } = await this.client
-      .from('orders')
-      .update({
-        quantity: isFullyFilled ? 0 : Math.round(newQty * 1e6) / 1e6,
-        filled_qty: 0,
-        status: isFullyFilled ? 'filled' : 'active',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', orderId);
-
-    if (error) {
-      this.logger.error(`[reduceQty] failed for ${orderId}: ${error.message}`);
-    } else {
-      this.logger.log(
-        `[reduceQty] order ${orderId}: quantity ${currentQty} → ${isFullyFilled ? 0 : newQty}, status → ${isFullyFilled ? 'filled' : 'active'} (filled=${totalFilledQty})`,
-      );
-    }
-
-    return isFullyFilled ? 'filled' : 'active';
   }
 }
