@@ -48,7 +48,7 @@ export default function WithdrawModal({
   onWithdrawn,
 }: WithdrawModalProps) {
   const { showToast } = useToast();
-  const { unlockWallet, lockWallets } = useWalletStore();
+  const { decryptWalletSecret } = useWalletStore();
   const { t } = useT();
 
   // 단계: 'select' (토큰 선택) | 'form' (출금 입력)
@@ -156,17 +156,10 @@ export default function WithdrawModal({
   const handleWithdraw = async (pin: string) => {
     setPinError('');
     setIsProcessing(true);
+    let secretKey: Uint8Array | undefined;
 
     try {
-      await unlockWallet(walletId, pin);
-
-      const wallets = useWalletStore.getState().wallets;
-      const secretKey = wallets.find((w) => w.id === walletId)?.secretKey;
-
-      if (!secretKey) {
-        lockWallets();
-        throw new Error(t('error.walletUnlockFailed'));
-      }
+      secretKey = await decryptWalletSecret(walletId, pin);
 
       // tx 빌드 (SOL vs SPL)
       const mint = selectedToken!.mint;
@@ -195,7 +188,6 @@ export default function WithdrawModal({
         signedTx,
       });
 
-      lockWallets();
       // ROI에서 출금액을 제외하도록 상위에 알림 (상태 초기화 전에 심볼/수량 확보)
       onWithdrawn?.({ symbol: selectedToken!.symbol, amount: amountNum });
 
@@ -207,9 +199,9 @@ export default function WithdrawModal({
       showToast(t('withdraw.complete', { tx: result.txSignature.slice(0, 8) }));
       onClose();
     } catch (err) {
-      lockWallets();
       setPinError(err instanceof Error ? err.message : t('withdraw.failed'));
     } finally {
+      secretKey?.fill(0);
       setIsProcessing(false);
     }
   };
@@ -525,7 +517,6 @@ export default function WithdrawModal({
         onCancel={() => {
           setShowPin(false);
           setPinError('');
-          lockWallets();
         }}
         error={pinError}
       />

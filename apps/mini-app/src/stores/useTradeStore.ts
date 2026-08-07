@@ -465,7 +465,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
     // 4. 잔액 새로고침
     get().fetchActiveOrders();
 
-    // 세션 유지 — 거래/취소는 계속 PIN 없이 가능
+    // 세션 유지 — 거래/취소/수익 인출은 계속 PIN 없이 가능
     return result;
   },
 

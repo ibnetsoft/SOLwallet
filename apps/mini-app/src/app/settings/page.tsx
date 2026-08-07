@@ -30,7 +30,7 @@ export default function SettingsPage() {
     importWallet,
     activateWallet,
     deleteWallet,
-    unlockWallet,
+    decryptWalletSecret,
   } = useWalletStore();
 
   const { showToast } = useToast();
@@ -165,9 +165,10 @@ export default function SettingsPage() {
     const walletId = pendingDeleteWalletId;
     setDeletePinError('');
     setActionLoading(`delete-${walletId}`);
+    let secretKey: Uint8Array | undefined;
     try {
       // PIN이 이 지갑의 것이 맞는지 먼저 검증 (틀리면 여기서 throw)
-      await unlockWallet(walletId, pin);
+      secretKey = await decryptWalletSecret(walletId, pin);
       await deleteWallet(walletId);
       setShowDeletePin(false);
       setPendingDeleteWalletId(null);
@@ -175,6 +176,7 @@ export default function SettingsPage() {
     } catch (err) {
       setDeletePinError(err instanceof Error ? err.message : t('settings.deleteFailed'));
     } finally {
+      secretKey?.fill(0);
       setActionLoading('');
     }
   };

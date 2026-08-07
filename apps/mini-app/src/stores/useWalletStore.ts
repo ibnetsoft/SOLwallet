@@ -53,6 +53,7 @@ interface WalletState {
   deleteWallet: (walletId: string) => Promise<void>;
   lockWallets: () => void;
   unlockWallet: (walletId: string, pin: string) => Promise<void>;
+  decryptWalletSecret: (walletId: string, pin: string) => Promise<Uint8Array>;
   /** 잠금 해제 상태에서 활동이 있을 때 자동 잠금 타이머 연장 (세션 유지) */
   extendSession: () => void;
 }
@@ -142,7 +143,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
     });
 
     // 요청에 따라 탭/앱 숨김 시 즉시 잠금은 제거 — 다른 화면 갔다 와도 세션 유지.
-    // 잠금은 이제 AUTO_LOCK_TIMEOUT(2시간) 타이머로만 관리됨.
+    // 잠금은 이제 AUTO_LOCK_TIMEOUT(24시간) 타이머로만 관리됨.
 
     // 서버 동기화 — 로컬 우선 렌더 후 백그라운드에서 진행 (fire and forget).
     // 실패해도 로컬 상태는 유지된다.
@@ -477,6 +478,25 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
       // 자동 잠금 타이머 시작
       resetAutoLockTimer(() => get().lockWallets());
+    } catch {
+      throw new Error(getMsg('error.wrongPin'));
+    }
+  },
+
+  decryptWalletSecret: async (walletId, pin) => {
+    const stored = loadWallets();
+    const target = stored.find((w) => w.id === walletId);
+
+    if (!target) {
+      throw new Error(getMsg('error.walletNotFound'));
+    }
+
+    if (!target.encrypted) {
+      throw new Error(getMsg('error.walletKeyMissing'));
+    }
+
+    try {
+      return await decryptPrivateKey(target.encrypted, pin);
     } catch {
       throw new Error(getMsg('error.wrongPin'));
     }

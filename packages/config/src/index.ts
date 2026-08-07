@@ -52,8 +52,8 @@ export const WALLET_ENCRYPTION = {
 /** PIN 설정 — 최소 자릿수 */
 export const PIN_MIN_LENGTH = 6;
 
-/** 자동 잠금 타임아웃 (ms) — 2시간 */
-export const AUTO_LOCK_TIMEOUT = 2 * 60 * 60 * 1000;
+/** 자동 잠금 타임아웃 (ms) — 24시간 */
+export const AUTO_LOCK_TIMEOUT = 24 * 60 * 60 * 1000;
 
 /** Manifest.trade API 설정 (공개 API — API Key 불필요) */
 export const MANIFEST = {
