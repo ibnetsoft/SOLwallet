@@ -838,7 +838,7 @@ function TradeContent() {
                     <div key={i} className="flex justify-between text-[10.8px]">
                       <span className="text-green-400">
                         <span className="max-xs:hidden">{truncateDecimals(bid.price, 8)}</span>
-                        <span className="hidden max-xs:inline">{bid.price.toFixed(4)}…</span>
+                        <span className="hidden max-xs:inline">{bid.price.toFixed(8)}…</span>
                       </span>
                       <span className="text-gray-400">{bid.quantity.toFixed(4)}</span>
                     </div>
@@ -853,7 +853,7 @@ function TradeContent() {
                     <div key={i} className="flex justify-between text-[10.8px]">
                       <span className="text-red-400">
                         <span className="max-xs:hidden">{truncateDecimals(ask.price, 8)}</span>
-                        <span className="hidden max-xs:inline">{ask.price.toFixed(4)}…</span>
+                        <span className="hidden max-xs:inline">{ask.price.toFixed(8)}…</span>
                       </span>
                       <span className="text-gray-400">{ask.quantity.toFixed(4)}</span>
                     </div>
