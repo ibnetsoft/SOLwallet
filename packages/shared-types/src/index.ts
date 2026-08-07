@@ -54,7 +54,7 @@ export interface Token {
 // ========================================
 
 export type OrderSide = 'buy' | 'sell';
-export type OrderStatus = 'active' | 'partially_filled' | 'filled' | 'cancelled' | 'expired';
+export type OrderStatus = 'active' | 'filled' | 'cancelled' | 'expired';
 
 export interface Order {
   id: string;

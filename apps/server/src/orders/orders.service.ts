@@ -1535,6 +1535,7 @@ export class OrdersService {
       .from('orders')
       .select('*, tokens(symbol)')  // token symbol join
       .eq('user_id', userId)
+      .is('parent_order_id', null)
       .in('status', ['active', 'submitted'])
       .order('created_at', { ascending: false });
 
@@ -1559,7 +1560,8 @@ export class OrdersService {
       .from('orders')
       .select('*, tokens(symbol)', { count: 'exact' })  // token symbol join
       .eq('user_id', userId)
-      .in('status', ['filled', 'cancelled', 'expired', 'failed']);
+      .in('status', ['filled', 'cancelled', 'expired', 'failed'])
+      .is('parent_order_id', null);
 
     if (before) {
       query = query.lt('created_at', before);
@@ -1607,6 +1609,7 @@ export class OrdersService {
       .select('*')
       .eq('id', orderId)
       .eq('user_id', userId)
+      .is('parent_order_id', null)
       .single();
 
     if (fetchError || !order) {

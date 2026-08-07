@@ -1156,20 +1156,15 @@ export class AdminService {
 
     switch (status) {
       case 'filled':
-        return filled > 0 && filled < qty
-          ? `부분 체결 — ${filled}/${qty} 체결됨 (${typeLabel})`
-          : `체결 완료 — 전량 ${qty} 체결 (${typeLabel})`;
-
-      case 'partially_filled':
-        return `부분 체결 중 — ${filled}/${qty} 체결됨 (${typeLabel})`;
+        // 자식 체결 주문(parent_order_id != null)이면 실제 체결가/수량 표시
+        if (o.parent_order_id) {
+          return `체결 — ${Number(o.price).toFixed(6)} × ${Number(o.quantity).toFixed(4)} (${typeLabel})`;
+        }
+        return `체결 완료 — 전량 ${qty} 체결 (${typeLabel})`;
 
       case 'active':
         if (!hasTx) {
           return '주문 생성됨 — 아직 체인에 제출되지 않음 (서명 대기/중단)';
-        }
-        // 부분 체결 감지 — filled_qty > 0이면 크랭크 체결이 있었음
-        if (filled > 0 && filled < qty) {
-          return `부분 체결 중 — ${filled}/${qty} 체결됨 (${typeLabel})`;
         }
         return hasSeq
           ? `오더북 등록 완료 — 체결 대기 중 (${typeLabel})`
@@ -1181,17 +1176,13 @@ export class AdminService {
           : '제출 처리 중 — Tx 미생성';
 
       case 'cancelled':
-        return filled > 0
-          ? `취소됨 — 취소 전 ${filled}/${qty} 체결`
-          : '취소됨 — 체결 없이 전량 취소';
+        return '취소됨 — 체결 없이 전량 취소';
 
       case 'expired':
         if (!hasTx) {
           return '만료 — 체인 제출 전 단계에서 종료됨';
         }
-        return filled > 0
-          ? `만료 — ${filled}/${qty} 체결 후 나머지 소멸`
-          : '만료 — 체결되지 않은 채 유효기간 종료';
+        return '만료 — 체결되지 않은 채 유효기간 종료';
 
       case 'failed':
         if (!hasTx) {

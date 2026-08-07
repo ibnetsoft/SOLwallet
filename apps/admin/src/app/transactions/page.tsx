@@ -12,7 +12,6 @@ import type { AdminOrderDetail, AdminTokenDetail } from '@solwallet/shared-types
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
   active:            { label: '미체결', color: 'bg-blue-500/20 text-blue-400' },
   submitted:         { label: '미체결', color: 'bg-blue-500/20 text-blue-400' },
-  partially_filled:  { label: '부분체결', color: 'bg-amber-500/20 text-amber-400' },
   filled:            { label: '체결',   color: 'bg-success/20 text-success' },
   cancelled:         { label: '취소',   color: 'bg-orange-500/20 text-orange-400' },
   expired:           { label: '만료',   color: 'bg-gray-600/20 text-gray-400' },
@@ -25,7 +24,6 @@ const MESSAGE_COLOR: Record<string, string> = {
   failed: 'text-danger',
   cancelled: 'text-gray-400',
   expired: 'text-gray-500',
-  partially_filled: 'text-amber-400',
   filled: 'text-success',
 };
 
@@ -317,12 +315,7 @@ export default function TransactionsPage() {
                 </tr>
               ) : (
                 orders.map((order) => {
-                  // DB에 'partially_filled' 상태를 쓰지 않으므로
-                  // active/submitted + filledQty > 0이면 부분 체결로 표시
-                  const isPartialFill = (order.status === 'active' || order.status === 'submitted') && Number(order.filledQty) > 0;
-                  const statusInfo = isPartialFill
-                    ? STATUS_MAP.partially_filled
-                    : STATUS_MAP[order.status] || STATUS_MAP.active;
+                  const statusInfo = STATUS_MAP[order.status] || STATUS_MAP.active;
                   return (
                     <tr key={order.id} className="border-b border-gray-700/50 hover:bg-gray-700/30 transition">
                       <td className="py-2 px-1 text-gray-400 text-xs whitespace-nowrap">
@@ -348,7 +341,7 @@ export default function TransactionsPage() {
                       <td className="py-2 px-1 text-right font-mono text-xs whitespace-nowrap">{order.quantity}</td>
                       <td className="py-2 px-1 text-right font-mono text-xs whitespace-nowrap">
                         {Number(order.filledQty) > 0 ? (
-                          <span className={isPartialFill ? 'text-amber-400' : 'text-gray-300'}>
+                          <span className="text-gray-300">
                             {String(order.filledQty)}
                           </span>
                         ) : (

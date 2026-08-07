@@ -30,6 +30,11 @@ interface SubmittedOrder {
   manifest_sequence_number?: number | string | null;
   manifest_market_address?: string | null;
   user_id?: string;
+  /** 자식 주문 생성용 추가 필드 */
+  price?: string | number;
+  fee_rate?: string | number;
+  order_type?: string;
+  fee?: string | number;
 }
 
 /** 온체인 오더북에서 주문 매칭에 사용하는 정보 */
@@ -43,8 +48,22 @@ interface ChainOrderInfo {
 interface CrankFillInfo {
   /** 체결된 maker order sequence number (FillLog에서 추출) */
   seqNumbers: number[];
-  /** 체결된 base token 수량 (tokens) — 가장 큰 값 */
+  /** 체결된 base token 수량 (tokens) */
   baseAtomsTokens: number;
+  /** 체결된 quote token 수량 (USDT tokens) */
+  quoteAtomsTokens: number;
+  /** 실제 체결 가격 (quoteAtomsTokens / baseAtomsTokens) */
+  price: number;
+  /** 이 체결이 포함된 crank tx 시그니처 */
+  txSignature: string;
+}
+
+/** 가격대별 체결 정보 — 하나의 crank fill tx 안에서 발생한 체결 */
+interface PerPriceFill {
+  price: number;
+  baseAtomsTokens: number;
+  quoteAtomsTokens: number;
+  txSignature: string;
 }
 
 /** 토큰별로 그룹화된 온체인 마켓 데이터 */
@@ -207,11 +226,9 @@ export class OrderStatusService {
         results.checked++;
         const fillResult = await this.checkFillFromTxLogs(order.tx_signature as string, order.id as string);
 
-        if (fillResult.filled) {
-          const fillQty = Number.isFinite(fillResult.baseAtomsTokens)
-            ? fillResult.baseAtomsTokens
-            : (order.quantity as number);
-          await this.updateOrderStatus(order.id as string, 'filled', fillQty);
+        if (fillResult.fills.length > 0) {
+          const totalFilled = fillResult.fills.reduce((s, f) => s + f.baseAtomsTokens, 0);
+          await this.updateOrderStatus(order.id as string, 'filled', totalFilled);
           results.recovered++;
           this.logger.log(`[reconcile] order ${order.id} recovered: ${order.status} → filled (FillEvent confirmed)`);
         }
@@ -264,9 +281,9 @@ export class OrderStatusService {
           if (seqNum == null || !marketCache) {
             // seq 추출 불가 → FillEvent만 확인
             const fillResult = await this.checkFillFromTxLogs(order.tx_signature, order.id);
-            if (fillResult.filled) {
-              const fillQty = Number.isFinite(fillResult.baseAtomsTokens) ? fillResult.baseAtomsTokens : (order.quantity as number);
-              await this.updateOrderStatus(order.id, 'filled', fillQty);
+            if (fillResult.fills.length > 0) {
+              const totalFilled = fillResult.fills.reduce((s, f) => s + f.baseAtomsTokens, 0);
+              await this.updateOrderStatus(order.id, 'filled', totalFilled);
               results.corrected++;
               results.recovered++;
               this.logger.log(`[reconcile] order ${order.id}: active → filled (FillEvent, seq 없음)`);
@@ -286,9 +303,9 @@ export class OrderStatusService {
           } else {
             // 온체인에서 사라짐 → FillEvent 확인
             const fillResult = await this.checkFillFromTxLogs(order.tx_signature, order.id);
-            if (fillResult.filled) {
-              const fillQty = Number.isFinite(fillResult.baseAtomsTokens) ? fillResult.baseAtomsTokens : (order.quantity as number);
-              await this.updateOrderStatus(order.id, 'filled', fillQty);
+            if (fillResult.fills.length > 0) {
+              const totalFilled = fillResult.fills.reduce((s, f) => s + f.baseAtomsTokens, 0);
+              await this.updateOrderStatus(order.id, 'filled', totalFilled);
               results.corrected++;
               results.recovered++;
               this.logger.log(`[reconcile] order ${order.id}: active → filled (FillEvent confirmed)`);
@@ -384,16 +401,17 @@ export class OrderStatusService {
    *    - 온체인에 있음 + 정상 → active 유지
    *    - seq 추출 불가(tx_signature 없음) → 5분 후 failed
    */
-  private async checkActiveOrders(): Promise<{ filled: number; failed: number; expired: number; pending: number; cancelled: number; partially_filled: number }> {
+  private async checkActiveOrders(): Promise<{ filled: number; failed: number; expired: number; pending: number; cancelled: number }> {
     const { data: orders, error } = await this.client
       .from('orders')
-      .select('id, tx_signature, quantity, created_at, token_id, user_id, manifest_sequence_number, manifest_market_address')
+      .select('id, tx_signature, quantity, price, fee_rate, order_type, fee, created_at, token_id, user_id, wallet_id, manifest_sequence_number, manifest_market_address')
       .eq('status', 'active')
+      .is('parent_order_id', null)
       .order('created_at', { ascending: true })
       .limit(this.BATCH_SIZE);
 
     if (error || !orders || orders.length === 0) {
-      return { filled: 0, failed: 0, expired: 0, pending: 0, cancelled: 0, partially_filled: 0 };
+      return { filled: 0, failed: 0, expired: 0, pending: 0, cancelled: 0 };
     }
 
     const typedOrders = orders as unknown as SubmittedOrder[];
@@ -402,7 +420,6 @@ export class OrderStatusService {
     let expired = 0;
     let cancelled = 0;
     let pending = 0;
-    let partially_filled = 0;
 
     // token_id별로 그룹화
     const ordersByToken = new Map<string, SubmittedOrder[]>();
@@ -456,13 +473,30 @@ export class OrderStatusService {
           }
         }
 
+        // 체결 분할 처리 헬퍼: PerPriceFill[] → 자식 주문 생성 + 원본 차감
+        const handleFills = async (fills: PerPriceFill[], source: string) => {
+          if (fills.length === 0) return;
+          const totalFilled = fills.reduce((s, f) => s + f.baseAtomsTokens, 0);
+          this.logger.log(
+            `[active] order ${order.id} ${fills.length} fill(s) from ${source}: total=${totalFilled} qty=${order.quantity}`,
+          );
+          // 자식 체결 주문들 생성 (멱등)
+          await this.createChildFillOrders(order, fills);
+          // 원본 주문 quantity 차감
+          const newStatus = await this.reduceParentOrderQuantity(order.id, totalFilled);
+          if (newStatus === 'filled') {
+            filled++;
+          } else {
+            // 남은 잔량이 active로 유지 — pending에 포함하지 않음 (active 유지 상태)
+            this.logger.log(`[active] order ${order.id}: remaining active after ${fills.length} child fills`);
+          }
+        };
+
         // 마켓 캐시 없으면 FillEvent만 확인
         if (!marketCache) {
           const fillResult = await this.checkFillFromTxLogs(order.tx_signature, order.id);
-          if (fillResult.filled) {
-            const fillQty = Number.isFinite(fillResult.baseAtomsTokens) ? fillResult.baseAtomsTokens : order.quantity;
-            await this.updateOrderStatus(order.id, 'filled', fillQty);
-            filled++;
+          if (fillResult.checked && fillResult.fills.length > 0) {
+            await handleFills(fillResult.fills, 'placement tx');
           } else {
             pending++;
           }
@@ -473,60 +507,31 @@ export class OrderStatusService {
         const onChainOrder = marketCache.ordersBySeq.get(String(seqNum));
 
         if (onChainOrder) {
-          // 온체인에 존재 → crank fill 검사 (부분 체결 감지)
-          // 온체인 오더북에 남아있어도 crank가 이미 부분 체결했을 수 있음
+          // 온체인에 존재 → crank fill 검사
           if (!crankFillCollected && marketCache) {
             crankFillCollected = true;
             crankFills = await this.collectCrankFills(marketCache.marketAddress);
           }
-          const crankFillResult = await this.checkCrankFill(order, crankFills);
-          if (crankFillResult != null && crankFillResult > 0) {
-            const orderQty = Number(order.quantity);
-            // 체결 수량이 주문 수량 이상 → 전량 체결
-            if (crankFillResult >= orderQty * 0.999) {
-              await this.updateOrderStatus(order.id, 'filled', crankFillResult);
-              filled++;
-              this.logger.log(
-                `[active] order ${order.id} FILLED (crank, on book) — qty=${crankFillResult}/${orderQty}`,
-              );
-            } else {
-              // 부분 체결 — filled_qty만 업데이트, 상태는 active 유지
-              // (DB CHECK constraint에 'partially_filled'가 없으므로 status 변경 없이
-              //  프론트엔드에서 filled_qty > 0 && status=active → 부분체결로 표시)
-              await this.updateOrderFilledQty(order.id, crankFillResult);
-              partially_filled++;
-              this.logger.log(
-                `[active] order ${order.id} PARTIALLY FILLED (crank, on book) — qty=${crankFillResult}/${orderQty}`,
-              );
-            }
+          const matchedFills = await this.checkCrankFillsPerPrice(order, crankFills);
+          if (matchedFills.length > 0) {
+            await handleFills(matchedFills, 'crank (on book)');
           } else {
             pending++;
           }
         } else {
-          // 온체인에서 사라짐 → FillEvent 확인
+          // 온체인에서 사라짐 → placement tx FillEvent 확인
           const fillResult = await this.checkFillFromTxLogs(order.tx_signature, order.id);
-          if (fillResult.filled) {
-            const fillQty = Number.isFinite(fillResult.baseAtomsTokens) ? fillResult.baseAtomsTokens : order.quantity;
-            await this.updateOrderStatus(order.id, 'filled', fillQty);
-            filled++;
-            this.logger.log(
-              `[active] order ${order.id} FILLED (placement tx, vanished from book) — qty=${fillQty}`,
-            );
+          if (fillResult.checked && fillResult.fills.length > 0) {
+            await handleFills(fillResult.fills, 'placement tx (vanished)');
           } else {
             // placement tx에 FillEvent 없음 → crank fill 확인
-            // 첫 번째 필요시에만 수집 (market별 한 번)
             if (!crankFillCollected && marketCache) {
               crankFillCollected = true;
               crankFills = await this.collectCrankFills(marketCache.marketAddress);
             }
-            const crankFillResult = await this.checkCrankFill(order, crankFills);
-            if (crankFillResult) {
-              const fillQty = Number.isFinite(crankFillResult) ? crankFillResult : order.quantity;
-              await this.updateOrderStatus(order.id, 'filled', fillQty);
-              filled++;
-              this.logger.log(
-                `[active] order ${order.id} FILLED (crank tx, vanished from book) — qty=${fillQty}`,
-              );
+            const matchedFills = await this.checkCrankFillsPerPrice(order, crankFills);
+            if (matchedFills.length > 0) {
+              await handleFills(matchedFills, 'crank tx (vanished)');
             } else {
               // FillEvent 없음 → cancel 또는 Manifest evict
               await this.updateOrderStatus(order.id, 'cancelled');
@@ -554,12 +559,12 @@ export class OrderStatusService {
       }
     }
 
-    const total = filled + cancelled + expired + failed + partially_filled;
+    const total = filled + cancelled + expired + failed;
     if (total > 0) {
-      this.logger.log(`[active] check result: ${filled} filled, ${partially_filled} partially_filled, ${cancelled} cancelled, ${expired} expired, ${failed} failed, ${pending} pending`);
+      this.logger.log(`[active] check result: ${filled} filled, ${cancelled} cancelled, ${expired} expired, ${failed} failed, ${pending} pending`);
     }
 
-    return { filled, failed, expired, pending, cancelled, partially_filled };
+    return { filled, failed, expired, pending, cancelled };
   }
 
   /**
@@ -620,11 +625,12 @@ export class OrderStatusService {
    *
    * Manifest는 "Program data: <base64>" 로그로 fill 이벤트를 기록.
    * base64 디코딩 후 첫 8바이트가 fillDiscriminant와 일치하면 fill.
+   * 가격대별 체결 분할을 위해 PerPriceFill[]을 반환.
    */
   private async checkFillFromTxLogs(
     signature: string,
     orderId: string,
-  ): Promise<{ filled: boolean; checked: boolean; baseAtomsTokens?: number; quoteAtomsTokens?: number }> {
+  ): Promise<{ fills: PerPriceFill[]; checked: boolean }> {
     try {
       const res = await fetch(this.rpcUrl, {
         method: 'POST',
@@ -639,16 +645,17 @@ export class OrderStatusService {
 
       const data = await res.json() as { result?: RpcTransactionResponse | null; error?: { message?: string } };
       if (data.error || !data.result) {
-        return { filled: false, checked: false };
+        return { fills: [], checked: false };
       }
 
       const logs = data.result.meta?.logMessages;
       if (!logs) {
-        return { filled: false, checked: false };
+        return { fills: [], checked: false };
       }
 
       // "Program data: <base64>" 항목에서 fill 이벤트 찾기
       // FILL_DISCRIMINANT는 상수(3ae6f2034b7104a9)이므로 로드 실패 불가
+      const foundFills: PerPriceFill[] = [];
       for (const log of logs) {
         if (!log.startsWith('Program data: ')) continue;
 
@@ -686,24 +693,21 @@ export class OrderStatusService {
           // SOL = 9 decimals, USDC = 6 decimals
           const baseAtomsTokens = baseAtoms / 1e9;
           const quoteAtomsTokens = quoteAtoms / 1e6;
+          const price = baseAtomsTokens > 0 ? quoteAtomsTokens / baseAtomsTokens : 0;
 
-          return {
-            filled: true,
-            checked: true,
-            baseAtomsTokens,
-            quoteAtomsTokens,
-          };
+          if (baseAtomsTokens > 0) {
+            foundFills.push({ price, baseAtomsTokens, quoteAtomsTokens, txSignature: signature });
+          }
         } catch {
           // 역직렬화 실패 — 다음 로그 확인
           continue;
         }
       }
 
-      // fill 이벤트 없음 — 미체결 (orderbook에 있음)
-      return { filled: false, checked: true };
+      return { fills: foundFills, checked: true };
     } catch (err) {
       this.logger.error(`[fillCheck] Failed for ${orderId}: ${err instanceof Error ? err.message : String(err)}`);
-      return { filled: false, checked: false };
+      return { fills: [], checked: false };
     }
   }
 
@@ -712,32 +716,37 @@ export class OrderStatusService {
    *
    * FillLog에는 maker/taker sequence number가 명시적으로 포함되므로,
    * 수량 기반 추정(50%) 대신 sequence number로 정확 매칭한다.
+   * 가격대별 체결 분할을 위해 PerPriceFill[]을 반환.
    *
-   * @returns 체결 수량(tokens) 또는 null (체결되지 않음)
+   * @returns 매칭된 체결 목록 (빈 배열이면 체결되지 않음)
    */
-  private async checkCrankFill(
+  private async checkCrankFillsPerPrice(
     order: SubmittedOrder,
     crankFillCache: CrankFillInfo[],
-  ): Promise<number | null> {
+  ): Promise<PerPriceFill[]> {
     const seqNum = Number(order.manifest_sequence_number);
-    if (!Number.isFinite(seqNum) || seqNum <= 0) return null;
+    if (!Number.isFinite(seqNum) || seqNum <= 0) return [];
 
-    let matchedQty = 0;
+    const matched: PerPriceFill[] = [];
     for (const fill of crankFillCache) {
       if (fill.seqNumbers.includes(seqNum)) {
-        // 같은 seq가 여러 fill에 걸쳐 부분 체결될 수 있으므로 모두 합산
-        matchedQty += fill.baseAtomsTokens;
+        matched.push({
+          price: fill.price,
+          baseAtomsTokens: fill.baseAtomsTokens,
+          quoteAtomsTokens: fill.quoteAtomsTokens,
+          txSignature: fill.txSignature,
+        });
       }
     }
 
-    if (matchedQty > 0) {
+    if (matched.length > 0) {
+      const totalQty = matched.reduce((s, f) => s + f.baseAtomsTokens, 0);
       this.logger.log(
-        `[crankFill] order ${order.id} seq=${seqNum}: matched fill qty=${matchedQty}`,
+        `[crankFill] order ${order.id} seq=${seqNum}: matched ${matched.length} fills, total qty=${totalQty}`,
       );
-      return matchedQty;
     }
 
-    return null;
+    return matched;
   }
 
   /**
@@ -746,6 +755,7 @@ export class OrderStatusService {
    *
    * FillLog는 232바이트 고정 구조 (8바이트 discriminant + 224바이트 페이로드):
    *   offset 176 (u64): baseAtoms (raw atoms, /1e9 = token 수량)
+   *   offset 184 (u64): quoteAtoms (USDT 원시값, /1e6 = USDT)
    *   offset 192 (u64): maker sequence number
    *   offset 200 (u64): taker sequence number
    * SDK의 FillLog.deserialize가 beet offset 오류를 일으키므로 수동 파싱.
@@ -792,14 +802,20 @@ export class OrderStatusService {
 
               const payload = buffer.subarray(8);
               const baseAtoms = Number(payload.readBigUInt64LE(176));
+              const quoteAtoms = Number(payload.readBigUInt64LE(184));
               const makerSeq = Number(payload.readBigUInt64LE(192));
               const takerSeq = Number(payload.readBigUInt64LE(200));
               const baseAtomsTokens = baseAtoms / 1e9;
+              const quoteAtomsTokens = quoteAtoms / 1e6;
+              const price = baseAtomsTokens > 0 ? quoteAtomsTokens / baseAtomsTokens : 0;
 
               if (baseAtomsTokens > 0 && (makerSeq > 0 || takerSeq > 0)) {
                 fills.push({
                   seqNumbers: [makerSeq, takerSeq].filter((s) => s > 0),
                   baseAtomsTokens,
+                  quoteAtomsTokens,
+                  price,
+                  txSignature: sigInfo.signature,
                 });
               }
             } catch {
@@ -887,54 +903,115 @@ export class OrderStatusService {
   }
 
   /**
-   * 부분 체결 수량 업데이트 — filled_qty만 갱신하거나 상태도 함께 변경
+   * 가격대별 체결 → 자식 "filled" 주문 생성
    *
-   * 기존 filled_qty가 이미 더 크면(이중 카운트 방지) 갱신하지 않음.
+   * 각 PerPriceFill에 대해 orders 테이블에 새 row를 INSERT.
+   * 멱등성: parent_order_id + price + quantity + tx_signature 조합으로 중복 방지.
    */
-  private async updateOrderFilledQty(
-    orderId: string,
-    filledQty: number,
-    status?: string,
-  ) {
-    if (!Number.isFinite(filledQty) || filledQty <= 0) return;
+  private async createChildFillOrders(
+    parentOrder: SubmittedOrder,
+    fills: PerPriceFill[],
+  ): Promise<void> {
+    for (const fill of fills) {
+      // 멱등성 확인: 이미 같은 자식 주문이 있으면 스킵
+      const { data: existing, error: checkErr } = await this.client
+        .from('orders')
+        .select('id')
+        .eq('parent_order_id', parentOrder.id)
+        .eq('price', fill.price)
+        .eq('quantity', fill.baseAtomsTokens)
+        .eq('tx_signature', fill.txSignature)
+        .limit(1);
 
-    // 기존 filled_qty 확인 — 이미 더 크면 덮어쓰지 않음
+      if (checkErr || !existing) continue;
+      if (existing.length > 0) {
+        this.logger.log(
+          `[childFill] skip duplicate: parent=${parentOrder.id} price=${fill.price} qty=${fill.baseAtomsTokens} tx=${fill.txSignature.slice(0, 8)}`,
+        );
+        continue;
+      }
+
+      // 수수료 계산: 실제 체결가 × 수량 × fee_rate
+      const feeRate = Number(parentOrder.fee_rate ?? 0.01);
+      const fee = fill.baseAtomsTokens * fill.price * feeRate;
+
+      const { error: insertErr } = await this.client
+        .from('orders')
+        .insert({
+          parent_order_id: parentOrder.id,
+          user_id: parentOrder.user_id,
+          wallet_id: parentOrder.wallet_id,
+          token_id: parentOrder.token_id,
+          side: parentOrder.side,
+          order_type: parentOrder.order_type ?? 'limit',
+          price: fill.price,
+          quantity: fill.baseAtomsTokens,
+          filled_qty: fill.baseAtomsTokens,
+          fee: Math.round(fee * 1e6) / 1e6,
+          fee_rate: feeRate,
+          status: 'filled',
+          tx_signature: fill.txSignature,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+
+      if (insertErr) {
+        this.logger.error(
+          `[childFill] failed to create: parent=${parentOrder.id} price=${fill.price} qty=${fill.baseAtomsTokens}: ${insertErr.message}`,
+        );
+      } else {
+        this.logger.log(
+          `[childFill] created: parent=${parentOrder.id} price=${fill.price} qty=${fill.baseAtomsTokens} usdt=${fill.quoteAtomsTokens} tx=${fill.txSignature.slice(0, 8)}`,
+        );
+      }
+    }
+  }
+
+  /**
+   * 원본 주문의 quantity를 체결된 수량만큼 차감.
+   *
+   * - quantity -= totalFilledQty
+   * - filled_qty는 0으로 유지 (부분체결 개념 제거)
+   * - 차감 후 quantity <= 0.0001 → status = 'filled'
+   * - 아니면 status = 'active' 유지
+   *
+   * @returns 'filled' | 'active'
+   */
+  private async reduceParentOrderQuantity(
+    orderId: string,
+    totalFilledQty: number,
+  ): Promise<'filled' | 'active'> {
+    // 현재 quantity 확인
     const { data: existing } = await this.client
       .from('orders')
-      .select('filled_qty')
+      .select('quantity')
       .eq('id', orderId)
       .single();
 
-    const currentFilledQty = Number(existing?.filled_qty ?? 0);
-    if (filledQty <= currentFilledQty) {
-      // 이미 더 큰 수량이 기록됨 — 업데이트 불필요
-      this.logger.log(
-        `[fillQty] order ${orderId}: skip fillQty=${filledQty} (existing=${currentFilledQty})`,
-      );
-      return;
-    }
+    const currentQty = Number(existing?.quantity ?? 0);
+    const newQty = Math.max(0, currentQty - totalFilledQty);
 
-    const update: Record<string, unknown> = {
-      filled_qty: filledQty,
-      updated_at: new Date().toISOString(),
-    };
-
-    // 상태도 함께 변경해야 하면 (partially_filled, filled)
-    if (status) {
-      update.status = status;
-    }
+    // 잔량이 극소량(수치오차 범위)이면 전량 체결 처리
+    const isFullyFilled = newQty <= 0.0001;
 
     const { error } = await this.client
       .from('orders')
-      .update(update)
+      .update({
+        quantity: isFullyFilled ? 0 : Math.round(newQty * 1e6) / 1e6,
+        filled_qty: 0,
+        status: isFullyFilled ? 'filled' : 'active',
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', orderId);
 
     if (error) {
-      this.logger.error(`Failed to update fillQty for ${orderId}: ${error.message}`);
+      this.logger.error(`[reduceQty] failed for ${orderId}: ${error.message}`);
     } else {
       this.logger.log(
-        `[fillQty] order ${orderId}: filled_qty ${currentFilledQty} → ${filledQty}${status ? `, status → ${status}` : ''}`,
+        `[reduceQty] order ${orderId}: quantity ${currentQty} → ${isFullyFilled ? 0 : newQty}, status → ${isFullyFilled ? 'filled' : 'active'} (filled=${totalFilledQty})`,
       );
     }
+
+    return isFullyFilled ? 'filled' : 'active';
   }
 }
