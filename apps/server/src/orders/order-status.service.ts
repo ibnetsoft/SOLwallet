@@ -495,7 +495,7 @@ export class OrderStatusService {
           const orderQty = Number(order.quantity ?? 0);
           const remaining = Math.max(0, orderQty - insertedQty);
           const isFullyFilled = remaining <= 0.0001 || orderQty === 0;
-          await this.updateOrderStatus(order.id, isFullyFilled ? 'filled' : 'active');
+          await this.updateOrderStatus(order.id, isFullyFilled ? 'filled' : 'active', insertedQty);
           if (isFullyFilled) {
             filled++;
           } else {
