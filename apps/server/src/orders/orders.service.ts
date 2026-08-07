@@ -1321,6 +1321,14 @@ export class OrdersService {
         this.logger.error(`[submitOrder] SIMULATION FAILED — err=${JSON.stringify(sim.err)}`);
         if (sim.logs?.length) {
           this.logger.error(`[submitOrder] SIM LOGS:\n${sim.logs.join('\n')}`);
+          // 토큰 잔액 부족(insufficient funds) 감지 → 명확한 에러 메시지
+          const logsText = sim.logs.join('\n');
+          if (/Error:\s*insufficient funds/i.test(logsText)) {
+            throw new CodedException(
+              '토큰 잔액이 부족하여 주문을 체결할 수 없습니다.\n지갑 잔액을 확인 후 다시 시도해주세요.',
+              'INSUFFICIENT_TOKEN_BALANCE',
+            );
+          }
         }
       } else {
         this.logger.log(`[submitOrder] simulation OK — units=${sim?.unitsConsumed}`);

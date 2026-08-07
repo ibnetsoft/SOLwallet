@@ -343,6 +343,23 @@ function TradeContent() {
     // 최대값 검사 (오버플로우 방지)
     if (priceNum > 1e12) return t('val.priceTooLarge');
     if (qtyNum > 1e12) return t('val.amountTooLarge');
+    // 잔액 부족 사전 차단 (PIN 입력 전)
+    const needed = priceNum * qtyNum;
+    if (side === 'buy') {
+      if (quoteBalance < needed) {
+        return t('val.insufficientUsdt', {
+          balance: quoteBalance.toFixed(6),
+          required: needed.toFixed(6),
+        });
+      }
+    } else {
+      if (tokenBalance < qtyNum) {
+        return t('val.insufficientToken', {
+          symbol: selectedToken.symbol,
+          balance: tokenBalance.toFixed(6),
+        });
+      }
+    }
     return null;
   };
 

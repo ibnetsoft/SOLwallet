@@ -156,6 +156,8 @@ const en: Record<TranslationKey, string> = {
   'val.maxDecimals': '⚠️ {label} allows up to {decimals} decimal places.',
   'val.priceTooLarge': '⚠️ Price is too large.',
   'val.amountTooLarge': '⚠️ Amount is too large.',
+  'val.insufficientUsdt': '⚠️ Insufficient USDT balance. Have {balance} USDT, need {required} USDT',
+  'val.insufficientToken': '⚠️ Insufficient {symbol} balance. Have {balance} {symbol}',
   'val.price': 'Price',
 
   // ─── Transactions ───

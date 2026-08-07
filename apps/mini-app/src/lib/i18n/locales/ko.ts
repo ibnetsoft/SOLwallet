@@ -156,6 +156,8 @@ const ko: Record<string, string> = {
   'val.maxDecimals': '⚠️ {label}은 소수점 {decimals}자리까지 가능합니다.',
   'val.priceTooLarge': '⚠️ 가격이 너무 큽니다.',
   'val.amountTooLarge': '⚠️ 수량이 너무 큽니다.',
+  'val.insufficientUsdt': '⚠️ USDT 잔액이 부족합니다. 현재 {balance} USDT 보유, 필요금액 {required} USDT',
+  'val.insufficientToken': '⚠️ {symbol} 잔액이 부족합니다. 현재 {balance} {symbol} 보유',
   'val.price': '가격',
 
   // ─── Transactions ───

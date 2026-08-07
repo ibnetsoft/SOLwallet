@@ -154,6 +154,8 @@ const zh: Record<string, string> = {
   'val.maxDecimals': '⚠️ {label} 最多支持 {decimals} 位小数。',
   'val.priceTooLarge': '⚠️ 价格过大。',
   'val.amountTooLarge': '⚠️ 数量过大。',
+  'val.insufficientUsdt': '⚠️ USDT余额不足。持有 {balance} USDT，需要 {required} USDT',
+  'val.insufficientToken': '⚠️ {symbol}余额不足。持有 {balance} {symbol}',
   'val.price': '价格',
 
   // ─── Transactions ───

@@ -154,6 +154,8 @@ const ja: Record<string, string> = {
   'val.maxDecimals': '⚠️ {label}は小数点{decimals}桁までです。',
   'val.priceTooLarge': '⚠️ 価格が大きすぎます。',
   'val.amountTooLarge': '⚠️ 数量が大きすぎます。',
+  'val.insufficientUsdt': '⚠️ USDT残高が不足しています。所持 {balance} USDT、必要 {required} USDT',
+  'val.insufficientToken': '⚠️ {symbol}残高が不足しています。所持 {balance} {symbol}',
   'val.price': '価格',
 
   // ─── Transactions ───
