@@ -6,6 +6,7 @@ import {
   Connection,
   PublicKey,
   Transaction,
+  VersionedTransaction,
   SystemProgram,
   Keypair,
   LAMPORTS_PER_SOL,
@@ -328,6 +329,81 @@ export class OrdersService {
     }
     // 1 ~ 2147483647 (0은 Manifest에서 유효하지 않을 수 있어 1부터 사용)
     return (hash % 2147483646) + 1;
+  }
+
+  /** wMNFST 래퍼 프로그램 ID */
+  private static readonly WMNFST_PROGRAM_ID = new PublicKey(
+    'wMNFSTkir3HgyZTsB7uqu3i7FA73grFCptPXgrZjksL',
+  );
+
+  /** wMNFST Deposit instruction discriminator */
+  private static readonly WMNFST_DEPOSIT_DISC = 2;
+
+  /**
+   * wMNFST Deposit 금액에 미세 버퍼를 더해 반올림 부족 취소를 방지한다.
+   *
+   * 문제: Manifest API가 deposit 금액을 qty×price로 계산할 때 정수 나눗셈으로
+   * 소수점 이하를 버린다(floor). 반면 wMNFST 래퍼는 주문 비용을 올림(ceil)으로
+   * 계산해 잔액을 체크한다. qty×price가 토큰 최소단위(atom)로 딱 떨어지지 않으면
+   * deposit이 1 atom 부족해 "Removing bid for insufficient funds" 로그와 함께
+   * 주문이 즉시 취소된다.
+   *
+   * 예: 128.81282 DUDE @ 0.01009 = 1,299,721.3538 USDT atoms
+   *   deposit(floor) = 1,299,721 | 필요(ceil) = 1,299,722 → 1 atom 부족
+   *
+   * 해결: Manifest API가 만든 트랜잭션 안에서 wMNFST Deposit instruction을 찾아
+   * 금액에 DEPOSIT_BUFFER_ATOMS를 더한다. 이 버퍼는 사용자 지갑에서 추가로
+   * 인출되는 것이 아니라 Manifest 예치 계정으로 같이 들어가며, 주문 체결·취소
+   * 후 잔액으로 돌려받으므로 실질적 비용이 0에 가깝다.
+   *
+   * parse/patch 실패 시 원본을 그대로 반환(fail-open) — Manifest 동작이 바뀌어
+   * Deposit ix를 못 찾아도 주문 자체는 진행되도록.
+   */
+  private static readonly DEPOSIT_BUFFER_ATOMS = 10n;
+
+  private patchDepositBuffer(base64Tx: string): string {
+    try {
+      const bytes = Buffer.from(base64Tx, 'base64');
+      const tx = VersionedTransaction.deserialize(bytes);
+      let patched = false;
+
+      for (const ci of tx.message.compiledInstructions) {
+        const progId =
+          tx.message.staticAccountKeys[ci.programIdIndex];
+        if (
+          progId.equals(OrdersService.WMNFST_PROGRAM_ID) &&
+          ci.data[0] === OrdersService.WMNFST_DEPOSIT_DISC &&
+          ci.data.length === 9
+        ) {
+          const data = Buffer.from(ci.data);
+          const oldAmount = data.readBigUInt64LE(1);
+          data.writeBigUInt64LE(
+            oldAmount + OrdersService.DEPOSIT_BUFFER_ATOMS,
+            1,
+          );
+          ci.data = data;
+          patched = true;
+        }
+      }
+
+      if (!patched) {
+        // Deposit ix가 없는 경우(예: 이미 잔액이 충분한 재주문) — 원본 반환
+        this.logger.debug('[patchDepositBuffer] wMNFST Deposit ix 없음 — 원본 사용');
+        return base64Tx;
+      }
+
+      const result = Buffer.from(tx.serialize()).toString('base64');
+      this.logger.log(
+        `[patchDepositBuffer] Deposit +${OrdersService.DEPOSIT_BUFFER_ATOMS} atoms 버퍼 추가`,
+      );
+      return result;
+    } catch (err) {
+      // parse/patch 실패 — 주문은 그래도 진행되도록 원본 반환
+      this.logger.warn(
+        `[patchDepositBuffer] parse 실패, 원본 사용: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return base64Tx;
+    }
   }
 
   /**
@@ -668,7 +744,7 @@ export class OrdersService {
       const manifestData = (await manifestRes.json()) as ManifestCreateResponse;
 
       if (manifestRes.ok && manifestData.transaction) {
-        unsignedTx = manifestData.transaction;
+        unsignedTx = this.patchDepositBuffer(manifestData.transaction);
         requestId = manifestData.requestId || '';
         this.logger.log(`[createOrder] Manifest OK — requestId=${requestId} txLen=${unsignedTx.length}`);
       } else {
@@ -1445,7 +1521,7 @@ export class OrdersService {
     }
 
     this.logger.log(`[getFreshOrderTx] DONE — order=${orderId} txLen=${manifestData.transaction.length}`);
-    return { unsignedTx: manifestData.transaction };
+    return { unsignedTx: this.patchDepositBuffer(manifestData.transaction) };
   }
 
   /**
