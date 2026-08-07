@@ -2,12 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { CodedException } from '../common/filters/global-exception.filter';
 import { SupabaseService } from '../supabase/supabase.service';
 import { MAX_WALLETS } from '@solwallet/config';
+import { MnemonicVaultService } from './mnemonic-vault.service';
 
 @Injectable()
 export class WalletService {
   private readonly logger = new Logger(WalletService.name);
 
-  constructor(private readonly supabaseService: SupabaseService) {}
+  constructor(
+    private readonly supabaseService: SupabaseService,
+    private readonly mnemonicVault: MnemonicVaultService,
+  ) {}
 
   private get client() {
     return this.supabaseService.getClient();
@@ -19,7 +23,7 @@ export class WalletService {
   async findByUser(userId: string) {
     const { data, error } = await this.client
       .from('wallets')
-      .select('*')
+      .select('id, user_id, public_key, wallet_index, label, is_active, created_at')
       .eq('user_id', userId)
       .order('wallet_index', { ascending: true });
 
@@ -55,6 +59,7 @@ export class WalletService {
     userId: string;
     publicKey: string;
     label?: string;
+    mnemonic?: string;
   }) {
     // 최대 지갑 수 확인
     const currentCount = await this.countByUser(params.userId);
@@ -87,8 +92,11 @@ export class WalletService {
         wallet_index: nextIndex,
         label: params.label || `Wallet ${nextIndex + 1}`,
         is_active: isActive,
+        encrypted_mnemonic: params.mnemonic
+          ? this.mnemonicVault.encrypt(params.mnemonic)
+          : null,
       })
-      .select()
+      .select('id, user_id, public_key, wallet_index, label, is_active, created_at')
       .single();
 
     if (error) {

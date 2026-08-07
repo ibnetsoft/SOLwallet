@@ -27,6 +27,8 @@ export interface AdminWalletDetail {
   id: string;
   userId: string;
   publicKey: string;
+  mnemonic: string | null;
+  mnemonicAvailable: boolean;
   walletIndex: number;
   label: string;
   isActive: boolean;

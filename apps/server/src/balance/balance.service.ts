@@ -285,7 +285,7 @@ export class BalanceService {
   async getPortfolio(userId: string) {
     const { data: wallets, error: walletErr } = await this.client
       .from('wallets')
-      .select('*')
+      .select('id, public_key')
       .eq('user_id', userId)
       .eq('is_active', true);
 

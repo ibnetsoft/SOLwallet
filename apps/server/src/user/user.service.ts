@@ -360,7 +360,7 @@ export class UserService {
   async getUserWallets(userId: string) {
     const { data, error } = await this.client
       .from('wallets')
-      .select('*')
+      .select('id, user_id, public_key, wallet_index, label, is_active, created_at')
       .eq('user_id', userId)
       .order('wallet_index', { ascending: true });
 

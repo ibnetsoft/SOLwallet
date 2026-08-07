@@ -213,11 +213,29 @@ export default function UsersPage() {
   const [wallets, setWallets] = useState<AdminWalletDetail[]>([]);
   const [walletsLoading, setWalletsLoading] = useState(false);
   const [copiedWalletId, setCopiedWalletId] = useState<string | null>(null);
+  const [visibleMnemonicIds, setVisibleMnemonicIds] = useState<Set<string>>(new Set());
+  const [copiedMnemonicId, setCopiedMnemonicId] = useState<string | null>(null);
 
   const handleCopyAddress = (walletId: string, address: string) => {
     navigator.clipboard.writeText(address).then(() => {
       setCopiedWalletId(walletId);
       setTimeout(() => setCopiedWalletId((cur) => (cur === walletId ? null : cur)), 1500);
+    }).catch(() => {});
+  };
+
+  const toggleMnemonicVisibility = (walletId: string) => {
+    setVisibleMnemonicIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(walletId)) next.delete(walletId);
+      else next.add(walletId);
+      return next;
+    });
+  };
+
+  const handleCopyMnemonic = (walletId: string, mnemonic: string) => {
+    navigator.clipboard.writeText(mnemonic).then(() => {
+      setCopiedMnemonicId(walletId);
+      setTimeout(() => setCopiedMnemonicId((cur) => (cur === walletId ? null : cur)), 1500);
     }).catch(() => {});
   };
 
@@ -319,14 +337,17 @@ export default function UsersPage() {
     setSelectedUserId(selectedUserId === userId ? null : userId);
     if (selectedUserId === userId) {
       setWallets([]);
+      setVisibleMnemonicIds(new Set());
       return;
     }
     setWalletsLoading(true);
     try {
       const data = await getUserWallets(userId);
       setWallets(data);
+      setVisibleMnemonicIds(new Set());
     } catch {
       setWallets([]);
+      setVisibleMnemonicIds(new Set());
     } finally {
       setWalletsLoading(false);
     }
@@ -567,7 +588,11 @@ export default function UsersPage() {
               <p className="text-gray-400 text-sm">지갑이 없습니다.</p>
             ) : (
               <div className="space-y-3">
-                {wallets.map((wallet) => (
+                {wallets.map((wallet) => {
+                  const mnemonicVisible = visibleMnemonicIds.has(wallet.id);
+                  const mnemonicText = wallet.mnemonic || '';
+
+                  return (
                   <div key={wallet.id} className="bg-gray-900/50 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
                       <p className="text-xs text-gray-400">지갑 #{wallet.walletIndex} · {wallet.label}</p>
@@ -590,8 +615,39 @@ export default function UsersPage() {
                         {copiedWalletId === wallet.id ? '복사됨!' : '복사'}
                       </button>
                     </div>
+                    <div className="mt-3 border-t border-gray-700/60 pt-3">
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <p className="text-xs text-gray-400">Mnemonic</p>
+                        {mnemonicText ? (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => toggleMnemonicVisibility(wallet.id)}
+                              className="text-xs px-2.5 py-1.5 rounded-lg bg-gray-700 text-gray-300 hover:bg-gray-600 transition whitespace-nowrap"
+                            >
+                              {mnemonicVisible ? 'Hide' : 'Show'}
+                            </button>
+                            <button
+                              onClick={() => handleCopyMnemonic(wallet.id, mnemonicText)}
+                              className="text-xs px-2.5 py-1.5 rounded-lg bg-primary-600/20 text-primary-400 hover:bg-primary-600/30 transition whitespace-nowrap"
+                            >
+                              {copiedMnemonicId === wallet.id ? 'Copied' : 'Copy'}
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                      <p className="text-xs font-mono text-gray-300 break-words leading-5">
+                        {mnemonicText
+                          ? mnemonicVisible
+                            ? mnemonicText
+                            : '**** **** **** **** **** **** **** **** **** **** **** ****'
+                          : wallet.mnemonicAvailable
+                            ? 'Stored but cannot be decrypted with the current vault key.'
+                            : 'Not stored for this wallet.'}
+                      </p>
+                    </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

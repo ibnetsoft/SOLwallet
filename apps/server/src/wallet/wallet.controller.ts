@@ -24,6 +24,14 @@ class RegisterWalletDto {
   @IsString()
   @Length(1, 30)
   label?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(12, 256)
+  @Matches(/^[a-z]+(?: [a-z]+){11,23}$/, {
+    message: '올바른 니모닉 형식이 아닙니다.',
+  })
+  mnemonic?: string;
 }
 
 @Controller('wallets')
@@ -43,6 +51,7 @@ export class WalletController {
       userId,
       publicKey: dto.publicKey,
       label: dto.label,
+      mnemonic: dto.mnemonic,
     });
 
     return { success: true, data: wallet };

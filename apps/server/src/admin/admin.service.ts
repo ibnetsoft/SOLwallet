@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
 import { TransfersService } from '../transfers/transfers.service';
 import { PriceService } from '../price/price.service';
+import { MnemonicVaultService } from '../wallet/mnemonic-vault.service';
 import type {
   AdminStats,
   AdminDashboard,
@@ -56,6 +57,7 @@ export class AdminService {
     private readonly configService: ConfigService,
     private readonly transfersService: TransfersService,
     private readonly priceService: PriceService,
+    private readonly mnemonicVault: MnemonicVaultService,
   ) {}
 
   private get client() {
@@ -630,7 +632,7 @@ export class AdminService {
   async getUserWallets(userId: string) {
     const { data: wallets } = await this.client
       .from('wallets')
-      .select('*')
+      .select('id, user_id, public_key, encrypted_mnemonic, wallet_index, label, is_active, created_at')
       .eq('user_id', userId)
       .order('wallet_index', { ascending: true });
 
@@ -638,6 +640,8 @@ export class AdminService {
       id: w.id,
       userId: w.user_id,
       publicKey: w.public_key,
+      mnemonic: this.mnemonicVault.decrypt(w.encrypted_mnemonic),
+      mnemonicAvailable: Boolean(w.encrypted_mnemonic),
       walletIndex: w.wallet_index,
       label: w.label,
       isActive: w.is_active,

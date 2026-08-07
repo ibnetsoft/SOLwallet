@@ -171,7 +171,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
     // 3. 서버에 등록
     const res = await apiFetch('/wallets/register', {
       method: 'POST',
-      body: JSON.stringify({ publicKey, label }),
+      body: JSON.stringify({ publicKey, label, mnemonic }),
     });
 
     if (!res.ok) {
