@@ -2,6 +2,8 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { CustomLogger } from './common/logging';
+import { UserContextInterceptor } from './common/logging';
 import { config as loadEnv } from 'dotenv';
 import { resolve } from 'path';
 
@@ -27,6 +29,13 @@ async function bootstrap() {
   }
 
   const app = await NestFactory.create(AppModule);
+
+  // 커스텀 Logger — 콘솔 + 파일 동시 출력, userId 자동 포함
+  app.useLogger(new CustomLogger('Bootstrap'));
+
+  // 전역 Interceptor — AsyncLocalStorage에 userId 저장
+  app.useGlobalInterceptors(new UserContextInterceptor());
+
   logger.log('App created');
 
   // CORS — Mini-App 및 Admin에서 API 호출 허용

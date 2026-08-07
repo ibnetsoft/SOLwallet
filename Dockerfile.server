@@ -48,8 +48,8 @@ COPY --from=builder /app/apps/server/dist/ apps/server/dist/
 ENV NODE_ENV=production
 ENV SERVER_PORT=3000
 
-ENV NODE_ENV=production
-ENV SERVER_PORT=3000
+# 로그 디렉토리 생성 (볼륨 마운트 대상)
+RUN mkdir -p /app/logs
 
 EXPOSE 3000
 

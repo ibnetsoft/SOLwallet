@@ -10,6 +10,13 @@ services:
       - .env
     environment:
       - NODE_ENV=production
+    volumes:
+      - ./logs:/app/logs
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   # ─── Mini App (Next.js) ───
   mini-app:
