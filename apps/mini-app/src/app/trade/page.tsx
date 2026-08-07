@@ -40,6 +40,18 @@ function TokenLogo({ symbol }: { symbol: string }) {
   );
 }
 
+const PRICE_DECIMALS = 6;
+
+function normalizePriceInput(value: string) {
+  const cleaned = value.replace(/[^\d.]/g, '');
+  const firstDot = cleaned.indexOf('.');
+  if (firstDot === -1) return cleaned;
+
+  const integerPart = cleaned.slice(0, firstDot);
+  const decimalPart = cleaned.slice(firstDot + 1).replace(/\./g, '').slice(0, PRICE_DECIMALS);
+  return `${integerPart}.${decimalPart}`;
+}
+
 function TradeContent() {
   const { t } = useT();
   const {
@@ -117,7 +129,7 @@ function TradeContent() {
   // 가격이 없고 currentPrice가 로드되었을 때 자동 채우기
   useEffect(() => {
     if (currentPrice > 0 && !price) {
-      setPrice(truncateDecimals(currentPrice));
+      setPrice(truncateDecimals(currentPrice, PRICE_DECIMALS));
     }
   }, [currentPrice, price]);
 
@@ -329,16 +341,16 @@ function TradeContent() {
     if (!quantity || !isFinite(qtyNum) || qtyNum <= 0) return t('val.invalidAmount');
     // 최대 소수점 검사 — 가격과 수량 모두
     const decimals = selectedToken.decimals || 9;
-    const checkDecimals = (val: string, label: string) => {
+    const checkDecimals = (val: string, label: string, maxDecimals: number) => {
       const dotIdx = val.indexOf('.');
-      if (dotIdx !== -1 && val.length - dotIdx - 1 > decimals) {
-        return t('val.maxDecimals', { label, decimals });
+      if (dotIdx !== -1 && val.length - dotIdx - 1 > maxDecimals) {
+        return t('val.maxDecimals', { label, decimals: maxDecimals });
       }
       return null;
     };
-    const priceErr = checkDecimals(String(price), t('val.price'));
+    const priceErr = checkDecimals(String(price), t('val.price'), PRICE_DECIMALS);
     if (priceErr) return priceErr;
-    const qtyErr = checkDecimals(String(quantity), selectedToken.symbol);
+    const qtyErr = checkDecimals(String(quantity), selectedToken.symbol, decimals);
     if (qtyErr) return qtyErr;
     // 최대값 검사 (오버플로우 방지)
     if (priceNum > 1e12) return t('val.priceTooLarge');
@@ -462,12 +474,12 @@ function TradeContent() {
         <label className="text-sm text-gray-400 mb-1 block">{t('trade.priceLabel')}</label>
         <div className="bg-gray-800/50 rounded-xl p-4 flex items-center gap-2">
           <input
-            type="number"
+            type="text"
+            inputMode="decimal"
             value={price}
-            onChange={(e) => setPrice(e.target.value)}
+            onChange={(e) => setPrice(normalizePriceInput(e.target.value))}
             placeholder={t('trade.pricePlaceholder')}
-            min="0"
-            step="any"
+            pattern="[0-9]*[.]?[0-9]{0,6}"
             className="bg-transparent flex-1 outline-none text-white placeholder-gray-500"
           />
         </div>

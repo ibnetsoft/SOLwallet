@@ -121,7 +121,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
   applyCurrentPrice: () => {
     const { currentPrice } = get();
     if (currentPrice > 0) {
-      set({ price: truncateDecimals(currentPrice) });
+      set({ price: truncateDecimals(currentPrice, 6) });
     }
   },
 
