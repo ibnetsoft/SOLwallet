@@ -44,7 +44,6 @@ function TradeContent() {
   const { t } = useT();
   const {
     side, setSide,
-    orderType, setOrderType,
     selectedToken, setSelectedToken,
     price, setPrice,
     quantity, setQuantity,
@@ -115,12 +114,12 @@ function TradeContent() {
   const [tokenBalance, setTokenBalance] = useState(0);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
 
-  // 가격이 없고 currentPrice가 로드되었을 때 지정가 자동 채우기
+  // 가격이 없고 currentPrice가 로드되었을 때 자동 채우기
   useEffect(() => {
-    if (orderType === 'limit' && currentPrice > 0 && !price) {
+    if (currentPrice > 0 && !price) {
       setPrice(truncateDecimals(currentPrice));
     }
-  }, [currentPrice, orderType]);
+  }, [currentPrice, price]);
 
   // 초기화 + URL ?type= 파라미터 처리
   useEffect(() => {
@@ -324,10 +323,6 @@ function TradeContent() {
   const validateOrder = (): string | null => {
     if (!activeWallet) return t('val.noWallet');
     if (!selectedToken) return t('val.noToken');
-    // 시장가일 때 오더북 없으면 차단
-    if (orderType === 'market' && currentPrice <= 0) {
-      return t('val.noMarketPrice');
-    }
     const priceNum = Number(price);
     if (!price || !isFinite(priceNum) || priceNum <= 0) return t('val.invalidPrice');
     const qtyNum = Number(quantity);
@@ -436,54 +431,30 @@ function TradeContent() {
         </button>
       </div>
 
-      {/* Order Type Tab — 지정가 / 시장가 */}
+      {/* Order Type — 지정가 (시장가 미지원) */}
       <div className="flex gap-1 mb-6 border-b border-gray-800">
-        {(['limit', 'market'] as const).map((ot) => (
-          <button
-            key={ot}
-            onClick={() => setOrderType(ot)}
-            className={`px-4 py-2 text-sm font-medium transition border-b-2 -mb-px ${
-              orderType === ot
-                ? 'border-primary-500 text-white'
-                : 'border-transparent text-gray-400 hover:text-gray-200'
-            }`}
-          >
-            {ot === 'limit' ? t('trade.limit') : t('trade.market')}
-          </button>
-        ))}
+        <button
+          className="px-4 py-2 text-sm font-medium transition border-b-2 -mb-px border-primary-500 text-white"
+        >
+          {t('trade.limit')}
+        </button>
       </div>
 
-      {/* Price Input — 지정가일 때만 표시 */}
-      {orderType === 'limit' ? (
-        <section className="mb-4">
-          <label className="text-sm text-gray-400 mb-1 block">{t('trade.priceLabel')}</label>
-          <div className="bg-gray-800/50 rounded-xl p-4 flex items-center gap-2">
-            <input
-              type="number"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              placeholder={t('trade.pricePlaceholder')}
-              min="0"
-              step="any"
-              className="bg-transparent flex-1 outline-none text-white placeholder-gray-500"
-            />
-          </div>
-        </section>
-      ) : (
-        <section className="mb-4">
-          <label className="text-sm text-gray-400 mb-1 block">{t('trade.marketPrice')}</label>
-          <div className="bg-gray-800/30 rounded-xl p-4 flex items-center justify-between border border-dashed border-gray-700">
-            <span className="text-sm text-gray-400">
-              {currentPrice > 0
-                ? t('trade.marketExec')
-                : t('trade.loadingPrice')}
-            </span>
-            <span className="text-sm font-medium tabular-nums">
-              {currentPrice > 0 ? `${currentPrice.toFixed(4)} USDT` : '-'}
-            </span>
-          </div>
-        </section>
-      )}
+      {/* Price Input — 지정가 */}
+      <section className="mb-4">
+        <label className="text-sm text-gray-400 mb-1 block">{t('trade.priceLabel')}</label>
+        <div className="bg-gray-800/50 rounded-xl p-4 flex items-center gap-2">
+          <input
+            type="number"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            placeholder={t('trade.pricePlaceholder')}
+            min="0"
+            step="any"
+            className="bg-transparent flex-1 outline-none text-white placeholder-gray-500"
+          />
+        </div>
+      </section>
 
       {/* Amount Input */}
       <section className="mb-4">

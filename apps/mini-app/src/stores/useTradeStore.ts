@@ -107,13 +107,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
 
   setSide: (side) => set({ side }),
   setOrderType: (orderType) => {
-    // 시장가 전환 시 자동으로 현재가 적용
-    if (orderType === 'market') {
-      const { currentPrice } = get();
-      set({ orderType, price: currentPrice > 0 ? truncateDecimals(currentPrice) : '' });
-    } else {
-      set({ orderType });
-    }
+    set({ orderType });
   },
   setSelectedToken: (token) => set({ selectedToken: token, price: '', quantity: '' }),
   setPrice: (price) => set({ price }),
@@ -182,11 +176,6 @@ export const useTradeStore = create<TradeState>((set, get) => ({
       const quoteMint = USDT_MINT;
       const price = await manifestClient.fetchCurrentPrice(selectedToken.mint_address, quoteMint);
       set({ currentPrice: price });
-      // 시장가 모드일 때 가격 자동 동기화
-      const { orderType } = get();
-      if (orderType === 'market' && price > 0) {
-        set({ price: truncateDecimals(price) });
-      }
     } catch {
       // 무시
     }
@@ -279,7 +268,7 @@ export const useTradeStore = create<TradeState>((set, get) => ({
         side,
         price: Number(price),
         quantity: Number(quantity),
-        orderType: get().orderType,
+        orderType: 'limit' as const,
       };
       const { signTransaction } = await import('@/lib/wallet');
 
