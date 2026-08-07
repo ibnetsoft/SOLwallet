@@ -1,10 +1,10 @@
-import { Logger, LogLevel } from '@nestjs/common';
+import { ConsoleLogger } from '@nestjs/common';
 import winston from 'winston';
 import DailyRotateFile from 'winston-daily-rotate-file';
 import { userContextStorage } from './user-context';
 
 /**
- * NestJS 기본 Logger를 대체하는 커스텀 Logger.
+ * NestJS 기본 ConsoleLogger를 대체하는 커스텀 Logger.
  *
  * - 콘솔(stdout): 기존 NestJS 스타일 텍스트 출력 (docker logs 호환)
  * - 파일: JSON 구조화 로그 → /app/logs/ (Docker 볼륨으로 EC2 호스트에 영속)
@@ -13,7 +13,7 @@ import { userContextStorage } from './user-context';
  * NestJS의 app.useLogger(new CustomLogger())로 설정하면,
  * 기존 코드의 `new Logger(ClassName)` 호출이 모두 이 클래스로 교체됨.
  */
-export class CustomLogger extends Logger {
+export class CustomLogger extends ConsoleLogger {
   private readonly winstonLogger: winston.Logger;
 
   constructor(context?: string) {
@@ -106,13 +106,5 @@ export class CustomLogger extends Logger {
   override verbose(message: unknown, context?: string): void {
     super.verbose(message, context);
     this.logToWinston('debug', String(message), context);
-  }
-
-  /**
-   * NestJS가 기본 Logger 대신 이 클래스를 사용하도록
-   * static factory 메서드를 제공.
-   */
-  static createCustomLogger(context?: string): CustomLogger {
-    return new CustomLogger(context);
   }
 }
