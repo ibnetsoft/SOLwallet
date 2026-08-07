@@ -17,7 +17,7 @@ export class CustomLogger extends Logger {
   private readonly winstonLogger: winston.Logger;
 
   constructor(context?: string) {
-    super(context);
+    super(context ?? 'Application');
 
     // 콘솔 출력용 포맷 — NestJS 기본 스타일 유지
     const consoleFormat = winston.format.combine(
@@ -112,7 +112,7 @@ export class CustomLogger extends Logger {
    * NestJS가 기본 Logger 대신 이 클래스를 사용하도록
    * static factory 메서드를 제공.
    */
-  static override createLogger(context?: string): CustomLogger {
+  static createCustomLogger(context?: string): CustomLogger {
     return new CustomLogger(context);
   }
 }
