@@ -19,6 +19,15 @@ import { getMsg } from '@/lib/i18n';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
+type ServerWalletRow = {
+  id: string;
+  public_key: string;
+  label?: string | null;
+  wallet_index: number;
+  is_active: boolean;
+  created_at: string;
+};
+
 // ─── Types ───
 
 export interface WalletInfo {
@@ -167,7 +176,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
     const { publicKey, secretKey, mnemonic } = createNewWallet();
 
     // 2. 암호화
-    const encrypted = await encryptPrivateKey(secretKey, pin);
+    const encryptedWallet = await encryptPrivateKey(secretKey, pin);
 
     // 3. 서버에 등록
     const res = await apiFetch('/wallets/register', {
@@ -189,7 +198,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
     const storedWallet: StoredWallet = {
       id: walletId,
       publicKey,
-      encrypted,
+      encrypted: encryptedWallet,
       label: serverWallet.data.label || label,
       walletIndex: serverWallet.data.wallet_index,
       isActive: serverWallet.data.is_active,
@@ -222,27 +231,91 @@ export const useWalletStore = create<WalletState>((set, get) => ({
    * 시드 구문으로 지갑 임포트
    */
   importWallet: async (mnemonic, label, pin) => {
-    const { wallets } = get();
-    if (wallets.length >= MAX_WALLETS) {
-      throw new Error(getMsg('error.maxWallets', { max: MAX_WALLETS }));
-    }
-
     // 1. 시드 구문 복원
     const { publicKey, secretKey } = importPhrase(mnemonic);
 
     // 중복 지갑 체크
-    if (wallets.some((w) => w.publicKey === publicKey)) {
-      zeroizeKey(secretKey);
-      throw new Error(getMsg('error.walletExists'));
-    }
-
     // 2. 암호화
     const encrypted = await encryptPrivateKey(secretKey, pin);
+
+    const persistRestoredWallet = (wallet: WalletInfo | ServerWalletRow): WalletInfo => {
+      const walletInfo: WalletInfo = 'public_key' in wallet
+        ? {
+            id: wallet.id,
+            publicKey: wallet.public_key,
+            label: wallet.label || label,
+            walletIndex: wallet.wallet_index,
+            isActive: wallet.is_active,
+            createdAt: wallet.created_at,
+          }
+        : wallet;
+
+      const storedWallet: StoredWallet = {
+        id: walletInfo.id,
+        publicKey: walletInfo.publicKey,
+        encrypted,
+        label: walletInfo.label || label,
+        walletIndex: walletInfo.walletIndex,
+        isActive: walletInfo.isActive,
+        createdAt: walletInfo.createdAt || new Date().toISOString(),
+      };
+
+      const stored = loadWallets();
+      if (stored.some((w) => w.id === storedWallet.id)) {
+        updateWalletInStorage(storedWallet.id, storedWallet);
+      } else {
+        addWalletToStorage(storedWallet);
+      }
+
+      set((state) => {
+        const exists = state.wallets.some((w) => w.id === walletInfo.id);
+        const nextWallets = exists
+          ? state.wallets.map((w) => (w.id === walletInfo.id ? { ...w, ...walletInfo } : w))
+          : [...state.wallets, walletInfo];
+
+        return {
+          wallets: nextWallets,
+          activeWalletId: walletInfo.isActive ? walletInfo.id : state.activeWalletId || walletInfo.id,
+        };
+      });
+
+      return walletInfo;
+    };
+
+    const { wallets } = get();
+    const existingLocalWallet = wallets.find((w) => w.publicKey === publicKey);
+    if (existingLocalWallet) {
+      const stored = loadWallets().find((w) => w.id === existingLocalWallet.id);
+      if (stored?.encrypted) {
+        zeroizeKey(secretKey);
+        throw new Error(getMsg('error.walletExists'));
+      }
+
+      const restoredWallet = persistRestoredWallet(existingLocalWallet);
+      zeroizeKey(secretKey);
+      return restoredWallet;
+    }
+
+    const serverWalletsRes = await apiFetch('/user/wallets');
+    if (serverWalletsRes.ok) {
+      const { data } = await serverWalletsRes.json().catch(() => ({ data: [] }));
+      const serverWallet = ((data || []) as ServerWalletRow[]).find((w) => w.public_key === publicKey);
+      if (serverWallet) {
+        const restoredWallet = persistRestoredWallet(serverWallet);
+        zeroizeKey(secretKey);
+        return restoredWallet;
+      }
+    }
+
+    if (wallets.length >= MAX_WALLETS) {
+      zeroizeKey(secretKey);
+      throw new Error(getMsg('error.maxWallets', { max: MAX_WALLETS }));
+    }
 
     // 3. 서버에 등록
     const res = await apiFetch('/wallets/register', {
       method: 'POST',
-      body: JSON.stringify({ publicKey, label }),
+      body: JSON.stringify({ publicKey, label, mnemonic }),
     });
 
     if (!res.ok) {
